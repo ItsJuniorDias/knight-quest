@@ -225,18 +225,26 @@ function pickBy<T>(arr: readonly T[], seed: number): T {
   return arr[Math.floor(hash(seed) * arr.length) % arr.length];
 }
 
-function tintGround(root: THREE.Object3D, tint: THREE.Color): void {
+/**
+ * Recolor every mesh material under `root` with the given HSL. Materials in
+ * the POLYGON pack are SHARED between clones (SkeletonUtils clones the scene
+ * graph but keeps material refs); mutating them in place used to darken the
+ * shared material once per tile until whole rows turned black. We clone the
+ * material first, then setHSL — the clone gets its own Color, and the
+ * original stays untouched for other consumers.
+ */
+function tintGround(root: THREE.Object3D, h: number, s: number, l: number): void {
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const apply = (m: THREE.Material): void => {
-      const mat = m as THREE.MeshLambertMaterial;
-      // Multiply the existing material color by the tint so texture atlases
-      // are preserved but nudged toward a punchier green.
-      mat.color.multiply(tint);
+    if (!mesh.isMesh || !mesh.material) return;
+    const apply = (m: THREE.Material): THREE.Material => {
+      const cloned = m.clone();
+      const lam = cloned as THREE.MeshLambertMaterial;
+      lam.color.setHSL(h, s, l);
+      return cloned;
     };
-    if (Array.isArray(mesh.material)) mesh.material.forEach(apply);
-    else if (mesh.material) apply(mesh.material);
+    if (Array.isArray(mesh.material)) mesh.material = mesh.material.map(apply);
+    else mesh.material = apply(mesh.material);
   });
 }
 
@@ -252,17 +260,14 @@ function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number
   floor.scale.multiplyScalar(TILE / 3);
   floor.rotation.y = Math.floor(hash(tx, tz, def.gx, 3) * 4) * (Math.PI / 2);
 
-  // Vary the tint per tile so the grass reads as a living carpet instead of a
-  // flat green sheet. Warmer/cooler patches, a little brighter overall.
+  // Per-tile HSL — narrow jitter around a bright grass-green so the ground
+  // reads as a living carpet without any tile ever going dark. Dirt tiles
+  // keep their original brown so paths still contrast against grass.
   if (!dirt) {
-    const t = hash(tx, tz, def.gx, 12);
-    // Base a warm green tint with per-tile jitter toward lime or forest.
-    const tint = new THREE.Color().setHSL(
-      0.28 + (t - 0.5) * 0.04,        // hue: yellow-green ↔ deep-green
-      0.55 + hash(tx, tz, def.gx, 13) * 0.12, // saturation
-      0.48 + hash(tx, tz, def.gx, 14) * 0.14, // lightness
-    );
-    tintGround(floor, tint);
+    const h = 0.27 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03; // ~yellow-green ↔ leaf-green
+    const s = 0.55 + hash(tx, tz, def.gx, 13) * 0.10;         // bright saturation
+    const l = 0.48 + hash(tx, tz, def.gx, 14) * 0.10;         // 0.48..0.58 (never too dark)
+    tintGround(floor, h, s, l);
   }
 
   group.add(floor);

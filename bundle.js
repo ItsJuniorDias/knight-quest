@@ -38013,17 +38013,17 @@ void main() {
       startVisible: true,
       map: [
         "TTTTTTTDTTTTTTT",
-        "T.fg.H..H.gg.fT",
-        "Tg.f...g..f..gT",
+        "T.fg.H.,.H.gg.T",
+        "Tg.f...,....f.T",
         "T.gg.,,,,,.gg.T",
         "T.f.,,C,,,,.f.T",
         "T.M.,,,,,,,.M.T",
-        "D.g.,,P,,,,.g.D",
+        "D,,,,,P,,,,,,,D",
         "T.f.,,,,,,,.f.T",
         "T.gg.,,L,,,.g.T",
         "T.f...,,,..fggT",
         "Tg.H..,,..H.f.T",
-        "T.fg.U.g.gg.fgT",
+        "T.fg.U.,.gg.fgT",
         "TTTTTTTDTTTTTTT"
       ],
       doors: [
@@ -38756,16 +38756,18 @@ void main() {
   function pickBy(arr, seed) {
     return arr[Math.floor(hash(seed) * arr.length) % arr.length];
   }
-  function tintGround(root, tint) {
+  function tintGround(root, h, s, l) {
     root.traverse((o) => {
       const mesh = o;
-      if (!mesh.isMesh) return;
+      if (!mesh.isMesh || !mesh.material) return;
       const apply = (m) => {
-        const mat = m;
-        mat.color.multiply(tint);
+        const cloned = m.clone();
+        const lam = cloned;
+        lam.color.setHSL(h, s, l);
+        return cloned;
       };
-      if (Array.isArray(mesh.material)) mesh.material.forEach(apply);
-      else if (mesh.material) apply(mesh.material);
+      if (Array.isArray(mesh.material)) mesh.material = mesh.material.map(apply);
+      else mesh.material = apply(mesh.material);
     });
   }
   function addGrassGround(group, def, tx, tz, dirt) {
@@ -38776,16 +38778,10 @@ void main() {
     floor.scale.multiplyScalar(TILE / 3);
     floor.rotation.y = Math.floor(hash(tx, tz, def.gx, 3) * 4) * (Math.PI / 2);
     if (!dirt) {
-      const t = hash(tx, tz, def.gx, 12);
-      const tint = new Color().setHSL(
-        0.28 + (t - 0.5) * 0.04,
-        // hue: yellow-green ↔ deep-green
-        0.55 + hash(tx, tz, def.gx, 13) * 0.12,
-        // saturation
-        0.48 + hash(tx, tz, def.gx, 14) * 0.14
-        // lightness
-      );
-      tintGround(floor, tint);
+      const h = 0.27 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03;
+      const s = 0.55 + hash(tx, tz, def.gx, 13) * 0.1;
+      const l = 0.48 + hash(tx, tz, def.gx, 14) * 0.1;
+      tintGround(floor, h, s, l);
     }
     group.add(floor);
     if (!dirt) {
@@ -39605,9 +39601,9 @@ void main() {
     const scene = new Scene();
     scene.background = new Color(COLORS.bg);
     scene.fog = new Fog(COLORS.fog, RENDER.fogNear, RENDER.fogFar);
-    const ambient = new AmbientLight(COLORS.ambient, 0.55);
+    const ambient = new AmbientLight(COLORS.ambient, 0.9);
     scene.add(ambient);
-    const sun = new DirectionalLight(COLORS.sun, 0.9);
+    const sun = new DirectionalLight(COLORS.sun, 1.15);
     sun.position.set(30, 60, 20);
     sun.castShadow = RENDER.shadows;
     sun.shadow.mapSize.set(RENDER.shadowMapSize, RENDER.shadowMapSize);

@@ -50,9 +50,11 @@ async function main(): Promise<void> {
   scene.fog = new THREE.Fog(COLORS.fog, RENDER.fogNear, RENDER.fogFar);
 
   // lights ------------------------------------------------------------------
-  const ambient = new THREE.AmbientLight(COLORS.ambient, 0.55);
+  // Brighter ambient so the grass reads as daylight village rather than
+  // a purple twilight — the fog still keeps the mood.
+  const ambient = new THREE.AmbientLight(COLORS.ambient, 0.9);
   scene.add(ambient);
-  const sun = new THREE.DirectionalLight(COLORS.sun, 0.9);
+  const sun = new THREE.DirectionalLight(COLORS.sun, 1.15);
   sun.position.set(30, 60, 20);
   sun.castShadow = RENDER.shadows;
   sun.shadow.mapSize.set(RENDER.shadowMapSize, RENDER.shadowMapSize);
