@@ -36752,11 +36752,509 @@ void main() {
     return action.getClip().duration;
   }
 
+  // src/world/dungeon.ts
+  var ROOMS = [
+    // ============================================================
+    // ROW gy=5 — southern forest fringe (below the village)
+    // ============================================================
+    {
+      key: "0,5",
+      gx: 0,
+      gy: 5,
+      name: "Southern Woods",
+      biome: "forest",
+      startVisible: false,
+      map: [
+        "TTTTTTTDTTTTTTT",
+        "T.gggT.......TT",
+        "Tg..fgg.f.gg.TT",
+        "T.gggT..fggg.TT",
+        "T.f...gT......T",
+        "Tgg.g.f...gg..T",
+        "T.f.gg.g.g.f..T",
+        "T..g.f..g.f.g.T",
+        "Tg..gg.gg..gg.T",
+        "T.fg.f..f.gg..T",
+        "TT..gg.g..f..TT",
+        "TT.f..gg.gg..TT",
+        "TTTTTTTTTTTTTTT"
+      ],
+      doors: [{ dir: "n", kind: "open" }]
+    },
+    // ============================================================
+    // ROW gy=4 — the village hub (start) + adjacent groves
+    // ============================================================
+    {
+      key: "-1,4",
+      gx: -1,
+      gy: 4,
+      name: "Willowvale Grove",
+      biome: "forest",
+      startVisible: false,
+      map: [
+        "TTTTTTTTTTTTTTT",
+        "T.fgg.f.gg.fg.T",
+        "Tg.f.gg.f..g.gT",
+        "T.gg.f.gg.f.g.T",
+        "T.f..g...gg.f.T",
+        "Tgg.f.gg.f.gg.T",
+        "T.g..g.f.gg.f.D",
+        "Tf.gg.f.gg.g.gT",
+        "T.g.f.gg.g.f..T",
+        "Tg.gg.f..gg.g.T",
+        "T.f.gg.gg..f.gT",
+        "Tg..f..g.gg.f.T",
+        "TTTTTTTTTTTTTTT"
+      ],
+      doors: [{ dir: "e", kind: "open" }]
+    },
+    {
+      key: "0,4",
+      gx: 0,
+      gy: 4,
+      name: "Willowvale Village",
+      biome: "village",
+      startVisible: true,
+      map: [
+        "TTTTTTTDTTTTTTT",
+        "T.fg.H.,.H.gg.T",
+        "Tg.f...,....f.T",
+        "T.gg.,,,,,.gg.T",
+        "T.f.,,C,,,,.f.T",
+        "T.M.,,,,,,,.M.T",
+        "D,,,,,P,,,,,,,D",
+        "T.f.,,,,,,,.f.T",
+        "T.gg.,,L,,,.g.T",
+        "T.f...,,,..fggT",
+        "Tg.H..,,..H.f.T",
+        "T.fg.U.,.gg.fgT",
+        "TTTTTTTDTTTTTTT"
+      ],
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "e", kind: "open" },
+        { dir: "w", kind: "open" },
+        { dir: "s", kind: "open" }
+      ]
+    },
+    {
+      key: "1,4",
+      gx: 1,
+      gy: 4,
+      name: "Old Orchard",
+      biome: "forest",
+      startVisible: false,
+      map: [
+        "TTTTTTTTTTTTTTT",
+        "T.gg.f.g.fg.g.T",
+        "Tf..gg.f..g.f.T",
+        "T.gg.f.gg.f.g.T",
+        "T.f...gg.f.gg.T",
+        "Tgg.f.g..gg.f.T",
+        "D.g..gg.f..g.gT",
+        "Tf.gg.f.gg.f..T",
+        "T.g.f..gg.g.g.T",
+        "Tg.gg.gg..f.f.T",
+        "T.f.gg.g.gg.g.T",
+        "Tg..f..gg..f..T",
+        "TTTTTTTTTTTTTTT"
+      ],
+      doors: [{ dir: "w", kind: "open" }]
+    },
+    // ============================================================
+    // ROW gy=3 — dungeon entrance corridor + side chambers
+    // ============================================================
+    {
+      key: "-1,3",
+      gx: -1,
+      gy: 3,
+      name: "Old Watchpost",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "W....x.....x..W",
+        "W.............W",
+        "W..o.......c..D",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "W....S.....S..W",
+        "W.............W",
+        "WWWWWWWWWWWWWWW"
+      ],
+      doors: [{ dir: "e", kind: "open" }]
+    },
+    {
+      key: "0,3",
+      gx: 0,
+      gy: 3,
+      name: "Dungeon Entrance",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWDWWWWWWW",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "W.............W",
+        "W......P......W",
+        "D.............D",
+        "W.............W",
+        "W.............W",
+        "W..b...S...b..W",
+        "W.............W",
+        "W.............W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "s", kind: "open" },
+        { dir: "e", kind: "open" },
+        { dir: "w", kind: "open" }
+      ]
+    },
+    {
+      key: "1,3",
+      gx: 1,
+      gy: 3,
+      name: "Guard Barracks",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWDWWWWWWW",
+        "W..x.......x..W",
+        "W.............W",
+        "W..2.......2..W",
+        "W.............W",
+        "W......c......W",
+        "D.............W",
+        "W.............W",
+        "W..o.......o..W",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "WWWWWWWWWWWWWWW"
+      ],
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "w", kind: "open" }
+      ]
+    },
+    // ============================================================
+    // ROW gy=2 — main dungeon corridors + branch rooms
+    // ============================================================
+    {
+      key: "-2,2",
+      gx: -2,
+      gy: 2,
+      name: "Forgotten Cell",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W..x.......x..W",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "W......h......W",
+        "W.............D",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "W..o.......o..W",
+        "W.............W",
+        "WWWWWWWWWWWWWWW"
+      ],
+      doors: [{ dir: "e", kind: "open" }]
+    },
+    {
+      key: "-1,2",
+      gx: -1,
+      gy: 2,
+      name: "Armory",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWDWWWWWWW",
+        "W..x...x...x..W",
+        "W.............W",
+        "W.2.........2.W",
+        "W.............W",
+        "W..b...c...b..W",
+        "D.............D",
+        "W..o.......o..W",
+        "W.............W",
+        "W.2....s....2.W",
+        "W.............W",
+        "W..x.......x..W",
+        "WWWWWWWWWWWWWWW"
+      ],
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "e", kind: "open" },
+        { dir: "w", kind: "open" }
+      ]
+    },
+    {
+      key: "0,2",
+      gx: 0,
+      gy: 2,
+      name: "The Crossing",
+      biome: "dungeon",
+      banner: "red",
+      startVisible: false,
+      map: [
+        "WWWWWWWDWWWWWWW",
+        "W.p.........p.W",
+        "W.............W",
+        "W...1.....1...W",
+        "W.............W",
+        "W......1......W",
+        "D.............D",
+        "W......1......W",
+        "W.............W",
+        "W...1.....1...W",
+        "W.............W",
+        "W.p.........p.W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "s", kind: "open" },
+        { dir: "e", kind: "open" },
+        { dir: "w", kind: "open" }
+      ]
+    },
+    {
+      key: "1,2",
+      gx: 1,
+      gy: 2,
+      name: "Hall of Mages",
+      biome: "dungeon",
+      banner: "red",
+      startVisible: false,
+      map: [
+        "WWWWWWWDWWWWWWW",
+        "W..s.......s..W",
+        "W.............W",
+        "W...3.....3...W",
+        "W.............W",
+        "W......s......W",
+        "D......3......W",
+        "W......s......W",
+        "W.............W",
+        "W...3.....3...W",
+        "W.............W",
+        "W..s...c...s..W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "s", kind: "open" },
+        { dir: "w", kind: "open" }
+      ]
+    },
+    // ============================================================
+    // ROW gy=1 — inner sanctum, treasury, boss-key vault
+    // ============================================================
+    {
+      key: "-1,1",
+      gx: -1,
+      gy: 1,
+      name: "The Treasury",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W..b.......b..W",
+        "W.............W",
+        "W.....K.......W",
+        "W.............W",
+        "W..2.......2..W",
+        "W......3......D",
+        "W..2.......2..W",
+        "W.............W",
+        "W..h.......c..W",
+        "W.............W",
+        "W..B.......B..W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "e", kind: "open" },
+        { dir: "s", kind: "open" }
+      ]
+    },
+    {
+      key: "0,1",
+      gx: 0,
+      gy: 1,
+      name: "Great Hall",
+      biome: "dungeon",
+      banner: "red",
+      startVisible: false,
+      map: [
+        "WWWWWWWDWWWWWWW",
+        "W.p...s...s.p.W",
+        "W.............W",
+        "W..1.......1..W",
+        "W.............W",
+        "W......3......W",
+        "D.....s.s.....D",
+        "W......3......W",
+        "W.............W",
+        "W..1.......1..W",
+        "W.............W",
+        "W.p...s...s.p.W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "n", kind: "locked" },
+        { dir: "s", kind: "open" },
+        { dir: "w", kind: "open" },
+        { dir: "e", kind: "open" }
+      ]
+    },
+    {
+      key: "1,1",
+      gx: 1,
+      gy: 1,
+      name: "Sorcerer's Den",
+      biome: "dungeon",
+      banner: "red",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W..s.......s..W",
+        "W.............W",
+        "W...3.....3...W",
+        "W.............W",
+        "W......h......W",
+        "D......c......W",
+        "W......s......W",
+        "W.............W",
+        "W...3.....3...W",
+        "W.............W",
+        "W..s.......s..W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "w", kind: "open" },
+        { dir: "s", kind: "open" }
+      ]
+    },
+    // ============================================================
+    // ROW gy=0 — boss antechamber + throne
+    // ============================================================
+    {
+      key: "0,0",
+      gx: 0,
+      gy: 0,
+      name: "Throne of Bones",
+      biome: "dungeon",
+      banner: "red",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W.............W",
+        "W.p.........p.W",
+        "W.............W",
+        "W.............W",
+        "W......Z......W",
+        "W.............W",
+        "W.............W",
+        "W.p.........p.W",
+        "W.............W",
+        "W.............W",
+        "W.............W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [{ dir: "s", kind: "open" }]
+    }
+  ];
+  var START_ROOM_KEY = "0,4";
+  var BOSS_ROOM_KEY = "0,0";
+  function roomAt(gx, gy) {
+    return ROOMS.find((r) => r.gx === gx && r.gy === gy);
+  }
+  function neighborOf(room, dir) {
+    const d = dirDelta(dir);
+    return roomAt(room.gx + d.dx, room.gy + d.dy);
+  }
+  function dirDelta(dir) {
+    switch (dir) {
+      case "n":
+        return { dx: 0, dy: -1 };
+      case "s":
+        return { dx: 0, dy: 1 };
+      case "w":
+        return { dx: -1, dy: 0 };
+      case "e":
+        return { dx: 1, dy: 0 };
+    }
+  }
+  function opposite(dir) {
+    switch (dir) {
+      case "n":
+        return "s";
+      case "s":
+        return "n";
+      case "w":
+        return "e";
+      case "e":
+        return "w";
+    }
+  }
+  function doorTile(dir) {
+    const cx = Math.floor(ROOM_W / 2);
+    const cz = Math.floor(ROOM_H / 2);
+    switch (dir) {
+      case "n":
+        return { tx: cx, tz: 0 };
+      case "s":
+        return { tx: cx, tz: ROOM_H - 1 };
+      case "w":
+        return { tx: 0, tz: cz };
+      case "e":
+        return { tx: ROOM_W - 1, tz: cz };
+    }
+  }
+  function charAt(room, tx, tz) {
+    return room.map[tz]?.[tx] ?? "W";
+  }
+  var ENEMY_CHARS = {
+    "1": "minion",
+    "2": "rogue",
+    "3": "mage"
+  };
+
   // src/systems/physics.ts
+  function outsideGridPassable(room, tx, tz) {
+    for (const door of room.doors) {
+      if (door.gateClosed) continue;
+      const t = doorTile(door.dir);
+      if (door.dir === "n" && tz === -1 && tx === t.tx) return true;
+      if (door.dir === "s" && tz === ROOM_H && tx === t.tx) return true;
+      if (door.dir === "w" && tx === -1 && tz === t.tz) return true;
+      if (door.dir === "e" && tx === ROOM_W && tz === t.tz) return true;
+    }
+    return false;
+  }
   function solidAtWorld(room, x, z) {
     const tx = Math.floor((x - room.origin.x) / TILE);
     const tz = Math.floor((z - room.origin.z) / TILE);
-    if (tx < 0 || tz < 0 || tx >= ROOM_W || tz >= ROOM_H) return true;
+    if (tx < 0 || tz < 0 || tx >= ROOM_W || tz >= ROOM_H) {
+      return !outsideGridPassable(room, tx, tz);
+    }
     return room.solid[tz][tx];
   }
   function circleHitsGrid(room, x, z, r) {
@@ -37946,491 +38444,6 @@ void main() {
       scene.add(c);
       this.victoryCrystal = c;
     }
-  };
-
-  // src/world/dungeon.ts
-  var ROOMS = [
-    // ============================================================
-    // ROW gy=5 — southern forest fringe (below the village)
-    // ============================================================
-    {
-      key: "0,5",
-      gx: 0,
-      gy: 5,
-      name: "Southern Woods",
-      biome: "forest",
-      startVisible: false,
-      map: [
-        "TTTTTTTDTTTTTTT",
-        "T.gggT.......TT",
-        "Tg..fgg.f.gg.TT",
-        "T.gggT..fggg.TT",
-        "T.f...gT......T",
-        "Tgg.g.f...gg..T",
-        "T.f.gg.g.g.f..T",
-        "T..g.f..g.f.g.T",
-        "Tg..gg.gg..gg.T",
-        "T.fg.f..f.gg..T",
-        "TT..gg.g..f..TT",
-        "TT.f..gg.gg..TT",
-        "TTTTTTTTTTTTTTT"
-      ],
-      doors: [{ dir: "n", kind: "open" }]
-    },
-    // ============================================================
-    // ROW gy=4 — the village hub (start) + adjacent groves
-    // ============================================================
-    {
-      key: "-1,4",
-      gx: -1,
-      gy: 4,
-      name: "Willowvale Grove",
-      biome: "forest",
-      startVisible: false,
-      map: [
-        "TTTTTTTTTTTTTTT",
-        "T.fgg.f.gg.fg.T",
-        "Tg.f.gg.f..g.gT",
-        "T.gg.f.gg.f.g.T",
-        "T.f..g...gg.f.T",
-        "Tgg.f.gg.f.gg.T",
-        "T.g..g.f.gg.f.D",
-        "Tf.gg.f.gg.g.gT",
-        "T.g.f.gg.g.f..T",
-        "Tg.gg.f..gg.g.T",
-        "T.f.gg.gg..f.gT",
-        "Tg..f..g.gg.f.T",
-        "TTTTTTTTTTTTTTT"
-      ],
-      doors: [{ dir: "e", kind: "open" }]
-    },
-    {
-      key: "0,4",
-      gx: 0,
-      gy: 4,
-      name: "Willowvale Village",
-      biome: "village",
-      startVisible: true,
-      map: [
-        "TTTTTTTDTTTTTTT",
-        "T.fg.H.,.H.gg.T",
-        "Tg.f...,....f.T",
-        "T.gg.,,,,,.gg.T",
-        "T.f.,,C,,,,.f.T",
-        "T.M.,,,,,,,.M.T",
-        "D,,,,,P,,,,,,,D",
-        "T.f.,,,,,,,.f.T",
-        "T.gg.,,L,,,.g.T",
-        "T.f...,,,..fggT",
-        "Tg.H..,,..H.f.T",
-        "T.fg.U.,.gg.fgT",
-        "TTTTTTTDTTTTTTT"
-      ],
-      doors: [
-        { dir: "n", kind: "open" },
-        { dir: "e", kind: "open" },
-        { dir: "w", kind: "open" },
-        { dir: "s", kind: "open" }
-      ]
-    },
-    {
-      key: "1,4",
-      gx: 1,
-      gy: 4,
-      name: "Old Orchard",
-      biome: "forest",
-      startVisible: false,
-      map: [
-        "TTTTTTTTTTTTTTT",
-        "T.gg.f.g.fg.g.T",
-        "Tf..gg.f..g.f.T",
-        "T.gg.f.gg.f.g.T",
-        "T.f...gg.f.gg.T",
-        "Tgg.f.g..gg.f.T",
-        "D.g..gg.f..g.gT",
-        "Tf.gg.f.gg.f..T",
-        "T.g.f..gg.g.g.T",
-        "Tg.gg.gg..f.f.T",
-        "T.f.gg.g.gg.g.T",
-        "Tg..f..gg..f..T",
-        "TTTTTTTTTTTTTTT"
-      ],
-      doors: [{ dir: "w", kind: "open" }]
-    },
-    // ============================================================
-    // ROW gy=3 — dungeon entrance corridor + side chambers
-    // ============================================================
-    {
-      key: "-1,3",
-      gx: -1,
-      gy: 3,
-      name: "Old Watchpost",
-      biome: "dungeon",
-      banner: "blue",
-      startVisible: false,
-      map: [
-        "WWWWWWWWWWWWWWW",
-        "W.............W",
-        "W..b.......b..W",
-        "W.............W",
-        "W....x.....x..W",
-        "W.............W",
-        "W..o.......c..D",
-        "W.............W",
-        "W..b.......b..W",
-        "W.............W",
-        "W....S.....S..W",
-        "W.............W",
-        "WWWWWWWWWWWWWWW"
-      ],
-      doors: [{ dir: "e", kind: "open" }]
-    },
-    {
-      key: "0,3",
-      gx: 0,
-      gy: 3,
-      name: "Dungeon Entrance",
-      biome: "dungeon",
-      banner: "blue",
-      startVisible: false,
-      map: [
-        "WWWWWWWDWWWWWWW",
-        "W.............W",
-        "W..b.......b..W",
-        "W.............W",
-        "W.............W",
-        "W......P......W",
-        "D.............D",
-        "W.............W",
-        "W.............W",
-        "W..b...S...b..W",
-        "W.............W",
-        "W.............W",
-        "WWWWWWWDWWWWWWW"
-      ],
-      doors: [
-        { dir: "n", kind: "open" },
-        { dir: "s", kind: "open" },
-        { dir: "e", kind: "open" },
-        { dir: "w", kind: "open" }
-      ]
-    },
-    {
-      key: "1,3",
-      gx: 1,
-      gy: 3,
-      name: "Guard Barracks",
-      biome: "dungeon",
-      banner: "blue",
-      startVisible: false,
-      map: [
-        "WWWWWWWDWWWWWWW",
-        "W..x.......x..W",
-        "W.............W",
-        "W..2.......2..W",
-        "W.............W",
-        "W......c......W",
-        "D.............W",
-        "W.............W",
-        "W..o.......o..W",
-        "W.............W",
-        "W..b.......b..W",
-        "W.............W",
-        "WWWWWWWWWWWWWWW"
-      ],
-      doors: [
-        { dir: "n", kind: "open" },
-        { dir: "w", kind: "open" }
-      ]
-    },
-    // ============================================================
-    // ROW gy=2 — main dungeon corridors + branch rooms
-    // ============================================================
-    {
-      key: "-2,2",
-      gx: -2,
-      gy: 2,
-      name: "Forgotten Cell",
-      biome: "dungeon",
-      banner: "blue",
-      startVisible: false,
-      map: [
-        "WWWWWWWWWWWWWWW",
-        "W..x.......x..W",
-        "W.............W",
-        "W..b.......b..W",
-        "W.............W",
-        "W......h......W",
-        "W.............D",
-        "W.............W",
-        "W..b.......b..W",
-        "W.............W",
-        "W..o.......o..W",
-        "W.............W",
-        "WWWWWWWWWWWWWWW"
-      ],
-      doors: [{ dir: "e", kind: "open" }]
-    },
-    {
-      key: "-1,2",
-      gx: -1,
-      gy: 2,
-      name: "Armory",
-      biome: "dungeon",
-      banner: "blue",
-      startVisible: false,
-      map: [
-        "WWWWWWWDWWWWWWW",
-        "W..x...x...x..W",
-        "W.............W",
-        "W.2.........2.W",
-        "W.............W",
-        "W..b...c...b..W",
-        "D.............D",
-        "W..o.......o..W",
-        "W.............W",
-        "W.2....s....2.W",
-        "W.............W",
-        "W..x.......x..W",
-        "WWWWWWWWWWWWWWW"
-      ],
-      doors: [
-        { dir: "n", kind: "open" },
-        { dir: "e", kind: "open" },
-        { dir: "w", kind: "open" }
-      ]
-    },
-    {
-      key: "0,2",
-      gx: 0,
-      gy: 2,
-      name: "The Crossing",
-      biome: "dungeon",
-      banner: "red",
-      startVisible: false,
-      map: [
-        "WWWWWWWDWWWWWWW",
-        "W.p.........p.W",
-        "W.............W",
-        "W...1.....1...W",
-        "W.............W",
-        "W......1......W",
-        "D.............D",
-        "W......1......W",
-        "W.............W",
-        "W...1.....1...W",
-        "W.............W",
-        "W.p.........p.W",
-        "WWWWWWWDWWWWWWW"
-      ],
-      doors: [
-        { dir: "n", kind: "open" },
-        { dir: "s", kind: "open" },
-        { dir: "e", kind: "open" },
-        { dir: "w", kind: "open" }
-      ]
-    },
-    {
-      key: "1,2",
-      gx: 1,
-      gy: 2,
-      name: "Hall of Mages",
-      biome: "dungeon",
-      banner: "red",
-      startVisible: false,
-      map: [
-        "WWWWWWWDWWWWWWW",
-        "W..s.......s..W",
-        "W.............W",
-        "W...3.....3...W",
-        "W.............W",
-        "W......s......W",
-        "D......3......W",
-        "W......s......W",
-        "W.............W",
-        "W...3.....3...W",
-        "W.............W",
-        "W..s...c...s..W",
-        "WWWWWWWDWWWWWWW"
-      ],
-      doors: [
-        { dir: "n", kind: "open" },
-        { dir: "s", kind: "open" },
-        { dir: "w", kind: "open" }
-      ]
-    },
-    // ============================================================
-    // ROW gy=1 — inner sanctum, treasury, boss-key vault
-    // ============================================================
-    {
-      key: "-1,1",
-      gx: -1,
-      gy: 1,
-      name: "The Treasury",
-      biome: "dungeon",
-      banner: "blue",
-      startVisible: false,
-      map: [
-        "WWWWWWWWWWWWWWW",
-        "W..b.......b..W",
-        "W.............W",
-        "W.....K.......W",
-        "W.............W",
-        "W..2.......2..W",
-        "W......3......D",
-        "W..2.......2..W",
-        "W.............W",
-        "W..h.......c..W",
-        "W.............W",
-        "W..B.......B..W",
-        "WWWWWWWDWWWWWWW"
-      ],
-      doors: [
-        { dir: "e", kind: "open" },
-        { dir: "s", kind: "open" }
-      ]
-    },
-    {
-      key: "0,1",
-      gx: 0,
-      gy: 1,
-      name: "Great Hall",
-      biome: "dungeon",
-      banner: "red",
-      startVisible: false,
-      map: [
-        "WWWWWWWDWWWWWWW",
-        "W.p...s...s.p.W",
-        "W.............W",
-        "W..1.......1..W",
-        "W.............W",
-        "W......3......W",
-        "D.....s.s.....D",
-        "W......3......W",
-        "W.............W",
-        "W..1.......1..W",
-        "W.............W",
-        "W.p...s...s.p.W",
-        "WWWWWWWDWWWWWWW"
-      ],
-      doors: [
-        { dir: "n", kind: "locked" },
-        { dir: "s", kind: "open" },
-        { dir: "w", kind: "open" },
-        { dir: "e", kind: "open" }
-      ]
-    },
-    {
-      key: "1,1",
-      gx: 1,
-      gy: 1,
-      name: "Sorcerer's Den",
-      biome: "dungeon",
-      banner: "red",
-      startVisible: false,
-      map: [
-        "WWWWWWWWWWWWWWW",
-        "W..s.......s..W",
-        "W.............W",
-        "W...3.....3...W",
-        "W.............W",
-        "W......h......W",
-        "D......c......W",
-        "W......s......W",
-        "W.............W",
-        "W...3.....3...W",
-        "W.............W",
-        "W..s.......s..W",
-        "WWWWWWWDWWWWWWW"
-      ],
-      doors: [
-        { dir: "w", kind: "open" },
-        { dir: "s", kind: "open" }
-      ]
-    },
-    // ============================================================
-    // ROW gy=0 — boss antechamber + throne
-    // ============================================================
-    {
-      key: "0,0",
-      gx: 0,
-      gy: 0,
-      name: "Throne of Bones",
-      biome: "dungeon",
-      banner: "red",
-      startVisible: false,
-      map: [
-        "WWWWWWWWWWWWWWW",
-        "W.............W",
-        "W.p.........p.W",
-        "W.............W",
-        "W.............W",
-        "W......Z......W",
-        "W.............W",
-        "W.............W",
-        "W.p.........p.W",
-        "W.............W",
-        "W.............W",
-        "W.............W",
-        "WWWWWWWDWWWWWWW"
-      ],
-      doors: [{ dir: "s", kind: "open" }]
-    }
-  ];
-  var START_ROOM_KEY = "0,4";
-  var BOSS_ROOM_KEY = "0,0";
-  function roomAt(gx, gy) {
-    return ROOMS.find((r) => r.gx === gx && r.gy === gy);
-  }
-  function neighborOf(room, dir) {
-    const d = dirDelta(dir);
-    return roomAt(room.gx + d.dx, room.gy + d.dy);
-  }
-  function dirDelta(dir) {
-    switch (dir) {
-      case "n":
-        return { dx: 0, dy: -1 };
-      case "s":
-        return { dx: 0, dy: 1 };
-      case "w":
-        return { dx: -1, dy: 0 };
-      case "e":
-        return { dx: 1, dy: 0 };
-    }
-  }
-  function opposite(dir) {
-    switch (dir) {
-      case "n":
-        return "s";
-      case "s":
-        return "n";
-      case "w":
-        return "e";
-      case "e":
-        return "w";
-    }
-  }
-  function doorTile(dir) {
-    const cx = Math.floor(ROOM_W / 2);
-    const cz = Math.floor(ROOM_H / 2);
-    switch (dir) {
-      case "n":
-        return { tx: cx, tz: 0 };
-      case "s":
-        return { tx: cx, tz: ROOM_H - 1 };
-      case "w":
-        return { tx: 0, tz: cz };
-      case "e":
-        return { tx: ROOM_W - 1, tz: cz };
-    }
-  }
-  function charAt(room, tx, tz) {
-    return room.map[tz]?.[tx] ?? "W";
-  }
-  var ENEMY_CHARS = {
-    "1": "minion",
-    "2": "rogue",
-    "3": "mage"
   };
 
   // src/systems/rooms.ts

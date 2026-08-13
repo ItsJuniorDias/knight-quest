@@ -1,17 +1,40 @@
 import type * as THREE from "three";
 import { ROOM_H, ROOM_W, TILE } from "../config";
 import type { RoomRuntime } from "../types";
+import { doorTile } from "../world/dungeon";
 
 // ---------------------------------------------------------------------------
 // Physics — deliberately boring. Circle vs. solid tile grid, resolved per
 // axis, plus circle-circle pushes for dynamic blockers (barrels). No physics
 // engine: deterministic, cheap, and impossible to explode.
+//
+// Doors need a special case: an open-door column extends one virtual tile
+// PAST the room's grid on the door's side, so the player's circle can push
+// beyond the perimeter far enough for RoomManager.crossedDoor() to fire.
+// Without this, the player's radius clamps against "tz=-1 is solid" and
+// the transition never triggers even when walking straight into the door.
 // ---------------------------------------------------------------------------
+
+function outsideGridPassable(room: RoomRuntime, tx: number, tz: number): boolean {
+  // Is (tx, tz) exactly one tile past the room, aligned with an open door?
+  for (const door of room.doors) {
+    if (door.gateClosed) continue;
+    const t = doorTile(door.dir);
+    if (door.dir === "n" && tz === -1 && tx === t.tx) return true;
+    if (door.dir === "s" && tz === ROOM_H && tx === t.tx) return true;
+    if (door.dir === "w" && tx === -1 && tz === t.tz) return true;
+    if (door.dir === "e" && tx === ROOM_W && tz === t.tz) return true;
+  }
+  return false;
+}
 
 function solidAtWorld(room: RoomRuntime, x: number, z: number): boolean {
   const tx = Math.floor((x - room.origin.x) / TILE);
   const tz = Math.floor((z - room.origin.z) / TILE);
-  if (tx < 0 || tz < 0 || tx >= ROOM_W || tz >= ROOM_H) return true;
+  if (tx < 0 || tz < 0 || tx >= ROOM_W || tz >= ROOM_H) {
+    // Off-grid — passable only when stepping through an open door corridor.
+    return !outsideGridPassable(room, tx, tz);
+  }
   return room.solid[tz][tx];
 }
 
