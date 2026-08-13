@@ -125,6 +125,14 @@ function buildDungeonEdge(
   dir: "n" | "w",
   target: THREE.Object3D,
 ): void {
+  // Village rooms never build stone walls — they use their tree fence.
+  // Dungeon rooms ALWAYS build their own perimeter, even when the neighbour
+  // is a village (v1 skipped these, leaving the whole southern wall of the
+  // dungeon-vs-village boundary open so the player could see straight into
+  // the hidden dungeon from the village).
+  const iAmVillage = room.biome === "village";
+  if (iAmVillage) return;
+
   const edgeKey = canonicalEdge(room, dir);
   if (builtEdges.has(edgeKey)) return;
   builtEdges.add(edgeKey);
@@ -136,12 +144,6 @@ function buildDungeonEdge(
   const neighbor = neighborOf(room, dir);
   const neighborDoor = neighbor?.doors.some((d) => d.dir === opposite(dir)) ?? false;
   const doorHere = hasDoor || neighborDoor;
-
-  // If either side of this edge is a village, skip the KayKit wall entirely —
-  // the village fence handles its own perimeter.
-  const iAmVillage = room.biome === "village";
-  const nbrIsVillage = neighbor?.biome === "village";
-  if (iAmVillage || nbrIsVillage) return;
 
   for (let i = 0; i < count; i++) {
     const tx = horizontal ? i : 0;
@@ -455,37 +457,15 @@ function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRunti
 }
 
 /**
- * Cap a dungeon room with a low, dark ceiling plane. Because the new camera
- * sits behind and above the knight (not overhead), the top of the frame
- * would otherwise show blank sky through the walls; the ceiling reads as
- * "we're indoors".
- *
- * Two fixes vs v1:
- *   • MeshLambertMaterial (not Basic) so the ceiling respects scene.fog and
- *     fades into the background instead of hovering as a giant black slab.
- *   • The plane is inset by one tile on every side so it sits UNDER the wall
- *     tops rather than past them — v1 was slightly larger than the room and
- *     was leaking behind the walls into the camera's back-view.
+ * v3 note: the dungeon ceiling was removed entirely. With the BOTW-style
+ * chase cam sitting at ~y=15 looking down, ANY opaque ceiling positioned
+ * near the top of the walls blocks the camera's view of the player as soon
+ * as he steps inside the room. The visibility system (unvisited rooms hide
+ * their interior contents) plus dense fog handles the "don't spoil the
+ * next room" requirement without needing an actual ceiling mesh.
  */
-function addDungeonCeiling(def: RoomDef, target: THREE.Object3D): void {
-  const inset = TILE * 0.5;
-  const geom = new THREE.PlaneGeometry(
-    ROOM_W * TILE - inset * 2,
-    ROOM_H * TILE - inset * 2,
-  );
-  const mat = new THREE.MeshLambertMaterial({
-    color: COLORS.dungeonCeiling,
-    side: THREE.DoubleSide,
-  });
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.rotation.x = Math.PI / 2; // face down
-  const c00 = tileCenter(def.gx, def.gy, 0, 0);
-  mesh.position.set(
-    c00.x + (ROOM_W * TILE) / 2 - TILE / 2,
-    4.6,
-    c00.z + (ROOM_H * TILE) / 2 - TILE / 2,
-  );
-  target.add(mesh);
+function addDungeonCeiling(_def: RoomDef, _target: THREE.Object3D): void {
+  // intentionally left blank — see comment above.
 }
 
 function buildVillageContent(def: RoomDef, group: THREE.Group, runtime: RoomRuntime): THREE.Vector3 | null {
@@ -650,10 +630,31 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       }
 
       // -------- perimeter walls (shared, always visible) ----------
-      buildDungeonEdge(def, "n", sharedStatics);
-      buildDungeonEdge(def, "w", sharedStatics);
-      if (!neighborOf(def, "s")) buildDungeonEdge({ ...def, gy: def.gy + 1 }, "n", sharedStatics);
-      if (!neighborOf(def, "e")) buildDungeonEdge({ ...def, gx: def.gx + 1 }, "w", sharedStatics);
+      // A dungeon room needs its own perimeter walls on any edge whose
+      // neighbour ISN'T another dungeon room. v1 only checked "no neighbour",
+      // which meant a dungeon room bordering a village left its facing edge
+      // OPEN — the player standing in the village could see straight into
+      // the (hidden) dungeon interior, including the tops of internal walls.
+      const needSouthWall = (() => {
+        const n = neighborOf(def, "s");
+        return !n || n.biome !== "dungeon";
+      })();
+      const needEastWall = (() => {
+        const n = neighborOf(def, "e");
+        return !n || n.biome !== "dungeon";
+      })();
+      const needNorthWall = (() => {
+        const n = neighborOf(def, "n");
+        return !n || n.biome !== "dungeon";
+      })();
+      const needWestWall = (() => {
+        const n = neighborOf(def, "w");
+        return !n || n.biome !== "dungeon";
+      })();
+      if (needNorthWall) buildDungeonEdge(def, "n", sharedStatics);
+      if (needWestWall) buildDungeonEdge(def, "w", sharedStatics);
+      if (needSouthWall) buildDungeonEdge({ ...def, gy: def.gy + 1 }, "n", sharedStatics);
+      if (needEastWall) buildDungeonEdge({ ...def, gx: def.gx + 1 }, "w", sharedStatics);
 
       // -------- torches + banners on north walls (shared) ----------
       for (const tx of [1, ROOM_W - 2]) {
@@ -790,11 +791,9 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
         }
       }
 
-      // Dungeon ceiling — opaque cap that blocks the new low-angle camera
-      // from peeking at neighbouring dungeon rooms through the tops of walls.
-      // Ceiling stays in sharedStatics so an unvisited room still reads as a
-      // dark chamber (walls + ceiling) rather than a hole in the world.
-      addDungeonCeiling(def, sharedStatics);
+      // v3: no ceiling mesh — see addDungeonCeiling docstring. The
+      // visibility system (unvisited rooms hide interior) plus fog is
+      // enough, and any opaque ceiling would block the third-person cam.
     }
 
     // Start hidden unless the room explicitly opts in (village always

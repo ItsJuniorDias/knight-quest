@@ -33295,8 +33295,8 @@ void main() {
     /** Seconds for the room-to-room slide transition. */
     roomSlideTime: 0.55,
     /** Fog near/far — near matches the room bounds, far hides distant geometry. */
-    fogNear: 42,
-    fogFar: 82,
+    fogNear: 34,
+    fogFar: 70,
     /** Convert glTF PBR materials to cheap Lambert (huge mobile win, flat cute look). */
     useLambert: true,
     shadows: true,
@@ -38685,6 +38685,8 @@ void main() {
     torchLights.push({ light, roomKey, seed: Math.random() * 100 });
   }
   function buildDungeonEdge(room, dir, target) {
+    const iAmVillage = room.biome === "village";
+    if (iAmVillage) return;
     const edgeKey = canonicalEdge(room, dir);
     if (builtEdges.has(edgeKey)) return;
     builtEdges.add(edgeKey);
@@ -38695,9 +38697,6 @@ void main() {
     const neighbor = neighborOf(room, dir);
     const neighborDoor = neighbor?.doors.some((d) => d.dir === opposite(dir)) ?? false;
     const doorHere = hasDoor || neighborDoor;
-    const iAmVillage = room.biome === "village";
-    const nbrIsVillage = neighbor?.biome === "village";
-    if (iAmVillage || nbrIsVillage) return;
     for (let i = 0; i < count; i++) {
       const tx = horizontal ? i : 0;
       const tz = horizontal ? 0 : i;
@@ -38948,26 +38947,6 @@ void main() {
       }
     }
   }
-  function addDungeonCeiling(def, target) {
-    const inset = TILE * 0.5;
-    const geom = new PlaneGeometry(
-      ROOM_W * TILE - inset * 2,
-      ROOM_H * TILE - inset * 2
-    );
-    const mat = new MeshLambertMaterial({
-      color: COLORS.dungeonCeiling,
-      side: DoubleSide
-    });
-    const mesh = new Mesh(geom, mat);
-    mesh.rotation.x = Math.PI / 2;
-    const c00 = tileCenter(def.gx, def.gy, 0, 0);
-    mesh.position.set(
-      c00.x + ROOM_W * TILE / 2 - TILE / 2,
-      4.6,
-      c00.z + ROOM_H * TILE / 2 - TILE / 2
-    );
-    target.add(mesh);
-  }
   function buildVillageContent(def, group, runtime) {
     let start = null;
     for (let tz = 0; tz < ROOM_H; tz++) {
@@ -39127,10 +39106,26 @@ void main() {
             }
           }
         }
-        buildDungeonEdge(def, "n", sharedStatics);
-        buildDungeonEdge(def, "w", sharedStatics);
-        if (!neighborOf(def, "s")) buildDungeonEdge({ ...def, gy: def.gy + 1 }, "n", sharedStatics);
-        if (!neighborOf(def, "e")) buildDungeonEdge({ ...def, gx: def.gx + 1 }, "w", sharedStatics);
+        const needSouthWall = (() => {
+          const n = neighborOf(def, "s");
+          return !n || n.biome !== "dungeon";
+        })();
+        const needEastWall = (() => {
+          const n = neighborOf(def, "e");
+          return !n || n.biome !== "dungeon";
+        })();
+        const needNorthWall = (() => {
+          const n = neighborOf(def, "n");
+          return !n || n.biome !== "dungeon";
+        })();
+        const needWestWall = (() => {
+          const n = neighborOf(def, "w");
+          return !n || n.biome !== "dungeon";
+        })();
+        if (needNorthWall) buildDungeonEdge(def, "n", sharedStatics);
+        if (needWestWall) buildDungeonEdge(def, "w", sharedStatics);
+        if (needSouthWall) buildDungeonEdge({ ...def, gy: def.gy + 1 }, "n", sharedStatics);
+        if (needEastWall) buildDungeonEdge({ ...def, gx: def.gx + 1 }, "w", sharedStatics);
         for (const tx of [1, ROOM_W - 2]) {
           const c = tileCenter(def.gx, def.gy, tx, 0);
           c.z -= TILE / 2;
@@ -39261,7 +39256,6 @@ void main() {
             if (enemyKind) runtime.enemySpawns.push({ kind: enemyKind, tx, tz });
           }
         }
-        addDungeonCeiling(def, sharedStatics);
       }
       group.visible = def.startVisible === true;
       rooms.set(def.key, runtime);

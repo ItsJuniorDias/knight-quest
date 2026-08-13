@@ -38,8 +38,8 @@ export const RENDER = {
   /** Seconds for the room-to-room slide transition. */
   roomSlideTime: 0.55,
   /** Fog near/far — near matches the room bounds, far hides distant geometry. */
-  fogNear: 42,
-  fogFar: 82,
+  fogNear: 34,
+  fogFar: 70,
   /** Convert glTF PBR materials to cheap Lambert (huge mobile win, flat cute look). */
   useLambert: true,
   shadows: true,
