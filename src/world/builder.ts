@@ -226,22 +226,28 @@ function pickBy<T>(arr: readonly T[], seed: number): T {
 }
 
 /**
- * Recolor every mesh material under `root` with the given HSL. Materials in
- * the POLYGON pack are SHARED between clones (SkeletonUtils clones the scene
- * graph but keeps material refs); mutating them in place used to darken the
- * shared material once per tile until whole rows turned black. We clone the
- * material first, then setHSL — the clone gets its own Color, and the
- * original stays untouched for other consumers.
+ * Recolor every mesh material under `root` with the given HSL. Builds a
+ * FRESH MeshLambertMaterial per mesh instead of cloning the source
+ * material, because some POLYGON floor GLBs ship with `color = black` and
+ * rely purely on their diffuse map — cloning + setHSL kept the black in
+ * some code paths, producing the checkerboard black/green pattern the user
+ * reported. The fresh material always starts from our HSL and only borrows
+ * the source's texture map + side settings.
  */
 function tintGround(root: THREE.Object3D, h: number, s: number, l: number): void {
+  const color = new THREE.Color().setHSL(h, s, l);
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh || !mesh.material) return;
     const apply = (m: THREE.Material): THREE.Material => {
-      const cloned = m.clone();
-      const lam = cloned as THREE.MeshLambertMaterial;
-      lam.color.setHSL(h, s, l);
-      return cloned;
+      const orig = m as THREE.MeshLambertMaterial;
+      return new THREE.MeshLambertMaterial({
+        map: orig.map ?? null,
+        color: color.clone(),
+        side: orig.side,
+        transparent: orig.transparent,
+        opacity: orig.opacity,
+      });
     };
     if (Array.isArray(mesh.material)) mesh.material = mesh.material.map(apply);
     else mesh.material = apply(mesh.material);
@@ -260,13 +266,18 @@ function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number
   floor.scale.multiplyScalar(TILE / 3);
   floor.rotation.y = Math.floor(hash(tx, tz, def.gx, 3) * 4) * (Math.PI / 2);
 
-  // Per-tile HSL — narrow jitter around a bright grass-green so the ground
-  // reads as a living carpet without any tile ever going dark. Dirt tiles
-  // keep their original brown so paths still contrast against grass.
-  if (!dirt) {
-    const h = 0.27 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03; // ~yellow-green ↔ leaf-green
-    const s = 0.55 + hash(tx, tz, def.gx, 13) * 0.10;         // bright saturation
-    const l = 0.48 + hash(tx, tz, def.gx, 14) * 0.10;         // 0.48..0.58 (never too dark)
+  // Per-tile HSL — both grass AND dirt get an explicit fresh material so no
+  // asset can render as an unexpected black tile. Grass gets a jittered
+  // green, dirt gets a warm brown, both bright enough to always read.
+  if (dirt) {
+    const h = 0.08 + (hash(tx, tz, def.gx, 15) - 0.5) * 0.02; // rich brown
+    const s = 0.42 + hash(tx, tz, def.gx, 16) * 0.10;
+    const l = 0.34 + hash(tx, tz, def.gx, 17) * 0.06;
+    tintGround(floor, h, s, l);
+  } else {
+    const h = 0.27 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03; // yellow-green ↔ leaf
+    const s = 0.55 + hash(tx, tz, def.gx, 13) * 0.10;
+    const l = 0.48 + hash(tx, tz, def.gx, 14) * 0.10;
     tintGround(floor, h, s, l);
   }
 
@@ -275,7 +286,7 @@ function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number
   // scatter decorative grass/flower on regular grass tiles — v2 doubles the
   // density so the ground reads busier and more organic.
   if (!dirt) {
-    const n = 1 + Math.floor(hash(tx, tz, def.gx, 5) * 5); // was 0..2; now 1..5
+    const n = 1 + Math.floor(hash(tx, tz, def.gx, 5) * 5);
     for (let i = 0; i < n; i++) {
       const decor = spawn(pickBy(GRASS_DECOR, tx * 31 + tz * 7 + i));
       decor.position.set(
@@ -288,6 +299,25 @@ function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number
       group.add(decor);
     }
   }
+}
+
+/**
+ * Solid-color safety plane under every village/forest room. Even if a
+ * POLYGON floor tile fails to render for any reason (missing texture,
+ * material quirk, LOD switch), the room still shows a grass-green ground
+ * beneath the tiles instead of exposing the black scene background.
+ */
+function addGrassBasePlane(def: RoomDef, group: THREE.Group): void {
+  const geom = new THREE.PlaneGeometry(ROOM_W * TILE + 2, ROOM_H * TILE + 2);
+  const mat = new THREE.MeshLambertMaterial({ color: COLORS.grassDark });
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.receiveShadow = true;
+  mesh.position.y = -0.05; // just below the tile floors so it doesn't z-fight
+  const c00 = tileCenter(def.gx, def.gy, 0, 0);
+  mesh.position.x = c00.x + (ROOM_W * TILE) / 2 - TILE / 2;
+  mesh.position.z = c00.z + (ROOM_H * TILE) / 2 - TILE / 2;
+  group.add(mesh);
 }
 
 function addTree(group: THREE.Group, x: number, z: number, seed: number, castShadow = true): void {
@@ -354,10 +384,13 @@ function addRoadsign(group: THREE.Group, c: THREE.Vector3): void {
 }
 
 function buildVillageFence(def: RoomDef, group: THREE.Group): void {
-  // trees around the perimeter (skip door cell)
+  // Every perimeter tile gets a grass floor first, then a tree if the map
+  // char is T. Skipping the ground step (v1) left ugly black voids under the
+  // tree rows because those tiles were never covered by buildVillageContent.
   for (let tx = 0; tx < ROOM_W; tx++) {
     for (const tz of [0, ROOM_H - 1]) {
       if (charAt(def, tx, tz) === "D") continue;
+      addGrassGround(group, def, tx, tz, false);
       const c = tileCenter(def.gx, def.gy, tx, tz);
       if (charAt(def, tx, tz) === "T") addTree(group, c.x, c.z, tx * 13 + tz);
     }
@@ -365,6 +398,7 @@ function buildVillageFence(def: RoomDef, group: THREE.Group): void {
   for (let tz = 0; tz < ROOM_H; tz++) {
     for (const tx of [0, ROOM_W - 1]) {
       if (charAt(def, tx, tz) === "D") continue;
+      addGrassGround(group, def, tx, tz, false);
       const c = tileCenter(def.gx, def.gy, tx, tz);
       if (charAt(def, tx, tz) === "T") addTree(group, c.x, c.z, tx * 17 + tz * 5);
     }
@@ -424,21 +458,32 @@ function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRunti
  * Cap a dungeon room with a low, dark ceiling plane. Because the new camera
  * sits behind and above the knight (not overhead), the top of the frame
  * would otherwise show blank sky through the walls; the ceiling reads as
- * "we're indoors" and, more practically, blocks any leaking geometry from
- * neighbouring dungeon rooms.
+ * "we're indoors".
+ *
+ * Two fixes vs v1:
+ *   • MeshLambertMaterial (not Basic) so the ceiling respects scene.fog and
+ *     fades into the background instead of hovering as a giant black slab.
+ *   • The plane is inset by one tile on every side so it sits UNDER the wall
+ *     tops rather than past them — v1 was slightly larger than the room and
+ *     was leaking behind the walls into the camera's back-view.
  */
 function addDungeonCeiling(def: RoomDef, target: THREE.Object3D): void {
-  const geom = new THREE.PlaneGeometry(ROOM_W * TILE, ROOM_H * TILE);
-  const mat = new THREE.MeshBasicMaterial({
+  const inset = TILE * 0.5;
+  const geom = new THREE.PlaneGeometry(
+    ROOM_W * TILE - inset * 2,
+    ROOM_H * TILE - inset * 2,
+  );
+  const mat = new THREE.MeshLambertMaterial({
     color: COLORS.dungeonCeiling,
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(geom, mat);
-  mesh.rotation.x = -Math.PI / 2;
+  mesh.rotation.x = Math.PI / 2; // face down
+  const c00 = tileCenter(def.gx, def.gy, 0, 0);
   mesh.position.set(
-    tileCenter(def.gx, def.gy, 0, 0).x + (ROOM_W * TILE) / 2 - TILE / 2,
-    5.2,
-    tileCenter(def.gx, def.gy, 0, 0).z + (ROOM_H * TILE) / 2 - TILE / 2,
+    c00.x + (ROOM_W * TILE) / 2 - TILE / 2,
+    4.6,
+    c00.z + (ROOM_H * TILE) / 2 - TILE / 2,
   );
   target.add(mesh);
 }
@@ -559,10 +604,12 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     };
 
     if (def.biome === "village") {
+      addGrassBasePlane(def, group);
       buildVillageFence(def, group);
       const start = buildVillageContent(def, group, runtime);
       if (start) playerStart = start;
     } else if (def.biome === "forest") {
+      addGrassBasePlane(def, group);
       buildForestContent(def, group, runtime);
     } else {
       // -------- dungeon floors + spike traps ----------

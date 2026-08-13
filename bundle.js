@@ -38770,14 +38770,19 @@ void main() {
     return arr[Math.floor(hash(seed) * arr.length) % arr.length];
   }
   function tintGround(root, h, s, l) {
+    const color = new Color().setHSL(h, s, l);
     root.traverse((o) => {
       const mesh = o;
       if (!mesh.isMesh || !mesh.material) return;
       const apply = (m) => {
-        const cloned = m.clone();
-        const lam = cloned;
-        lam.color.setHSL(h, s, l);
-        return cloned;
+        const orig = m;
+        return new MeshLambertMaterial({
+          map: orig.map ?? null,
+          color: color.clone(),
+          side: orig.side,
+          transparent: orig.transparent,
+          opacity: orig.opacity
+        });
       };
       if (Array.isArray(mesh.material)) mesh.material = mesh.material.map(apply);
       else mesh.material = apply(mesh.material);
@@ -38790,7 +38795,12 @@ void main() {
     floor.position.copy(c);
     floor.scale.multiplyScalar(TILE / 3);
     floor.rotation.y = Math.floor(hash(tx, tz, def.gx, 3) * 4) * (Math.PI / 2);
-    if (!dirt) {
+    if (dirt) {
+      const h = 0.08 + (hash(tx, tz, def.gx, 15) - 0.5) * 0.02;
+      const s = 0.42 + hash(tx, tz, def.gx, 16) * 0.1;
+      const l = 0.34 + hash(tx, tz, def.gx, 17) * 0.06;
+      tintGround(floor, h, s, l);
+    } else {
       const h = 0.27 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03;
       const s = 0.55 + hash(tx, tz, def.gx, 13) * 0.1;
       const l = 0.48 + hash(tx, tz, def.gx, 14) * 0.1;
@@ -38811,6 +38821,18 @@ void main() {
         group.add(decor);
       }
     }
+  }
+  function addGrassBasePlane(def, group) {
+    const geom = new PlaneGeometry(ROOM_W * TILE + 2, ROOM_H * TILE + 2);
+    const mat = new MeshLambertMaterial({ color: COLORS.grassDark });
+    const mesh = new Mesh(geom, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.receiveShadow = true;
+    mesh.position.y = -0.05;
+    const c00 = tileCenter(def.gx, def.gy, 0, 0);
+    mesh.position.x = c00.x + ROOM_W * TILE / 2 - TILE / 2;
+    mesh.position.z = c00.z + ROOM_H * TILE / 2 - TILE / 2;
+    group.add(mesh);
   }
   function addTree(group, x, z, seed, castShadow = true) {
     const t = spawn(pickBy(TREE_KEYS, seed), { castShadow, receiveShadow: false });
@@ -38869,6 +38891,7 @@ void main() {
     for (let tx = 0; tx < ROOM_W; tx++) {
       for (const tz of [0, ROOM_H - 1]) {
         if (charAt(def, tx, tz) === "D") continue;
+        addGrassGround(group, def, tx, tz, false);
         const c = tileCenter(def.gx, def.gy, tx, tz);
         if (charAt(def, tx, tz) === "T") addTree(group, c.x, c.z, tx * 13 + tz);
       }
@@ -38876,6 +38899,7 @@ void main() {
     for (let tz = 0; tz < ROOM_H; tz++) {
       for (const tx of [0, ROOM_W - 1]) {
         if (charAt(def, tx, tz) === "D") continue;
+        addGrassGround(group, def, tx, tz, false);
         const c = tileCenter(def.gx, def.gy, tx, tz);
         if (charAt(def, tx, tz) === "T") addTree(group, c.x, c.z, tx * 17 + tz * 5);
       }
@@ -38925,17 +38949,22 @@ void main() {
     }
   }
   function addDungeonCeiling(def, target) {
-    const geom = new PlaneGeometry(ROOM_W * TILE, ROOM_H * TILE);
-    const mat = new MeshBasicMaterial({
+    const inset = TILE * 0.5;
+    const geom = new PlaneGeometry(
+      ROOM_W * TILE - inset * 2,
+      ROOM_H * TILE - inset * 2
+    );
+    const mat = new MeshLambertMaterial({
       color: COLORS.dungeonCeiling,
       side: DoubleSide
     });
     const mesh = new Mesh(geom, mat);
-    mesh.rotation.x = -Math.PI / 2;
+    mesh.rotation.x = Math.PI / 2;
+    const c00 = tileCenter(def.gx, def.gy, 0, 0);
     mesh.position.set(
-      tileCenter(def.gx, def.gy, 0, 0).x + ROOM_W * TILE / 2 - TILE / 2,
-      5.2,
-      tileCenter(def.gx, def.gy, 0, 0).z + ROOM_H * TILE / 2 - TILE / 2
+      c00.x + ROOM_W * TILE / 2 - TILE / 2,
+      4.6,
+      c00.z + ROOM_H * TILE / 2 - TILE / 2
     );
     target.add(mesh);
   }
@@ -39055,10 +39084,12 @@ void main() {
         group
       };
       if (def.biome === "village") {
+        addGrassBasePlane(def, group);
         buildVillageFence(def, group);
         const start = buildVillageContent(def, group, runtime);
         if (start) playerStart = start;
       } else if (def.biome === "forest") {
+        addGrassBasePlane(def, group);
         buildForestContent(def, group, runtime);
       } else {
         for (let tz = 0; tz < ROOM_H; tz++) {
