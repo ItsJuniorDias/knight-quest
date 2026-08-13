@@ -8,20 +8,38 @@
 /** KayKit dungeon tiles are exactly 4x4 world units. */
 export const TILE = 4;
 
-/** Room size in tiles (odd numbers keep doors centered). */
-export const ROOM_W = 9;
-export const ROOM_H = 7;
+/**
+ * Room size in tiles (odd numbers keep doors centered).
+ * v2: Bumped from 9x7 to 15x13 for a much roomier, less claustrophobic feel.
+ * Each room is now ~60x52 world units vs. the old 36x28 — nearly 3× the area.
+ */
+export const ROOM_W = 15;
+export const ROOM_H = 13;
 
 export const RENDER = {
-  /** Camera: classic Zelda-ish 3/4 top-down. */
-  camFov: 38,
-  camDistance: 34,
-  /** Elevation angle in radians (~62 degrees — mostly top-down, slight tilt). */
-  camElevation: 1.08,
+  /**
+   * Camera: BOTW/OoT-flavored third-person chase cam, fixed to world axes.
+   * Higher FOV + shorter distance + shallower elevation = more of the world
+   * fills the screen and the horizon reads as "ahead of the knight" rather
+   * than "directly overhead".
+   */
+  camFov: 48,
+  camDistance: 22,
+  /** Elevation angle in radians (~42 degrees — clearly behind, not on top). */
+  camElevation: 0.74,
   /** How fast the camera eases toward its target (per-second lerp factor). */
-  camLerp: 6,
+  camLerp: 5,
+  /**
+   * How far AHEAD of the player the camera looks (in the movement direction).
+   * Zelda-like: the player sits in the lower third of the frame so you can
+   * see what's coming.
+   */
+  camLookAhead: 3.2,
   /** Seconds for the room-to-room slide transition. */
   roomSlideTime: 0.55,
+  /** Fog near/far — near matches the room bounds, far hides distant geometry. */
+  fogNear: 42,
+  fogFar: 82,
   /** Convert glTF PBR materials to cheap Lambert (huge mobile win, flat cute look). */
   useLambert: true,
   shadows: true,
@@ -115,13 +133,17 @@ export const INPUT = {
 } as const;
 
 export const COLORS = {
-  bg: 0x151024,
-  fog: 0x151024,
-  ambient: 0x9c8ccf,
+  bg: 0x0d0820,
+  fog: 0x1a1330,
+  ambient: 0x8a7bc2,
   sun: 0xfff2dd,
   torch: 0xff9a3d,
   magicBolt: 0xb45cff,
   shockwave: 0xffd166,
   heart: 0xff3b5c,
   gold: 0xffd166,
+  /** Grass tint for the village floor — brighter, more saturated. */
+  grass: 0x6cb247,
+  grassDark: 0x4a8a35,
+  dungeonCeiling: 0x0a0510,
 } as const;

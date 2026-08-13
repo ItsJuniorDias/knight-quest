@@ -33271,18 +33271,32 @@ void main() {
 
   // src/config.ts
   var TILE = 4;
-  var ROOM_W = 9;
-  var ROOM_H = 7;
+  var ROOM_W = 15;
+  var ROOM_H = 13;
   var RENDER = {
-    /** Camera: classic Zelda-ish 3/4 top-down. */
-    camFov: 38,
-    camDistance: 34,
-    /** Elevation angle in radians (~62 degrees — mostly top-down, slight tilt). */
-    camElevation: 1.08,
+    /**
+     * Camera: BOTW/OoT-flavored third-person chase cam, fixed to world axes.
+     * Higher FOV + shorter distance + shallower elevation = more of the world
+     * fills the screen and the horizon reads as "ahead of the knight" rather
+     * than "directly overhead".
+     */
+    camFov: 48,
+    camDistance: 22,
+    /** Elevation angle in radians (~42 degrees — clearly behind, not on top). */
+    camElevation: 0.74,
     /** How fast the camera eases toward its target (per-second lerp factor). */
-    camLerp: 6,
+    camLerp: 5,
+    /**
+     * How far AHEAD of the player the camera looks (in the movement direction).
+     * Zelda-like: the player sits in the lower third of the frame so you can
+     * see what's coming.
+     */
+    camLookAhead: 3.2,
     /** Seconds for the room-to-room slide transition. */
     roomSlideTime: 0.55,
+    /** Fog near/far — near matches the room bounds, far hides distant geometry. */
+    fogNear: 42,
+    fogFar: 82,
     /** Convert glTF PBR materials to cheap Lambert (huge mobile win, flat cute look). */
     useLambert: true,
     shadows: true,
@@ -33417,15 +33431,19 @@ void main() {
     // input buffering for attack, Zelda feel
   };
   var COLORS = {
-    bg: 1380388,
-    fog: 1380388,
-    ambient: 10259663,
+    bg: 854048,
+    fog: 1708848,
+    ambient: 9075650,
     sun: 16773853,
     torch: 16751165,
     magicBolt: 11820287,
     shockwave: 16765286,
     heart: 16726876,
-    gold: 16765286
+    gold: 16765286,
+    /** Grass tint for the village floor — brighter, more saturated. */
+    grass: 7123527,
+    grassDark: 4885045,
+    dungeonCeiling: 656656
   };
 
   // src/art/fx.ts
@@ -36953,8 +36971,6 @@ void main() {
     p.root.rotation.y = cur + diff * Math.min(1, PLAYER.turnLerp * dt);
     p.root.visible = p.invuln <= 0 || Math.floor(p.stateTime * 18) % 2 === 0;
     p.root.position.copy(p.pos);
-    void fx;
-    void events;
   }
   function startAttack(p, index) {
     p.state = "attack";
@@ -37287,7 +37303,6 @@ void main() {
         }
       }
       moveCircle(e.pos, e.vel, dt, cfg.radius, room, barrels);
-      void player;
     }
     setState(e, s) {
       e.state = s;
@@ -37560,7 +37575,6 @@ void main() {
       this.boss.stateTime = 0;
     }
     enterRecover(mul) {
-      void mul;
       this.setState("recover");
       play(this.boss.anim, ["Idle_Combat", "Idle"], { fade: 0.2 });
     }
@@ -37568,58 +37582,77 @@ void main() {
 
   // src/systems/camera.ts
   var CameraRig = class {
-    // <0 = not sliding
     constructor(aspect2) {
-      this.target = new Vector3();
+      /** The point we currently look at. */
       this.lookAt = new Vector3();
+      /** The point we want to look at (based on player position + look-ahead). */
+      this.target = new Vector3();
+      /** Room-slide interpolation. */
       this.slideFrom = new Vector3();
       this.slideTo = new Vector3();
       this.slideT = -1;
-      this.camera = new PerspectiveCamera(RENDER.camFov, aspect2, 0.5, 220);
+      // <0 = not sliding
+      /** Smoothed facing (so look-ahead doesn't snap when the knight turns). */
+      this.facing = new Vector3(0, 0, -1);
+      this.camera = new PerspectiveCamera(RENDER.camFov, aspect2, 0.5, 260);
     }
-    clampToRoom(p, room, out) {
-      const marginX = ROOM_W * TILE * 0.24;
-      const marginZ = ROOM_H * TILE * 0.2;
-      const minX = room.origin.x + marginX;
-      const maxX = room.origin.x + ROOM_W * TILE - marginX;
-      const minZ = room.origin.z + marginZ;
-      const maxZ = room.origin.z + ROOM_H * TILE - marginZ;
+    /**
+     * Where the camera would like the "look at" point to be, given the player's
+     * position and facing. We push the point slightly in the direction the
+     * player is heading so more of the world ahead is visible.
+     */
+    computeTarget(playerPos, facing, out) {
       out.set(
-        Math.min(Math.max(p.x, minX), maxX),
+        playerPos.x + facing.x * RENDER.camLookAhead,
         0,
-        Math.min(Math.max(p.z, minZ), maxZ)
+        playerPos.z + facing.z * RENDER.camLookAhead
       );
     }
-    snap(playerPos, room) {
-      this.clampToRoom(playerPos, room, this.lookAt);
+    snap(playerPos, _room, facing) {
+      if (facing) this.facing.set(facing.x, 0, facing.z).normalize();
+      this.computeTarget(playerPos, this.facing, this.lookAt);
       this.target.copy(this.lookAt);
-      this.place(1);
+      this.place();
     }
-    beginSlide(fromRoom, toRoom, playerPos) {
-      this.clampToRoom(playerPos, fromRoom, this.slideFrom);
-      this.clampToRoom(playerPos, toRoom, this.slideTo);
+    beginSlide(_fromRoom, toRoom, playerPos) {
+      this.computeTarget(playerPos, this.facing, this.slideFrom);
       this.slideFrom.copy(this.lookAt);
+      const cx = toRoom.origin.x + ROOM_W * TILE / 2;
+      const cz = toRoom.origin.z + ROOM_H * TILE / 2;
+      this.slideTo.set(
+        MathUtils.lerp(playerPos.x, cx, 0.35),
+        0,
+        MathUtils.lerp(playerPos.z, cz, 0.35)
+      );
       this.slideT = 0;
     }
     get sliding() {
       return this.slideT >= 0;
     }
-    update(dt, playerPos, room) {
+    update(dt, playerPos, room, facing) {
+      if (facing && (facing.x !== 0 || facing.z !== 0)) {
+        const desired = new Vector3(facing.x, 0, facing.z);
+        if (desired.lengthSq() > 1e-6) {
+          desired.normalize();
+          const k = 1 - Math.exp(-6 * dt);
+          this.facing.lerp(desired, k).normalize();
+        }
+      }
       if (this.slideT >= 0) {
         this.slideT += dt / RENDER.roomSlideTime;
         const t = Math.min(1, this.slideT);
         const e = t * t * (3 - 2 * t);
-        this.clampToRoom(playerPos, room, this.slideTo);
+        this.computeTarget(playerPos, this.facing, this.slideTo);
         this.lookAt.lerpVectors(this.slideFrom, this.slideTo, e);
         if (t >= 1) this.slideT = -1;
       } else {
-        this.clampToRoom(playerPos, room, this.target);
+        this.computeTarget(playerPos, this.facing, this.target);
         const k = 1 - Math.exp(-RENDER.camLerp * dt);
         this.lookAt.lerp(this.target, k);
       }
-      this.place(1);
+      this.place();
     }
-    place(_scale) {
+    place() {
       const el = RENDER.camElevation;
       const d = RENDER.camDistance;
       this.camera.position.set(
@@ -37627,7 +37660,7 @@ void main() {
         Math.sin(el) * d,
         this.lookAt.z + Math.cos(el) * d
       );
-      this.camera.lookAt(this.lookAt.x, 0, this.lookAt.z);
+      this.camera.lookAt(this.lookAt.x, 0.5, this.lookAt.z);
     }
     resize(aspect2) {
       this.camera.aspect = aspect2;
@@ -37917,65 +37950,226 @@ void main() {
 
   // src/world/dungeon.ts
   var ROOMS = [
+    // ============================================================
+    // ROW gy=5 — southern forest fringe (below the village)
+    // ============================================================
+    {
+      key: "0,5",
+      gx: 0,
+      gy: 5,
+      name: "Southern Woods",
+      biome: "forest",
+      startVisible: false,
+      map: [
+        "TTTTTTTDTTTTTTT",
+        "T.gggT.......TT",
+        "Tg..fgg.f.gg.TT",
+        "T.gggT..fggg.TT",
+        "T.f...gT......T",
+        "Tgg.g.f...gg..T",
+        "T.f.gg.g.g.f..T",
+        "T..g.f..g.f.g.T",
+        "Tg..gg.gg..gg.T",
+        "T.fg.f..f.gg..T",
+        "TT..gg.g..f..TT",
+        "TT.f..gg.gg..TT",
+        "TTTTTTTTTTTTTTT"
+      ],
+      doors: [{ dir: "n", kind: "open" }]
+    },
+    // ============================================================
+    // ROW gy=4 — the village hub (start) + adjacent groves
+    // ============================================================
+    {
+      key: "-1,4",
+      gx: -1,
+      gy: 4,
+      name: "Willowvale Grove",
+      biome: "forest",
+      startVisible: false,
+      map: [
+        "TTTTTTTTTTTTTTT",
+        "T.fgg.f.gg.fg.T",
+        "Tg.f.gg.f..g.gT",
+        "T.gg.f.gg.f.g.T",
+        "T.f..g...gg.f.T",
+        "Tgg.f.gg.f.gg.T",
+        "T.g..g.f.gg.f.D",
+        "Tf.gg.f.gg.g.gT",
+        "T.g.f.gg.g.f..T",
+        "Tg.gg.f..gg.g.T",
+        "T.f.gg.gg..f.gT",
+        "Tg..f..g.gg.f.T",
+        "TTTTTTTTTTTTTTT"
+      ],
+      doors: [{ dir: "e", kind: "open" }]
+    },
     {
       key: "0,4",
       gx: 0,
       gy: 4,
       name: "Willowvale Village",
       biome: "village",
+      startVisible: true,
       map: [
-        "TTTTDTTTT",
-        "T.HgH.f.T",
-        "Tg..P..gT",
-        "T,,,C,,,T",
-        "T.M.L.M.T",
-        "T.HgUgH.T",
-        "TTTTTTTTT"
+        "TTTTTTTDTTTTTTT",
+        "T.fg.H..H.gg.fT",
+        "Tg.f...g..f..gT",
+        "T.gg.,,,,,.gg.T",
+        "T.f.,,C,,,,.f.T",
+        "T.M.,,,,,,,.M.T",
+        "D.g.,,P,,,,.g.D",
+        "T.f.,,,,,,,.f.T",
+        "T.gg.,,L,,,.g.T",
+        "T.f...,,,..fggT",
+        "Tg.H..,,..H.f.T",
+        "T.fg.U.g.gg.fgT",
+        "TTTTTTTDTTTTTTT"
       ],
-      doors: [{ dir: "n", kind: "open" }]
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "e", kind: "open" },
+        { dir: "w", kind: "open" },
+        { dir: "s", kind: "open" }
+      ]
+    },
+    {
+      key: "1,4",
+      gx: 1,
+      gy: 4,
+      name: "Old Orchard",
+      biome: "forest",
+      startVisible: false,
+      map: [
+        "TTTTTTTTTTTTTTT",
+        "T.gg.f.g.fg.g.T",
+        "Tf..gg.f..g.f.T",
+        "T.gg.f.gg.f.g.T",
+        "T.f...gg.f.gg.T",
+        "Tgg.f.g..gg.f.T",
+        "D.g..gg.f..g.gT",
+        "Tf.gg.f.gg.f..T",
+        "T.g.f..gg.g.g.T",
+        "Tg.gg.gg..f.f.T",
+        "T.f.gg.g.gg.g.T",
+        "Tg..f..gg..f..T",
+        "TTTTTTTTTTTTTTT"
+      ],
+      doors: [{ dir: "w", kind: "open" }]
+    },
+    // ============================================================
+    // ROW gy=3 — dungeon entrance corridor + side chambers
+    // ============================================================
+    {
+      key: "-1,3",
+      gx: -1,
+      gy: 3,
+      name: "Old Watchpost",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "W....x.....x..W",
+        "W.............W",
+        "W..o.......c..D",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "W....S.....S..W",
+        "W.............W",
+        "WWWWWWWWWWWWWWW"
+      ],
+      doors: [{ dir: "e", kind: "open" }]
     },
     {
       key: "0,3",
       gx: 0,
       gy: 3,
-      name: "Entrance",
+      name: "Dungeon Entrance",
       biome: "dungeon",
       banner: "blue",
+      startVisible: false,
       map: [
-        "WWWWDWWWW",
-        "W.......W",
-        "W.......W",
-        "W...P...W",
-        "W.b...b.W",
-        "W...S...W",
-        "WWWWDWWWW"
-      ],
-      doors: [
-        { dir: "n", kind: "open" },
-        { dir: "s", kind: "open" }
-      ]
-    },
-    {
-      key: "0,2",
-      gx: 0,
-      gy: 2,
-      name: "Crossing",
-      biome: "dungeon",
-      banner: "red",
-      map: [
-        "WWWWDWWWW",
-        "W.......W",
-        "W.1...1.W",
-        "D...1...W",
-        "W.p...p.W",
-        "W.......W",
-        "WWWWDWWWW"
+        "WWWWWWWDWWWWWWW",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "W.............W",
+        "W......P......W",
+        "D.............D",
+        "W.............W",
+        "W.............W",
+        "W..b...S...b..W",
+        "W.............W",
+        "W.............W",
+        "WWWWWWWDWWWWWWW"
       ],
       doors: [
         { dir: "n", kind: "open" },
         { dir: "s", kind: "open" },
+        { dir: "e", kind: "open" },
         { dir: "w", kind: "open" }
       ]
+    },
+    {
+      key: "1,3",
+      gx: 1,
+      gy: 3,
+      name: "Guard Barracks",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWDWWWWWWW",
+        "W..x.......x..W",
+        "W.............W",
+        "W..2.......2..W",
+        "W.............W",
+        "W......c......W",
+        "D.............W",
+        "W.............W",
+        "W..o.......o..W",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "WWWWWWWWWWWWWWW"
+      ],
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "w", kind: "open" }
+      ]
+    },
+    // ============================================================
+    // ROW gy=2 — main dungeon corridors + branch rooms
+    // ============================================================
+    {
+      key: "-2,2",
+      gx: -2,
+      gy: 2,
+      name: "Forgotten Cell",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W..x.......x..W",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "W......h......W",
+        "W.............D",
+        "W.............W",
+        "W..b.......b..W",
+        "W.............W",
+        "W..o.......o..W",
+        "W.............W",
+        "WWWWWWWWWWWWWWW"
+      ],
+      doors: [{ dir: "e", kind: "open" }]
     },
     {
       key: "-1,2",
@@ -37984,16 +38178,117 @@ void main() {
       name: "Armory",
       biome: "dungeon",
       banner: "blue",
+      startVisible: false,
       map: [
-        "WWWWWWWWW",
-        "W.x...x.W",
-        "W..2.2..W",
-        "W...c...D",
-        "W.b...b.W",
-        "W.o...o.W",
-        "WWWWWWWWW"
+        "WWWWWWWDWWWWWWW",
+        "W..x...x...x..W",
+        "W.............W",
+        "W.2.........2.W",
+        "W.............W",
+        "W..b...c...b..W",
+        "D.............D",
+        "W..o.......o..W",
+        "W.............W",
+        "W.2....s....2.W",
+        "W.............W",
+        "W..x.......x..W",
+        "WWWWWWWWWWWWWWW"
       ],
-      doors: [{ dir: "e", kind: "open" }]
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "e", kind: "open" },
+        { dir: "w", kind: "open" }
+      ]
+    },
+    {
+      key: "0,2",
+      gx: 0,
+      gy: 2,
+      name: "The Crossing",
+      biome: "dungeon",
+      banner: "red",
+      startVisible: false,
+      map: [
+        "WWWWWWWDWWWWWWW",
+        "W.p.........p.W",
+        "W.............W",
+        "W...1.....1...W",
+        "W.............W",
+        "W......1......W",
+        "D.............D",
+        "W......1......W",
+        "W.............W",
+        "W...1.....1...W",
+        "W.............W",
+        "W.p.........p.W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "s", kind: "open" },
+        { dir: "e", kind: "open" },
+        { dir: "w", kind: "open" }
+      ]
+    },
+    {
+      key: "1,2",
+      gx: 1,
+      gy: 2,
+      name: "Hall of Mages",
+      biome: "dungeon",
+      banner: "red",
+      startVisible: false,
+      map: [
+        "WWWWWWWDWWWWWWW",
+        "W..s.......s..W",
+        "W.............W",
+        "W...3.....3...W",
+        "W.............W",
+        "W......s......W",
+        "D......3......W",
+        "W......s......W",
+        "W.............W",
+        "W...3.....3...W",
+        "W.............W",
+        "W..s...c...s..W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "s", kind: "open" },
+        { dir: "w", kind: "open" }
+      ]
+    },
+    // ============================================================
+    // ROW gy=1 — inner sanctum, treasury, boss-key vault
+    // ============================================================
+    {
+      key: "-1,1",
+      gx: -1,
+      gy: 1,
+      name: "The Treasury",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W..b.......b..W",
+        "W.............W",
+        "W.....K.......W",
+        "W.............W",
+        "W..2.......2..W",
+        "W......3......D",
+        "W..2.......2..W",
+        "W.............W",
+        "W..h.......c..W",
+        "W.............W",
+        "W..B.......B..W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "e", kind: "open" },
+        { dir: "s", kind: "open" }
+      ]
     },
     {
       key: "0,1",
@@ -38002,14 +38297,21 @@ void main() {
       name: "Great Hall",
       biome: "dungeon",
       banner: "red",
+      startVisible: false,
       map: [
-        "WWWWDWWWW",
-        "W..s.s..W",
-        "W.1...1.W",
-        "D...3...D",
-        "W.......W",
-        "W..s.s..W",
-        "WWWWDWWWW"
+        "WWWWWWWDWWWWWWW",
+        "W.p...s...s.p.W",
+        "W.............W",
+        "W..1.......1..W",
+        "W.............W",
+        "W......3......W",
+        "D.....s.s.....D",
+        "W......3......W",
+        "W.............W",
+        "W..1.......1..W",
+        "W.............W",
+        "W.p...s...s.p.W",
+        "WWWWWWWDWWWWWWW"
       ],
       doors: [
         { dir: "n", kind: "locked" },
@@ -38019,41 +38321,36 @@ void main() {
       ]
     },
     {
-      key: "-1,1",
-      gx: -1,
-      gy: 1,
-      name: "Treasury",
-      biome: "dungeon",
-      banner: "blue",
-      map: [
-        "WWWWWWWWW",
-        "W...K...W",
-        "W.......W",
-        "W.2.3.2.D",
-        "W.......W",
-        "W.b.B.b.W",
-        "WWWWWWWWW"
-      ],
-      doors: [{ dir: "e", kind: "open" }]
-    },
-    {
       key: "1,1",
       gx: 1,
       gy: 1,
-      name: "Mage Den",
+      name: "Sorcerer's Den",
       biome: "dungeon",
       banner: "red",
+      startVisible: false,
       map: [
-        "WWWWWWWWW",
-        "W.s...s.W",
-        "W..3.3..W",
-        "D...s...W",
-        "W..c.h..W",
-        "W.s...s.W",
-        "WWWWWWWWW"
+        "WWWWWWWWWWWWWWW",
+        "W..s.......s..W",
+        "W.............W",
+        "W...3.....3...W",
+        "W.............W",
+        "W......h......W",
+        "D......c......W",
+        "W......s......W",
+        "W.............W",
+        "W...3.....3...W",
+        "W.............W",
+        "W..s.......s..W",
+        "WWWWWWWDWWWWWWW"
       ],
-      doors: [{ dir: "w", kind: "open" }]
+      doors: [
+        { dir: "w", kind: "open" },
+        { dir: "s", kind: "open" }
+      ]
     },
+    // ============================================================
+    // ROW gy=0 — boss antechamber + throne
+    // ============================================================
     {
       key: "0,0",
       gx: 0,
@@ -38061,14 +38358,21 @@ void main() {
       name: "Throne of Bones",
       biome: "dungeon",
       banner: "red",
+      startVisible: false,
       map: [
-        "WWWWWWWWW",
-        "W.......W",
-        "W...Z...W",
-        "W.p...p.W",
-        "W.......W",
-        "W.......W",
-        "WWWWDWWWW"
+        "WWWWWWWWWWWWWWW",
+        "W.............W",
+        "W.p.........p.W",
+        "W.............W",
+        "W.............W",
+        "W......Z......W",
+        "W.............W",
+        "W.............W",
+        "W.p.........p.W",
+        "W.............W",
+        "W.............W",
+        "W.............W",
+        "WWWWWWWDWWWWWWW"
       ],
       doors: [{ dir: "s", kind: "open" }]
     }
@@ -38218,6 +38522,7 @@ void main() {
         const prev = this.current;
         this.current = next;
         next.visited = true;
+        next.group.visible = true;
         cam.beginSlide(prev, next, player.pos);
         this.transitionLock = 0.62;
         this.autoWalkDir = { x: d.dx, z: d.dy };
@@ -38334,22 +38639,22 @@ void main() {
     }
     return c;
   }
-  function addDungeonWall(group, center, horizontal, kind) {
+  function addDungeonWall(target, center, horizontal, kind) {
     const seg = spawn(kind, { castShadow: true, receiveShadow: true });
     seg.position.copy(center);
     if (!horizontal) seg.rotation.y = Math.PI / 2;
-    group.add(seg);
+    target.add(seg);
   }
-  function addPillarPost(group, x, z) {
+  function addPillarPost(target, x, z) {
     const key = `${Math.round(x)},${Math.round(z)}`;
     if (builtPosts.has(key)) return;
     builtPosts.add(key);
     const post = spawn("pillar", { castShadow: true, receiveShadow: true });
     post.position.set(x, 0, z);
     post.scale.set(0.62, 1.02, 0.62);
-    group.add(post);
+    target.add(post);
   }
-  function addTorch(group, roomKey, wallCenter, facing) {
+  function addTorch(target, roomKey, wallCenter, facing) {
     const t = spawn("torch_mounted", { castShadow: false, receiveShadow: false });
     t.position.copy(wallCenter);
     t.position.y = 2.4;
@@ -38357,16 +38662,16 @@ void main() {
     t.rotation.y = rot[facing];
     t.position.x += (facing === "e" ? 1 : facing === "w" ? -1 : 0) * 0.55;
     t.position.z += (facing === "s" ? 1 : facing === "n" ? -1 : 0) * 0.55;
-    group.add(t);
+    target.add(t);
     const light = new PointLight(COLORS.torch, 0, 16, 1.6);
     light.position.copy(t.position);
     light.position.y = 3;
     light.position.x += (facing === "e" ? 1 : facing === "w" ? -1 : 0) * 0.6;
     light.position.z += (facing === "s" ? 1 : facing === "n" ? -1 : 0) * 0.6;
-    group.add(light);
+    target.add(light);
     torchLights.push({ light, roomKey, seed: Math.random() * 100 });
   }
-  function buildDungeonEdge(room, dir, group) {
+  function buildDungeonEdge(room, dir, target) {
     const edgeKey = canonicalEdge(room, dir);
     if (builtEdges.has(edgeKey)) return;
     builtEdges.add(edgeKey);
@@ -38387,17 +38692,17 @@ void main() {
       if (horizontal) c.z -= TILE / 2;
       else c.x -= TILE / 2;
       const isDoorCell = doorHere && tx === doorT.tx && tz === doorT.tz;
-      addDungeonWall(group, c, horizontal, isDoorCell ? "wall_doorway" : "wall");
+      addDungeonWall(target, c, horizontal, isDoorCell ? "wall_doorway" : "wall");
     }
     const start = tileCenter(room.gx, room.gy, 0, 0);
     if (horizontal) {
       const z = start.z - TILE / 2;
-      addPillarPost(group, start.x - TILE / 2, z);
-      addPillarPost(group, start.x - TILE / 2 + count * TILE, z);
+      addPillarPost(target, start.x - TILE / 2, z);
+      addPillarPost(target, start.x - TILE / 2 + count * TILE, z);
     } else {
       const x = start.x - TILE / 2;
-      addPillarPost(group, x, start.z - TILE / 2);
-      addPillarPost(group, x, start.z - TILE / 2 + count * TILE);
+      addPillarPost(target, x, start.z - TILE / 2);
+      addPillarPost(target, x, start.z - TILE / 2 + count * TILE);
     }
   }
   function ensureGate(room, dir, kind, scene) {
@@ -38451,6 +38756,18 @@ void main() {
   function pickBy(arr, seed) {
     return arr[Math.floor(hash(seed) * arr.length) % arr.length];
   }
+  function tintGround(root, tint) {
+    root.traverse((o) => {
+      const mesh = o;
+      if (!mesh.isMesh) return;
+      const apply = (m) => {
+        const mat = m;
+        mat.color.multiply(tint);
+      };
+      if (Array.isArray(mesh.material)) mesh.material.forEach(apply);
+      else if (mesh.material) apply(mesh.material);
+    });
+  }
   function addGrassGround(group, def, tx, tz, dirt) {
     const c = tileCenter(def.gx, def.gy, tx, tz);
     const kind = dirt ? hash(tx, tz, def.gx, 10) < 0.5 ? "poly_ground_dirt_a" : "poly_ground_dirt_b" : hash(tx, tz, def.gx, 11) < 0.5 ? "poly_ground_grass_a" : "poly_ground_grass_b";
@@ -38458,18 +38775,30 @@ void main() {
     floor.position.copy(c);
     floor.scale.multiplyScalar(TILE / 3);
     floor.rotation.y = Math.floor(hash(tx, tz, def.gx, 3) * 4) * (Math.PI / 2);
+    if (!dirt) {
+      const t = hash(tx, tz, def.gx, 12);
+      const tint = new Color().setHSL(
+        0.28 + (t - 0.5) * 0.04,
+        // hue: yellow-green ↔ deep-green
+        0.55 + hash(tx, tz, def.gx, 13) * 0.12,
+        // saturation
+        0.48 + hash(tx, tz, def.gx, 14) * 0.14
+        // lightness
+      );
+      tintGround(floor, tint);
+    }
     group.add(floor);
     if (!dirt) {
-      const n = Math.floor(hash(tx, tz, def.gx, 5) * 3);
+      const n = 1 + Math.floor(hash(tx, tz, def.gx, 5) * 5);
       for (let i = 0; i < n; i++) {
         const decor = spawn(pickBy(GRASS_DECOR, tx * 31 + tz * 7 + i));
         decor.position.set(
-          c.x + (hash(tx, tz, i, 20) - 0.5) * 2.6,
+          c.x + (hash(tx, tz, i, 20) - 0.5) * 3,
           0.01,
-          c.z + (hash(tx, tz, i, 21) - 0.5) * 2.6
+          c.z + (hash(tx, tz, i, 21) - 0.5) * 3
         );
         decor.rotation.y = hash(tx, tz, i, 22) * Math.PI * 2;
-        decor.scale.multiplyScalar(1.5);
+        decor.scale.multiplyScalar(1.3 + hash(tx, tz, i, 23) * 0.7);
         group.add(decor);
       }
     }
@@ -38542,6 +38871,64 @@ void main() {
         if (charAt(def, tx, tz) === "T") addTree(group, c.x, c.z, tx * 17 + tz * 5);
       }
     }
+  }
+  function buildForestContent(def, group, runtime) {
+    for (let tz = 0; tz < ROOM_H; tz++) {
+      for (let tx = 0; tx < ROOM_W; tx++) {
+        const ch = charAt(def, tx, tz);
+        const c = tileCenter(def.gx, def.gy, tx, tz);
+        addGrassGround(group, def, tx, tz, false);
+        switch (ch) {
+          case "T":
+            addTree(group, c.x, c.z, tx * 13 + tz * 3 + def.gx * 91);
+            runtime.solid[tz][tx] = true;
+            break;
+          case "f":
+            {
+              const flower = spawn(hash(tx, tz, 0, 5) < 0.5 ? "poly_flower_a" : "poly_flower_b");
+              flower.position.copy(c);
+              flower.scale.multiplyScalar(2);
+              group.add(flower);
+            }
+            break;
+          case "g":
+            {
+              const gr = spawn(pickBy(BUSH_KEYS, tx * 3 + tz));
+              gr.position.copy(c);
+              gr.scale.multiplyScalar(1.1 + hash(tx, tz, def.gx, 8) * 0.3);
+              group.add(gr);
+            }
+            break;
+          case "R":
+            {
+              const rock = spawn(hash(tx, tz, def.gx, 44) < 0.5 ? "poly_rock_a" : "poly_rock_b", {
+                castShadow: true,
+                receiveShadow: true
+              });
+              rock.position.copy(c);
+              rock.scale.multiplyScalar(0.9 + hash(tx, tz, def.gx, 45) * 0.3);
+              group.add(rock);
+              runtime.solid[tz][tx] = true;
+            }
+            break;
+        }
+      }
+    }
+  }
+  function addDungeonCeiling(def, target) {
+    const geom = new PlaneGeometry(ROOM_W * TILE, ROOM_H * TILE);
+    const mat = new MeshBasicMaterial({
+      color: COLORS.dungeonCeiling,
+      side: DoubleSide
+    });
+    const mesh = new Mesh(geom, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(
+      tileCenter(def.gx, def.gy, 0, 0).x + ROOM_W * TILE / 2 - TILE / 2,
+      5.2,
+      tileCenter(def.gx, def.gy, 0, 0).z + ROOM_H * TILE / 2 - TILE / 2
+    );
+    target.add(mesh);
   }
   function buildVillageContent(def, group, runtime) {
     let start = null;
@@ -38632,6 +39019,9 @@ void main() {
     let playerStart = new Vector3();
     let bossSpawn = new Vector3();
     const lockIcons = [];
+    const sharedStatics = new Group();
+    sharedStatics.name = "sharedStatics";
+    scene.add(sharedStatics);
     for (const def of ROOMS) {
       const group = new Group();
       group.name = `room:${def.key}`;
@@ -38652,13 +39042,15 @@ void main() {
         hasBoss: false,
         cleared: def.biome === "village",
         // villages never lock the player in
-        visited: false,
+        visited: def.startVisible === true,
         group
       };
       if (def.biome === "village") {
         buildVillageFence(def, group);
         const start = buildVillageContent(def, group, runtime);
         if (start) playerStart = start;
+      } else if (def.biome === "forest") {
+        buildForestContent(def, group, runtime);
       } else {
         for (let tz = 0; tz < ROOM_H; tz++) {
           for (let tx = 0; tx < ROOM_W; tx++) {
@@ -38695,14 +39087,14 @@ void main() {
             }
           }
         }
-        buildDungeonEdge(def, "n", group);
-        buildDungeonEdge(def, "w", group);
-        if (!neighborOf(def, "s")) buildDungeonEdge({ ...def, gy: def.gy + 1 }, "n", group);
-        if (!neighborOf(def, "e")) buildDungeonEdge({ ...def, gx: def.gx + 1 }, "w", group);
+        buildDungeonEdge(def, "n", sharedStatics);
+        buildDungeonEdge(def, "w", sharedStatics);
+        if (!neighborOf(def, "s")) buildDungeonEdge({ ...def, gy: def.gy + 1 }, "n", sharedStatics);
+        if (!neighborOf(def, "e")) buildDungeonEdge({ ...def, gx: def.gx + 1 }, "w", sharedStatics);
         for (const tx of [1, ROOM_W - 2]) {
           const c = tileCenter(def.gx, def.gy, tx, 0);
           c.z -= TILE / 2;
-          addTorch(group, def.key, c, "s");
+          addTorch(sharedStatics, def.key, c, "s");
         }
         const bannerKey = def.banner === "blue" ? "banner_blue" : "banner_red";
         for (const tx of [3, ROOM_W - 4]) {
@@ -38710,7 +39102,7 @@ void main() {
           c.z -= TILE / 2;
           const b = spawn(bannerKey);
           b.position.set(c.x, 0.2, c.z);
-          group.add(b);
+          sharedStatics.add(b);
         }
       }
       for (let tz = 0; tz < ROOM_H; tz++) {
@@ -38829,7 +39221,9 @@ void main() {
             if (enemyKind) runtime.enemySpawns.push({ kind: enemyKind, tx, tz });
           }
         }
+        addDungeonCeiling(def, sharedStatics);
       }
+      group.visible = def.startVisible === true;
       rooms.set(def.key, runtime);
     }
     const village = rooms.get("0,4");
@@ -39210,7 +39604,7 @@ void main() {
     canvasWrap.appendChild(renderer.domElement);
     const scene = new Scene();
     scene.background = new Color(COLORS.bg);
-    scene.fog = new Fog(COLORS.fog, 32, 90);
+    scene.fog = new Fog(COLORS.fog, RENDER.fogNear, RENDER.fogFar);
     const ambient = new AmbientLight(COLORS.ambient, 0.55);
     scene.add(ambient);
     const sun = new DirectionalLight(COLORS.sun, 0.9);
@@ -39288,7 +39682,8 @@ void main() {
       roomMgr = new RoomManager(world.rooms, START_ROOM_KEY, events);
       hud = new Hud(hudMount);
       hud.render(player);
-      hud.setRoomLabel("Willowvale Village");
+      const startDef = roomAt(...START_ROOM_KEY.split(",").map(Number));
+      hud.setRoomLabel(startDef?.name ?? "Willowvale Village");
       minimap = new Minimap(hudMount);
       boss.spawn(world.bossSpawn);
       for (const [, room] of world.rooms) {
@@ -39297,7 +39692,7 @@ void main() {
           enemies.spawnEnemy(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
         }
       }
-      cam.snap(player.pos, roomMgr.current);
+      cam.snap(player.pos, roomMgr.current, player.facing);
       startMusic();
       screens.hide();
       running = true;
@@ -39315,9 +39710,16 @@ void main() {
       }
       reviveAtStart(player, world.playerStart);
       roomMgr.current = world.rooms.get(START_ROOM_KEY);
-      cam.snap(player.pos, roomMgr.current);
+      cam.snap(player.pos, roomMgr.current, player.facing);
       hud?.render(player);
-      hud?.setRoomLabel("Willowvale Village");
+      const startDef = roomAt(...START_ROOM_KEY.split(",").map(Number));
+      hud?.setRoomLabel(startDef?.name ?? "Willowvale Village");
+      for (const [, r] of world.rooms) {
+        const def = roomAt(r.gx, r.gy);
+        const initial = def?.startVisible === true;
+        r.visited = initial;
+        r.group.visible = initial;
+      }
       running = true;
     }
     let last = performance.now();
@@ -39334,7 +39736,7 @@ void main() {
         props.update(dt, player, input, roomMgr, pickups);
         if (input.interactPressed) roomMgr.tryUnlockNearbyDoor(player);
         roomMgr.update(dt, player, cam);
-        cam.update(dt, player.pos, roomMgr.current);
+        cam.update(dt, player.pos, roomMgr.current, player.facing);
         updateTorches(roomMgr.current.key, now2 / 1e3);
         fx.update(dt);
         const flashRoots = [player.root];
@@ -39356,6 +39758,12 @@ void main() {
 /*! Bundled license information:
 
 three/build/three.core.js:
+  (**
+   * @license
+   * Copyright 2010-2025 Three.js Authors
+   * SPDX-License-Identifier: MIT
+   *)
+
 three/build/three.module.js:
   (**
    * @license

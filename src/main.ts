@@ -47,7 +47,7 @@ async function main(): Promise<void> {
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(COLORS.bg);
-  scene.fog = new THREE.Fog(COLORS.fog, 32, 90);
+  scene.fog = new THREE.Fog(COLORS.fog, RENDER.fogNear, RENDER.fogFar);
 
   // lights ------------------------------------------------------------------
   const ambient = new THREE.AmbientLight(COLORS.ambient, 0.55);
@@ -140,7 +140,8 @@ async function main(): Promise<void> {
     // build HUD + minimap now that we have a player
     hud = new Hud(hudMount);
     hud.render(player);
-    hud.setRoomLabel("Willowvale Village");
+    const startDef = roomAt(...(START_ROOM_KEY.split(",").map(Number) as [number, number]));
+    hud.setRoomLabel(startDef?.name ?? "Willowvale Village");
     minimap = new Minimap(hudMount);
 
     // spawn the boss (dormant) in the throne room; woken by RoomManager
@@ -154,7 +155,7 @@ async function main(): Promise<void> {
       }
     }
 
-    cam.snap(player.pos, roomMgr.current);
+    cam.snap(player.pos, roomMgr.current, player.facing);
     startMusic();
     screens.hide();
     running = true;
@@ -174,9 +175,18 @@ async function main(): Promise<void> {
     }
     reviveAtStart(player, world.playerStart);
     roomMgr.current = world.rooms.get(START_ROOM_KEY)!;
-    cam.snap(player.pos, roomMgr.current);
+    cam.snap(player.pos, roomMgr.current, player.facing);
     hud?.render(player);
-    hud?.setRoomLabel("Willowvale Village");
+    const startDef = roomAt(...(START_ROOM_KEY.split(",").map(Number) as [number, number]));
+    hud?.setRoomLabel(startDef?.name ?? "Willowvale Village");
+    // reset room visibility: rooms that were flagged startVisible in their
+    // RoomDef stay revealed, everything else hides again until re-entered.
+    for (const [, r] of world.rooms) {
+      const def = roomAt(r.gx, r.gy);
+      const initial = def?.startVisible === true;
+      r.visited = initial;
+      r.group.visible = initial;
+    }
     running = true;
   }
 
@@ -200,7 +210,7 @@ async function main(): Promise<void> {
       if (input.interactPressed) roomMgr.tryUnlockNearbyDoor(player);
 
       roomMgr.update(dt, player, cam);
-      cam.update(dt, player.pos, roomMgr.current);
+      cam.update(dt, player.pos, roomMgr.current, player.facing);
 
       updateTorches(roomMgr.current.key, now / 1000);
       fx.update(dt);

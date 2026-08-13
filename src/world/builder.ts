@@ -75,7 +75,7 @@ function doorLineCenter(room: RoomDef, dir: DoorDir): THREE.Vector3 {
 }
 
 function addDungeonWall(
-  group: THREE.Group,
+  target: THREE.Object3D,
   center: THREE.Vector3,
   horizontal: boolean,
   kind: "wall" | "wall_doorway",
@@ -83,21 +83,21 @@ function addDungeonWall(
   const seg = spawn(kind, { castShadow: true, receiveShadow: true });
   seg.position.copy(center);
   if (!horizontal) seg.rotation.y = Math.PI / 2;
-  group.add(seg);
+  target.add(seg);
 }
 
-function addPillarPost(group: THREE.Group, x: number, z: number): void {
+function addPillarPost(target: THREE.Object3D, x: number, z: number): void {
   const key = `${Math.round(x)},${Math.round(z)}`;
   if (builtPosts.has(key)) return;
   builtPosts.add(key);
   const post = spawn("pillar", { castShadow: true, receiveShadow: true });
   post.position.set(x, 0, z);
   post.scale.set(0.62, 1.02, 0.62);
-  group.add(post);
+  target.add(post);
 }
 
 function addTorch(
-  group: THREE.Group,
+  target: THREE.Object3D,
   roomKey: string,
   wallCenter: THREE.Vector3,
   facing: DoorDir,
@@ -109,21 +109,21 @@ function addTorch(
   t.rotation.y = rot[facing];
   t.position.x += (facing === "e" ? 1 : facing === "w" ? -1 : 0) * 0.55;
   t.position.z += (facing === "s" ? 1 : facing === "n" ? -1 : 0) * 0.55;
-  group.add(t);
+  target.add(t);
 
   const light = new THREE.PointLight(COLORS.torch, 0, 16, 1.6);
   light.position.copy(t.position);
   light.position.y = 3.0;
   light.position.x += (facing === "e" ? 1 : facing === "w" ? -1 : 0) * 0.6;
   light.position.z += (facing === "s" ? 1 : facing === "n" ? -1 : 0) * 0.6;
-  group.add(light);
+  target.add(light);
   torchLights.push({ light, roomKey, seed: Math.random() * 100 });
 }
 
 function buildDungeonEdge(
   room: RoomDef,
   dir: "n" | "w",
-  group: THREE.Group,
+  target: THREE.Object3D,
 ): void {
   const edgeKey = canonicalEdge(room, dir);
   if (builtEdges.has(edgeKey)) return;
@@ -150,18 +150,18 @@ function buildDungeonEdge(
     if (horizontal) c.z -= TILE / 2;
     else c.x -= TILE / 2;
     const isDoorCell = doorHere && tx === doorT.tx && tz === doorT.tz;
-    addDungeonWall(group, c, horizontal, isDoorCell ? "wall_doorway" : "wall");
+    addDungeonWall(target, c, horizontal, isDoorCell ? "wall_doorway" : "wall");
   }
 
   const start = tileCenter(room.gx, room.gy, 0, 0);
   if (horizontal) {
     const z = start.z - TILE / 2;
-    addPillarPost(group, start.x - TILE / 2, z);
-    addPillarPost(group, start.x - TILE / 2 + count * TILE, z);
+    addPillarPost(target, start.x - TILE / 2, z);
+    addPillarPost(target, start.x - TILE / 2 + count * TILE, z);
   } else {
     const x = start.x - TILE / 2;
-    addPillarPost(group, x, start.z - TILE / 2);
-    addPillarPost(group, x, start.z - TILE / 2 + count * TILE);
+    addPillarPost(target, x, start.z - TILE / 2);
+    addPillarPost(target, x, start.z - TILE / 2 + count * TILE);
   }
 }
 
@@ -225,6 +225,21 @@ function pickBy<T>(arr: readonly T[], seed: number): T {
   return arr[Math.floor(hash(seed) * arr.length) % arr.length];
 }
 
+function tintGround(root: THREE.Object3D, tint: THREE.Color): void {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const apply = (m: THREE.Material): void => {
+      const mat = m as THREE.MeshLambertMaterial;
+      // Multiply the existing material color by the tint so texture atlases
+      // are preserved but nudged toward a punchier green.
+      mat.color.multiply(tint);
+    };
+    if (Array.isArray(mesh.material)) mesh.material.forEach(apply);
+    else if (mesh.material) apply(mesh.material);
+  });
+}
+
 function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number, dirt: boolean): void {
   const c = tileCenter(def.gx, def.gy, tx, tz);
   const kind = dirt
@@ -236,20 +251,35 @@ function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number
   // so they fill the 4x4 tile without seams.
   floor.scale.multiplyScalar(TILE / 3);
   floor.rotation.y = Math.floor(hash(tx, tz, def.gx, 3) * 4) * (Math.PI / 2);
+
+  // Vary the tint per tile so the grass reads as a living carpet instead of a
+  // flat green sheet. Warmer/cooler patches, a little brighter overall.
+  if (!dirt) {
+    const t = hash(tx, tz, def.gx, 12);
+    // Base a warm green tint with per-tile jitter toward lime or forest.
+    const tint = new THREE.Color().setHSL(
+      0.28 + (t - 0.5) * 0.04,        // hue: yellow-green ↔ deep-green
+      0.55 + hash(tx, tz, def.gx, 13) * 0.12, // saturation
+      0.48 + hash(tx, tz, def.gx, 14) * 0.14, // lightness
+    );
+    tintGround(floor, tint);
+  }
+
   group.add(floor);
 
-  // scatter decorative grass/flower on regular grass tiles
+  // scatter decorative grass/flower on regular grass tiles — v2 doubles the
+  // density so the ground reads busier and more organic.
   if (!dirt) {
-    const n = Math.floor(hash(tx, tz, def.gx, 5) * 3);
+    const n = 1 + Math.floor(hash(tx, tz, def.gx, 5) * 5); // was 0..2; now 1..5
     for (let i = 0; i < n; i++) {
       const decor = spawn(pickBy(GRASS_DECOR, tx * 31 + tz * 7 + i));
       decor.position.set(
-        c.x + (hash(tx, tz, i, 20) - 0.5) * 2.6,
+        c.x + (hash(tx, tz, i, 20) - 0.5) * 3.0,
         0.01,
-        c.z + (hash(tx, tz, i, 21) - 0.5) * 2.6,
+        c.z + (hash(tx, tz, i, 21) - 0.5) * 3.0,
       );
       decor.rotation.y = hash(tx, tz, i, 22) * Math.PI * 2;
-      decor.scale.multiplyScalar(1.5);
+      decor.scale.multiplyScalar(1.3 + hash(tx, tz, i, 23) * 0.7);
       group.add(decor);
     }
   }
@@ -336,6 +366,78 @@ function buildVillageFence(def: RoomDef, group: THREE.Group): void {
   }
 }
 
+/**
+ * Build a "forest" biome tile: same grass ground as the village, plus much
+ * denser foliage and rocks. Trees are treated as solid unless explicitly
+ * placed as background — we mark trees at the edge as walls so the player
+ * doesn't wander into the void.
+ */
+function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRuntime): void {
+  for (let tz = 0; tz < ROOM_H; tz++) {
+    for (let tx = 0; tx < ROOM_W; tx++) {
+      const ch = charAt(def, tx, tz);
+      const c = tileCenter(def.gx, def.gy, tx, tz);
+      addGrassGround(group, def, tx, tz, false);
+      switch (ch) {
+        case "T":
+          addTree(group, c.x, c.z, tx * 13 + tz * 3 + def.gx * 91);
+          runtime.solid[tz][tx] = true;
+          break;
+        case "f":
+          {
+            const flower = spawn(hash(tx, tz, 0, 5) < 0.5 ? "poly_flower_a" : "poly_flower_b");
+            flower.position.copy(c);
+            flower.scale.multiplyScalar(2);
+            group.add(flower);
+          }
+          break;
+        case "g":
+          {
+            const gr = spawn(pickBy(BUSH_KEYS, tx * 3 + tz));
+            gr.position.copy(c);
+            gr.scale.multiplyScalar(1.1 + hash(tx, tz, def.gx, 8) * 0.3);
+            group.add(gr);
+          }
+          break;
+        case "R":
+          {
+            const rock = spawn(hash(tx, tz, def.gx, 44) < 0.5 ? "poly_rock_a" : "poly_rock_b", {
+              castShadow: true, receiveShadow: true,
+            });
+            rock.position.copy(c);
+            rock.scale.multiplyScalar(0.9 + hash(tx, tz, def.gx, 45) * 0.3);
+            group.add(rock);
+            runtime.solid[tz][tx] = true;
+          }
+          break;
+      }
+    }
+  }
+}
+
+/**
+ * Cap a dungeon room with a low, dark ceiling plane. Because the new camera
+ * sits behind and above the knight (not overhead), the top of the frame
+ * would otherwise show blank sky through the walls; the ceiling reads as
+ * "we're indoors" and, more practically, blocks any leaking geometry from
+ * neighbouring dungeon rooms.
+ */
+function addDungeonCeiling(def: RoomDef, target: THREE.Object3D): void {
+  const geom = new THREE.PlaneGeometry(ROOM_W * TILE, ROOM_H * TILE);
+  const mat = new THREE.MeshBasicMaterial({
+    color: COLORS.dungeonCeiling,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(
+    tileCenter(def.gx, def.gy, 0, 0).x + (ROOM_W * TILE) / 2 - TILE / 2,
+    5.2,
+    tileCenter(def.gx, def.gy, 0, 0).z + (ROOM_H * TILE) / 2 - TILE / 2,
+  );
+  target.add(mesh);
+}
+
 function buildVillageContent(def: RoomDef, group: THREE.Group, runtime: RoomRuntime): THREE.Vector3 | null {
   let start: THREE.Vector3 | null = null;
   for (let tz = 0; tz < ROOM_H; tz++) {
@@ -417,6 +519,15 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
   let bossSpawn = new THREE.Vector3();
   const lockIcons: THREE.Object3D[] = [];
 
+  // sharedStatics holds everything that must stay visible even when its
+  // owning room is hidden (perimeter walls, ceilings, banners, wall-mounted
+  // torches, pillars at wall joints). Without this, hiding a room to prevent
+  // the third-person camera from peeking into it would also erase the walls
+  // that the player currently NEEDS to see from the adjacent room.
+  const sharedStatics = new THREE.Group();
+  sharedStatics.name = "sharedStatics";
+  scene.add(sharedStatics);
+
   for (const def of ROOMS) {
     const group = new THREE.Group();
     group.name = `room:${def.key}`;
@@ -438,7 +549,7 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       enemySpawns: [],
       hasBoss: false,
       cleared: def.biome === "village", // villages never lock the player in
-      visited: false,
+      visited: def.startVisible === true,
       group,
     };
 
@@ -446,6 +557,8 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       buildVillageFence(def, group);
       const start = buildVillageContent(def, group, runtime);
       if (start) playerStart = start;
+    } else if (def.biome === "forest") {
+      buildForestContent(def, group, runtime);
     } else {
       // -------- dungeon floors + spike traps ----------
       for (let tz = 0; tz < ROOM_H; tz++) {
@@ -484,17 +597,17 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
         }
       }
 
-      // -------- perimeter walls (shared) ----------
-      buildDungeonEdge(def, "n", group);
-      buildDungeonEdge(def, "w", group);
-      if (!neighborOf(def, "s")) buildDungeonEdge({ ...def, gy: def.gy + 1 }, "n", group);
-      if (!neighborOf(def, "e")) buildDungeonEdge({ ...def, gx: def.gx + 1 }, "w", group);
+      // -------- perimeter walls (shared, always visible) ----------
+      buildDungeonEdge(def, "n", sharedStatics);
+      buildDungeonEdge(def, "w", sharedStatics);
+      if (!neighborOf(def, "s")) buildDungeonEdge({ ...def, gy: def.gy + 1 }, "n", sharedStatics);
+      if (!neighborOf(def, "e")) buildDungeonEdge({ ...def, gx: def.gx + 1 }, "w", sharedStatics);
 
-      // -------- torches + banners on north walls ----------
+      // -------- torches + banners on north walls (shared) ----------
       for (const tx of [1, ROOM_W - 2]) {
         const c = tileCenter(def.gx, def.gy, tx, 0);
         c.z -= TILE / 2;
-        addTorch(group, def.key, c, "s");
+        addTorch(sharedStatics, def.key, c, "s");
       }
       const bannerKey = def.banner === "blue" ? "banner_blue" : "banner_red";
       for (const tx of [3, ROOM_W - 4]) {
@@ -502,7 +615,7 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
         c.z -= TILE / 2;
         const b = spawn(bannerKey);
         b.position.set(c.x, 0.2, c.z);
-        group.add(b);
+        sharedStatics.add(b);
       }
     }
 
@@ -624,7 +737,17 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
           if (enemyKind) runtime.enemySpawns.push({ kind: enemyKind, tx, tz });
         }
       }
+
+      // Dungeon ceiling — opaque cap that blocks the new low-angle camera
+      // from peeking at neighbouring dungeon rooms through the tops of walls.
+      // Ceiling stays in sharedStatics so an unvisited room still reads as a
+      // dark chamber (walls + ceiling) rather than a hole in the world.
+      addDungeonCeiling(def, sharedStatics);
     }
+
+    // Start hidden unless the room explicitly opts in (village always
+    // reveals itself; everything else is discovered on entry).
+    group.visible = def.startVisible === true;
 
     rooms.set(def.key, runtime);
   }

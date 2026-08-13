@@ -3,48 +3,77 @@ import { RENDER, ROOM_H, ROOM_W, TILE } from "../config";
 import type { RoomRuntime } from "../types";
 
 // ---------------------------------------------------------------------------
-// Camera — 3/4 top-down, follows the player but never shows past the walls
-// of the current room. Crossing a door glides the view to the next room
-// (the classic Zelda room-slide) while gameplay is frozen by rooms.ts.
+// Camera — BOTW-flavored third-person chase cam.
+//
+// The camera sits BEHIND and ABOVE the knight and looks slightly ahead of
+// him, so the horizon fills the frame and the knight rides the lower third.
+// It doesn't rotate with the player (WASD/joystick stays intuitive) — the
+// world is always oriented with north = up-screen. Room transitions get a
+// soft slide via beginSlide(); day-to-day movement is a plain lerp.
+//
+// Compared to the previous version, this cam:
+//   • uses a fixed world-aligned rig (no per-room clamp — the room is now
+//     big enough to breathe, and the visibility system in rooms.ts hides
+//     unvisited rooms so nothing leaks in from the north);
+//   • looks slightly ahead of the player (RENDER.camLookAhead) so what's
+//     in front of the knight gets more screen than what's behind him;
+//   • uses a shallower elevation, so vertical walls read as walls (not
+//     patterned squares) and give the game a proper 3D feel.
 // ---------------------------------------------------------------------------
 
 export class CameraRig {
   camera: THREE.PerspectiveCamera;
-  private target = new THREE.Vector3();
+
+  /** The point we currently look at. */
   private lookAt = new THREE.Vector3();
+  /** The point we want to look at (based on player position + look-ahead). */
+  private target = new THREE.Vector3();
+
+  /** Room-slide interpolation. */
   private slideFrom = new THREE.Vector3();
   private slideTo = new THREE.Vector3();
   private slideT = -1; // <0 = not sliding
 
+  /** Smoothed facing (so look-ahead doesn't snap when the knight turns). */
+  private facing = new THREE.Vector3(0, 0, -1);
+
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(RENDER.camFov, aspect, 0.5, 220);
+    this.camera = new THREE.PerspectiveCamera(RENDER.camFov, aspect, 0.5, 260);
   }
 
-  private clampToRoom(p: THREE.Vector3, room: RoomRuntime, out: THREE.Vector3): void {
-    // keep the look-at point inside a margin so walls hug the screen edges
-    const marginX = ROOM_W * TILE * 0.24;
-    const marginZ = ROOM_H * TILE * 0.2;
-    const minX = room.origin.x + marginX;
-    const maxX = room.origin.x + ROOM_W * TILE - marginX;
-    const minZ = room.origin.z + marginZ;
-    const maxZ = room.origin.z + ROOM_H * TILE - marginZ;
+  /**
+   * Where the camera would like the "look at" point to be, given the player's
+   * position and facing. We push the point slightly in the direction the
+   * player is heading so more of the world ahead is visible.
+   */
+  private computeTarget(playerPos: THREE.Vector3, facing: THREE.Vector3, out: THREE.Vector3): void {
     out.set(
-      Math.min(Math.max(p.x, minX), maxX),
+      playerPos.x + facing.x * RENDER.camLookAhead,
       0,
-      Math.min(Math.max(p.z, minZ), maxZ),
+      playerPos.z + facing.z * RENDER.camLookAhead,
     );
   }
 
-  snap(playerPos: THREE.Vector3, room: RoomRuntime): void {
-    this.clampToRoom(playerPos, room, this.lookAt);
+  snap(playerPos: THREE.Vector3, _room: RoomRuntime, facing?: { x: number; z: number }): void {
+    if (facing) this.facing.set(facing.x, 0, facing.z).normalize();
+    this.computeTarget(playerPos, this.facing, this.lookAt);
     this.target.copy(this.lookAt);
-    this.place(1);
+    this.place();
   }
 
-  beginSlide(fromRoom: RoomRuntime, toRoom: RoomRuntime, playerPos: THREE.Vector3): void {
-    this.clampToRoom(playerPos, fromRoom, this.slideFrom);
-    this.clampToRoom(playerPos, toRoom, this.slideTo);
+  beginSlide(_fromRoom: RoomRuntime, toRoom: RoomRuntime, playerPos: THREE.Vector3): void {
+    // For the slide we bias the destination toward the room center a bit,
+    // so the camera glides into the new space instead of hugging the door.
+    this.computeTarget(playerPos, this.facing, this.slideFrom);
     this.slideFrom.copy(this.lookAt);
+
+    const cx = toRoom.origin.x + (ROOM_W * TILE) / 2;
+    const cz = toRoom.origin.z + (ROOM_H * TILE) / 2;
+    this.slideTo.set(
+      THREE.MathUtils.lerp(playerPos.x, cx, 0.35),
+      0,
+      THREE.MathUtils.lerp(playerPos.z, cz, 0.35),
+    );
     this.slideT = 0;
   }
 
@@ -52,31 +81,46 @@ export class CameraRig {
     return this.slideT >= 0;
   }
 
-  update(dt: number, playerPos: THREE.Vector3, room: RoomRuntime): void {
+  update(dt: number, playerPos: THREE.Vector3, room: RoomRuntime, facing?: { x: number; z: number }): void {
+    // smooth the facing so quick 180s don't snap the look-ahead
+    if (facing && (facing.x !== 0 || facing.z !== 0)) {
+      const desired = new THREE.Vector3(facing.x, 0, facing.z);
+      if (desired.lengthSq() > 1e-6) {
+        desired.normalize();
+        const k = 1 - Math.exp(-6 * dt);
+        this.facing.lerp(desired, k).normalize();
+      }
+    }
+
     if (this.slideT >= 0) {
       this.slideT += dt / RENDER.roomSlideTime;
       const t = Math.min(1, this.slideT);
       const e = t * t * (3 - 2 * t); // smoothstep
-      this.clampToRoom(playerPos, room, this.slideTo);
+      // keep the destination target updated as the player walks in
+      this.computeTarget(playerPos, this.facing, this.slideTo);
       this.lookAt.lerpVectors(this.slideFrom, this.slideTo, e);
       if (t >= 1) this.slideT = -1;
     } else {
-      this.clampToRoom(playerPos, room, this.target);
+      this.computeTarget(playerPos, this.facing, this.target);
       const k = 1 - Math.exp(-RENDER.camLerp * dt);
       this.lookAt.lerp(this.target, k);
     }
-    this.place(1);
+    void room;
+    this.place();
   }
 
-  private place(_scale: number): void {
+  private place(): void {
     const el = RENDER.camElevation;
     const d = RENDER.camDistance;
+    // World-axis-aligned: camera sits south of the look-at point and above.
+    // North is "up-screen". The knight ends up in the lower-third of the
+    // frame because the look-at was pushed forward in his heading.
     this.camera.position.set(
       this.lookAt.x,
       Math.sin(el) * d,
       this.lookAt.z + Math.cos(el) * d,
     );
-    this.camera.lookAt(this.lookAt.x, 0, this.lookAt.z);
+    this.camera.lookAt(this.lookAt.x, 0.5, this.lookAt.z);
   }
 
   resize(aspect: number): void {

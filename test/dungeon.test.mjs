@@ -32,15 +32,22 @@ function assertEq(a, b, msg) {
 }
 
 console.log("\n[dungeon layout]");
-assertEq(ROOMS.length, 8, "8 rooms total (village + 7 dungeon)");
+assertEq(ROOMS.length, 15, "15 rooms total (village + forest + dungeon)");
 assertEq(START_ROOM_KEY, "0,4", "start room is village 0,4");
 assertEq(BOSS_ROOM_KEY, "0,0", "boss room is 0,0");
+// Every room must be 15 wide x 13 tall for the new ROOM_W/ROOM_H
+for (const r of ROOMS) {
+  assert(r.map.length === 13, `${r.key} has 13 rows`);
+  assert(r.map.every((row) => row.length === 15), `${r.key} rows are 15 wide`);
+}
 
 console.log("\n[biome tags]");
 const village = ROOMS.find((r) => r.key === "0,4");
 assert(village && village.biome === "village", "0,4 is village biome");
 const throne = ROOMS.find((r) => r.key === "0,0");
 assert(throne && throne.biome === "dungeon", "0,0 is dungeon biome");
+const forestCount = ROOMS.filter((r) => r.biome === "forest").length;
+assert(forestCount >= 3, `at least 3 forest rooms (got ${forestCount})`);
 
 console.log("\n[door consistency]");
 // Every declared door must have a matching door on the neighbor (or no neighbor at all).

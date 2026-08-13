@@ -40,23 +40,31 @@ Left thumbstick for movement, right side for actions:
 - ⚔ Attack (big red)
 - ↷ Dodge roll
 
-## The Dungeon
+## The World (v2 — expanded)
 
-The dungeon is 7 rooms arranged around a central Great Hall:
+The world is now **15 rooms across 3 biomes** on 15×13-tile grids (each
+room is nearly 3× the area of v1), with the camera pulled down behind the
+knight in a BOTW-flavored chase-cam. Unvisited rooms stay hidden until you
+step into them, so nothing spoils what's ahead.
 
 ```
-                  [Throne of Bones]   ← boss
-                        |🔒
-      [Treasury]---[Great Hall]---[Mage Den]
-                        |
-                   [Crossing]
-                        |
-[Armory]-------- ↑    (Armory here)
-                        |
-                   [Entrance]
-                        |
-                 [Willowvale Village]  ← you start here
+                     [Throne of Bones]   ← boss
+                            |🔒
+       [Treasury]------[Great Hall]------[Sorcerer's Den]
+            |               |                 |
+       [Armory]---[The Crossing]---[Hall of Mages]
+       /                    |                 \
+[Forgotten Cell]       [Entrance]         [Guard Barracks]
+                            |
+                       [Village]---[Old Orchard]
+                          /   \
+              [Grove]---/     \---[Southern Woods]
 ```
+
+- **Village** (start, always visible) — houses, market stalls, well, campfire.
+- **Forest** rooms surround the village on 3 sides, with denser foliage.
+- **Dungeon** proper starts at the Entrance and spans 10 rooms with a
+  looping corridor + a treasury detour holding the Boss Key.
 
 Doors slam shut with a portcullis when you enter a room with enemies.
 Clear the room to open them. The door **North of the Great Hall is locked** —
@@ -90,7 +98,7 @@ src/
     builder.ts          builds meshes from RoomDefs (village + dungeon)
   systems/
     physics.ts          circle vs tile grid, entity separation
-    camera.ts           3/4 top-down cam with room-slide transitions
+    camera.ts           BOTW-style third-person chase cam + room-slide
     rooms.ts            current-room, transitions, combat lock, key doors
     player.ts           Knight state machine
     enemies.ts          3 skeleton AIs, awaken-from-floor spawns

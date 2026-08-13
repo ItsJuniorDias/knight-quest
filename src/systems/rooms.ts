@@ -119,6 +119,9 @@ export class RoomManager {
       const prev = this.current;
       this.current = next;
       next.visited = true;
+      // Reveal the room as we step into it. Villages/forest edges may already
+      // be visible via startVisible; this makes the visibility rule uniform.
+      next.group.visible = true;
       cam.beginSlide(prev, next, player.pos);
       this.transitionLock = 0.62;
       this.autoWalkDir = { x: d.dx, z: d.dy };
