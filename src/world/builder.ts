@@ -7,6 +7,7 @@ import {
   dirDelta,
   doorTile,
   ENEMY_CHARS,
+  NPC_CHARS,
   neighborOf,
   opposite,
   ROOMS,
@@ -452,6 +453,9 @@ function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRunti
           }
           break;
       }
+      // NPCs in forest tiles (hermit, wanderers)
+      const npcKind = NPC_CHARS[ch];
+      if (npcKind) runtime.npcSpawns.push({ kind: npcKind, tx, tz });
     }
   }
 }
@@ -529,6 +533,10 @@ function buildVillageContent(def: RoomDef, group: THREE.Group, runtime: RoomRunt
           break;
         case "r": addRoadsign(group, c); runtime.solid[tz][tx] = true; break;
       }
+      // NPCs — plain ground tile also gets rendered underneath (already done
+      // above), so the villager stands on grass/dirt cleanly.
+      const npcKind = NPC_CHARS[ch];
+      if (npcKind) runtime.npcSpawns.push({ kind: npcKind, tx, tz });
     }
   }
   return start;
@@ -577,6 +585,7 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       barrels: [],
       spikes: [],
       enemySpawns: [],
+      npcSpawns: [],
       hasBoss: false,
       cleared: def.biome === "village", // villages never lock the player in
       visited: def.startVisible === true,
@@ -788,6 +797,8 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
           }
           const enemyKind = ENEMY_CHARS[ch];
           if (enemyKind) runtime.enemySpawns.push({ kind: enemyKind, tx, tz });
+          const npcKind = NPC_CHARS[ch];
+          if (npcKind) runtime.npcSpawns.push({ kind: npcKind, tx, tz });
         }
       }
 

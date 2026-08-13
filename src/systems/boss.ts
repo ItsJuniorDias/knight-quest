@@ -58,6 +58,7 @@ export class BossSystem {
       didHitPlayer: false,
       leapFrom: new THREE.Vector3(), leapTo: new THREE.Vector3(),
       active: false, dead: false,
+      enrageAnnounced: false,
     };
   }
 
@@ -72,6 +73,7 @@ export class BossSystem {
     });
     this.events.onBossBar(1);
     this.events.onToast("Skeleton Warrior awakens!");
+    this.events.onGameEvent("boss:awake");
   }
 
   update(
@@ -242,7 +244,19 @@ export class BossSystem {
       if (inSwordArc(player, b.pos, BOSS.radius)) {
         player.attackDidHit.add(-9999);
         this.hurt(PLAYER.attackDamage, player.pos);
+        this.events.onSwordHit("boss", b.pos);
       }
+    }
+
+    // fire the enrage narrative beat once, when HP drops below the threshold
+    if (
+      enraged &&
+      !b.enrageAnnounced &&
+      b.state !== "dying" &&
+      b.state !== "hurt"
+    ) {
+      b.enrageAnnounced = true;
+      this.events.onStory(null, "The Skeleton King's axe begins to glow. He remembers who he was.");
     }
   }
 

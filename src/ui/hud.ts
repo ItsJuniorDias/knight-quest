@@ -1,9 +1,14 @@
 import { PLAYER } from "../config";
-import type { PlayerData } from "../types";
+import type { NpcData, PlayerData } from "../types";
 
 // ---------------------------------------------------------------------------
-// HUD — hearts, coins, boss key indicator, boss bar. Pure DOM: cheap on the
-// GPU and easy to restyle later.
+// HUD — hearts, coins, boss key indicator, boss bar, plus (v3):
+//   • narrator/dialog panel at the bottom of the screen ("Elder Alden: ...")
+//   • floating INTERACT prompt when an NPC or door is in range
+//   • combo counter that follows the player's rolling streak
+//
+// All DOM; cheap on the GPU, easy to restyle. Text panels animate in with
+// pure CSS transitions defined in index.html.
 // ---------------------------------------------------------------------------
 
 export class Hud {
@@ -16,6 +21,16 @@ export class Hud {
   private toastEl: HTMLElement;
   private toastTimer: number | null = null;
 
+  private narrPanel: HTMLElement;
+  private narrSpeaker: HTMLElement;
+  private narrText: HTMLElement;
+  private narrTimer: number | null = null;
+  private narrQueue: { who: string | null; text: string }[] = [];
+
+  private interactPrompt: HTMLElement;
+
+  private comboBadge: HTMLElement;
+
   constructor(mount: HTMLElement) {
     mount.innerHTML = `
       <div id="hud-top">
@@ -25,12 +40,18 @@ export class Hud {
           <div id="hud-coins">💰 <span>0</span></div>
         </div>
       </div>
+      <div id="hud-combo" class="hidden"><span class="cx"></span><span class="clabel">COMBO</span></div>
       <div id="hud-room-label"></div>
       <div id="hud-boss-bar" class="hidden">
         <div id="hud-boss-fill"></div>
         <div id="hud-boss-label">SKELETON WARRIOR</div>
       </div>
       <div id="hud-toast" class="hidden"></div>
+      <div id="hud-interact" class="hidden"><span class="key">E</span> <span class="lbl">Talk</span></div>
+      <div id="hud-narrator" class="hidden">
+        <div id="hud-narr-speaker"></div>
+        <div id="hud-narr-text"></div>
+      </div>
     `;
     this.hearts = mount.querySelector("#hud-hearts")!;
     this.coins = mount.querySelector("#hud-coins span")!;
@@ -39,6 +60,11 @@ export class Hud {
     this.bossBar = mount.querySelector("#hud-boss-bar")!;
     this.bossFill = mount.querySelector("#hud-boss-fill")!;
     this.toastEl = mount.querySelector("#hud-toast")!;
+    this.narrPanel = mount.querySelector("#hud-narrator")!;
+    this.narrSpeaker = mount.querySelector("#hud-narr-speaker")!;
+    this.narrText = mount.querySelector("#hud-narr-text")!;
+    this.interactPrompt = mount.querySelector("#hud-interact")!;
+    this.comboBadge = mount.querySelector("#hud-combo")!;
   }
 
   render(player: PlayerData): void {
@@ -78,6 +104,79 @@ export class Hud {
       this.toastEl.classList.add("hidden");
       this.toastTimer = null;
     }, 2200);
+  }
+
+  /**
+   * Narrator / dialog line. `who` = null shows italic narrator styling,
+   * otherwise shows "Speaker Name" in gold on top of the text.
+   *
+   * If a line is already displayed, the new one queues behind it and rolls
+   * in when the current one auto-hides.
+   */
+  narrate(who: string | null, text: string): void {
+    if (this.narrTimer !== null) {
+      // queue instead of stomping — reading interrupted is bad UX
+      this.narrQueue.push({ who, text });
+      return;
+    }
+    this.showNarrLine(who, text);
+  }
+
+  private showNarrLine(who: string | null, text: string): void {
+    if (who === null) {
+      this.narrSpeaker.classList.add("hidden");
+      this.narrText.classList.add("narrator");
+    } else {
+      this.narrSpeaker.classList.remove("hidden");
+      this.narrSpeaker.textContent = who;
+      this.narrText.classList.remove("narrator");
+    }
+    this.narrText.textContent = text;
+    this.narrPanel.classList.remove("hidden");
+    this.narrPanel.classList.remove("in");
+    void this.narrPanel.offsetWidth;
+    this.narrPanel.classList.add("in");
+
+    // reading-speed-derived timeout: ~14 chars/sec, min 2.4s, max 6s
+    const dur = Math.min(6000, Math.max(2400, text.length * 70));
+    this.narrTimer = window.setTimeout(() => {
+      this.narrPanel.classList.add("hidden");
+      this.narrTimer = null;
+      const next = this.narrQueue.shift();
+      if (next) window.setTimeout(() => this.showNarrLine(next.who, next.text), 200);
+    }, dur);
+  }
+
+  /** Show/hide the "Press E" prompt based on the current interact target. */
+  updateInteractPrompt(npc: NpcData | null): void {
+    if (!npc) {
+      this.interactPrompt.classList.add("hidden");
+      return;
+    }
+    this.interactPrompt.classList.remove("hidden");
+    const label = this.interactPrompt.querySelector<HTMLElement>(".lbl");
+    if (label) label.textContent = npc.kind === "ghost" ? "Listen" : "Talk";
+  }
+
+  /** Set the combo counter. 0 hides the badge. */
+  setCombo(count: number): void {
+    if (count < 2) {
+      this.comboBadge.classList.add("hidden");
+      return;
+    }
+    this.comboBadge.classList.remove("hidden");
+    const cx = this.comboBadge.querySelector<HTMLElement>(".cx");
+    if (cx) cx.textContent = `${count}×`;
+    // hot color once you're deep in a streak
+    const hot = Math.min(1, (count - 2) / 8);
+    (this.comboBadge as HTMLElement).style.setProperty(
+      "--combo-color",
+      `rgb(255, ${Math.max(0, 210 - hot * 150)}, ${Math.max(0, 120 - hot * 100)})`,
+    );
+    // little bump animation on every increment
+    this.comboBadge.classList.remove("bump");
+    void this.comboBadge.offsetWidth;
+    this.comboBadge.classList.add("bump");
   }
 }
 

@@ -42,6 +42,7 @@ export class PropsSystem {
           this.fx.burst(new THREE.Vector3(b.pos.x, 0.8, b.pos.z), 0xa06b3a, 14, {
             speed: 5, up: 4, life: 0.7,
           });
+          this.events.onSwordHit("barrel", b.pos);
           if (Math.random() < PROPS.barrelDropHeart) pickups.spawn("heart", b.pos);
           else if (Math.random() < PROPS.barrelDropCoin) pickups.spawn("coin", b.pos);
         }

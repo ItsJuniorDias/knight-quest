@@ -181,6 +181,7 @@ export class RoomManager {
         if (door.lockIcon) door.lockIcon.visible = false;
         sfx.doorUnlock();
         this.events.onToast("The Boss Door opens!");
+        this.events.onGameEvent("unlocked:bossdoor");
         this.events.onHudDirty();
         return true;
       }

@@ -7,11 +7,14 @@ import { loadAll } from "./engine/loader";
 import { BossSystem } from "./systems/boss";
 import { CameraRig } from "./systems/camera";
 import { EnemySystem, preloadWeapons } from "./systems/enemies";
+import { NpcSystem } from "./systems/npcs";
 import { PickupSystem } from "./systems/pickups";
 import { createPlayer, playerCheer, reviveAtStart, updatePlayer } from "./systems/player";
 import { ProjectileSystem } from "./systems/projectiles";
 import { PropsSystem } from "./systems/props";
 import { RoomManager } from "./systems/rooms";
+import { StoryDirector } from "./systems/story";
+import { SwordFxSystem } from "./art/sword-fx";
 import type { GameEvents } from "./types";
 import { buildWorld, tileCenter, updateTorches } from "./world/builder";
 import { BOSS_ROOM_KEY, START_ROOM_KEY, roomAt } from "./world/dungeon";
@@ -26,6 +29,13 @@ import { TouchUi } from "./ui/touch";
 // Wires the renderer to the DOM, orchestrates the loading sequence, builds
 // the world and player, and runs the main game loop. Everything gameplay
 // lives inside the systems it invokes; this file is just plumbing.
+//
+// v3 adds:
+//   • NpcSystem       — friendly + ghost characters throughout the world
+//   • StoryDirector   — first-visit narrator beats + NPC-triggered lines
+//   • SwordFxSystem   — slash arc trail on every attack, combo popups
+//   • camera-shake    — HUD dirty pipe that maps sword hits to a screen
+//                       displacement (kept in the CameraRig)
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
@@ -50,8 +60,6 @@ async function main(): Promise<void> {
   scene.fog = new THREE.Fog(COLORS.fog, RENDER.fogNear, RENDER.fogFar);
 
   // lights ------------------------------------------------------------------
-  // Brighter ambient so the grass reads as daylight village rather than
-  // a purple twilight — the fog still keeps the mood.
   const ambient = new THREE.AmbientLight(COLORS.ambient, 0.9);
   scene.add(ambient);
   const sun = new THREE.DirectionalLight(COLORS.sun, 1.15);
@@ -96,6 +104,9 @@ async function main(): Promise<void> {
   let props: PropsSystem | null = null;
   let boss: BossSystem | null = null;
   let fx: FxSystem | null = null;
+  let npcs: NpcSystem | null = null;
+  let story: StoryDirector | null = null;
+  let swordFx: SwordFxSystem | null = null;
   let running = false;
 
   const events: GameEvents = {
@@ -109,16 +120,40 @@ async function main(): Promise<void> {
     onVictory: () => {
       running = false;
       if (player) playerCheer(player);
-      window.setTimeout(() => screens.showVictory(player?.coins ?? 0), 1400);
+      story?.onEvent("boss:dead");
+      window.setTimeout(() => screens.showVictory(player?.coins ?? 0), 1800);
     },
     onRoomChanged: (key) => {
       const def = roomAt(...(key.split(",").map(Number) as [number, number]));
       if (def) hud?.setRoomLabel(def.name);
       minimap?.markVisited(key);
+      story?.onRoomChanged(key);
       if (key === BOSS_ROOM_KEY && boss?.boss?.state === "waiting") {
         boss.wake();
       }
     },
+    onStory: (who, text) => hud?.narrate(who, text),
+    onStoryTrigger: (id) => story?.onNpcTrigger(id),
+    onSwordHit: (kind, pos) => {
+      // camera shake proportional to what was hit
+      const strength = kind === "boss" ? 0.55 : kind === "enemy" ? 0.25 : 0.15;
+      cam.shake(strength);
+      // combo counter: every ENEMY/BOSS hit bumps the streak
+      if ((kind === "enemy" || kind === "boss") && player) {
+        player.comboCount += 1;
+        player.comboTimer = 1.6; // seconds — resets if no hit
+        hud?.setCombo(player.comboCount);
+        swordFx?.popCombo(pos, player.comboCount);
+      }
+    },
+    onSwordSwing: (step) => {
+      // little pre-swing rumble so heavy swings feel weightier
+      cam.shake(step === 0 ? 0.08 : 0.12);
+      if (player && swordFx) {
+        swordFx.spawnArc(player.pos, player.facing, step);
+      }
+    },
+    onGameEvent: (key) => story?.onEvent(key),
   };
 
   async function startGame(): Promise<void> {
@@ -130,11 +165,14 @@ async function main(): Promise<void> {
     // build world + all systems
     world = buildWorld(scene);
     fx = new FxSystem(scene);
+    swordFx = new SwordFxSystem(scene);
     pickups = new PickupSystem(scene, fx, events);
     projectiles = new ProjectileSystem(scene, fx, events);
     props = new PropsSystem(fx, events);
     enemies = new EnemySystem(scene, fx, events);
     boss = new BossSystem(scene, fx, events);
+    npcs = new NpcSystem(scene, events);
+    story = new StoryDirector(events);
 
     player = createPlayer(scene, world.playerStart);
     roomMgr = new RoomManager(world.rooms, START_ROOM_KEY, events);
@@ -149,11 +187,13 @@ async function main(): Promise<void> {
     // spawn the boss (dormant) in the throne room; woken by RoomManager
     boss.spawn(world.bossSpawn);
 
-    // pre-spawn enemies for every room so they exist regardless of visit
+    // pre-spawn enemies + NPCs for every room so they exist regardless of visit
     for (const [, room] of world.rooms) {
-      if (room.enemySpawns.length === 0) continue;
       for (const s of room.enemySpawns) {
         enemies.spawnEnemy(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
+      }
+      for (const s of room.npcSpawns) {
+        npcs.spawn(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key, s.tx, s.tz);
       }
     }
 
@@ -161,18 +201,27 @@ async function main(): Promise<void> {
     startMusic();
     screens.hide();
     running = true;
+
+    // opening narrator beat, one beat later so the player can settle in
+    window.setTimeout(() => story?.onEvent("start:game"), 700);
+    story.onRoomChanged(START_ROOM_KEY);
   }
 
   function restartGame(): void {
-    if (!player || !world || !roomMgr || !enemies || !pickups || !projectiles) return;
+    if (!player || !world || !roomMgr || !enemies || !pickups || !projectiles || !npcs || !story) return;
     enemies.clearAll();
     pickups.clearAll();
     projectiles.clearAll();
-    // respawn enemies fresh
+    npcs.clearAll();
+    story.reset();
+    // respawn enemies + NPCs fresh
     for (const [, room] of world.rooms) {
-      room.cleared = room.doors.length === 0 || room.enemySpawns.length === 0 && !room.hasBoss;
+      room.cleared = room.doors.length === 0 || (room.enemySpawns.length === 0 && !room.hasBoss);
       for (const s of room.enemySpawns) {
         enemies.spawnEnemy(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
+      }
+      for (const s of room.npcSpawns) {
+        npcs.spawn(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key, s.tx, s.tz);
       }
     }
     reviveAtStart(player, world.playerStart);
@@ -181,8 +230,7 @@ async function main(): Promise<void> {
     hud?.render(player);
     const startDef = roomAt(...(START_ROOM_KEY.split(",").map(Number) as [number, number]));
     hud?.setRoomLabel(startDef?.name ?? "Willowvale Village");
-    // reset room visibility: rooms that were flagged startVisible in their
-    // RoomDef stay revealed, everything else hides again until re-entered.
+    // reset room visibility
     for (const [, r] of world.rooms) {
       const def = roomAt(r.gx, r.gy);
       const initial = def?.startVisible === true;
@@ -190,6 +238,7 @@ async function main(): Promise<void> {
       r.group.visible = initial;
     }
     running = true;
+    story.onRoomChanged(START_ROOM_KEY);
   }
 
   // game loop ---------------------------------------------------------------
@@ -198,10 +247,11 @@ async function main(): Promise<void> {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
 
-    if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && fx) {
+    if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && fx && npcs && swordFx) {
       pollKeyboard(input, touchUi.active());
 
       updatePlayer(player, input, dt, roomMgr, fx, events);
+      npcs.update(dt, player, roomMgr, input);
       enemies.update(dt, player, roomMgr, projectiles, pickups);
       boss.update(dt, player, roomMgr, projectiles, props);
       projectiles.update(dt, player, roomMgr);
@@ -209,19 +259,33 @@ async function main(): Promise<void> {
       props.update(dt, player, input, roomMgr, pickups);
 
       // interact with the locked boss door if E is pressed near it
-      if (input.interactPressed) roomMgr.tryUnlockNearbyDoor(player);
+      // (skipped when currently talking to an NPC — dialog owns the button)
+      if (input.interactPressed && !npcs.activeNpc) {
+        roomMgr.tryUnlockNearbyDoor(player);
+      }
 
       roomMgr.update(dt, player, cam);
       cam.update(dt, player.pos, roomMgr.current, player.facing);
 
       updateTorches(roomMgr.current.key, now / 1000);
       fx.update(dt);
+      swordFx.update(dt);
       const flashRoots: THREE.Object3D[] = [player.root];
       for (const e of enemies.enemies) flashRoots.push(e.root);
       if (boss.boss) flashRoots.push(boss.boss.root);
       tickFlashes(flashRoots, now / 1000);
 
+      // combo timer decay + HUD sync
+      if (player.comboTimer > 0) {
+        player.comboTimer -= dt;
+        if (player.comboTimer <= 0) {
+          player.comboCount = 0;
+          hud?.setCombo(0);
+        }
+      }
+
       hud?.render(player);
+      hud?.updateInteractPrompt(npcs.activeNpc);
       minimap?.render(world!.rooms, roomMgr.current.key, now / 1000);
       endFrame(input, dt);
     }

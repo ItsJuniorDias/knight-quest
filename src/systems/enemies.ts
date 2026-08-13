@@ -255,6 +255,7 @@ export class EnemySystem {
           if (inSwordArc(player, e.pos, cfg.radius)) {
             player.attackDidHit.add(e.id);
             this.hurtEnemy(e, PLAYER.attackDamage, player.pos, pickups);
+            this.events.onSwordHit("enemy", e.pos);
           }
         }
       }

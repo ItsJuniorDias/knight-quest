@@ -37,8 +37,20 @@ export class CameraRig {
   /** Smoothed facing (so look-ahead doesn't snap when the knight turns). */
   private facing = new THREE.Vector3(0, 0, -1);
 
+  /** Screen-shake amplitude (world units). Decays exponentially. */
+  private shakeAmp = 0;
+
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(RENDER.camFov, aspect, 0.5, 260);
+  }
+
+  /**
+   * Add a burst of screen-shake. Called by combat systems on sword hits,
+   * boss chop landing, etc. Higher `strength` = more violent.
+   */
+  shake(strength: number): void {
+    // additive but capped so a hit-storm doesn't turn the screen into porridge
+    this.shakeAmp = Math.min(1.6, this.shakeAmp + strength);
   }
 
   /**
@@ -105,6 +117,9 @@ export class CameraRig {
       const k = 1 - Math.exp(-RENDER.camLerp * dt);
       this.lookAt.lerp(this.target, k);
     }
+    // decay screen shake (~8 half-lives / second — punchy but doesn't linger)
+    this.shakeAmp *= Math.exp(-6 * dt);
+    if (this.shakeAmp < 0.005) this.shakeAmp = 0;
     void room;
     this.place();
   }
@@ -112,15 +127,20 @@ export class CameraRig {
   private place(): void {
     const el = RENDER.camElevation;
     const d = RENDER.camDistance;
+    // shake — random offset around the look-at + a matching lookAt jitter.
+    // We use fresh Math.random per axis so the offset is truly noisy, not
+    // sinusoidal (a rotation would swim, a jitter feels like impact).
+    const s = this.shakeAmp;
+    const jx = s ? (Math.random() - 0.5) * s : 0;
+    const jz = s ? (Math.random() - 0.5) * s : 0;
+    const jy = s ? (Math.random() - 0.5) * s * 0.5 : 0;
     // World-axis-aligned: camera sits south of the look-at point and above.
-    // North is "up-screen". The knight ends up in the lower-third of the
-    // frame because the look-at was pushed forward in his heading.
     this.camera.position.set(
-      this.lookAt.x,
-      Math.sin(el) * d,
-      this.lookAt.z + Math.cos(el) * d,
+      this.lookAt.x + jx,
+      Math.sin(el) * d + jy,
+      this.lookAt.z + Math.cos(el) * d + jz,
     );
-    this.camera.lookAt(this.lookAt.x, 0.5, this.lookAt.z);
+    this.camera.lookAt(this.lookAt.x + jx * 0.3, 0.5 + jy * 0.3, this.lookAt.z + jz * 0.3);
   }
 
   resize(aspect: number): void {

@@ -47,6 +47,10 @@ export interface PlayerData {
   rollCooldown: number;
   coins: number;
   hasBossKey: boolean;
+  /** rolling count of enemies hit within the last combo window */
+  comboCount: number;
+  /** seconds until the combo counter resets to 0 */
+  comboTimer: number;
 }
 
 export type EnemyKind = "minion" | "rogue" | "mage";
@@ -108,6 +112,8 @@ export interface BossData {
   leapTo: THREE.Vector3;
   active: boolean;
   dead: boolean;
+  /** true once we've fired the "enraged" narrative beat */
+  enrageAnnounced: boolean;
 }
 
 export interface Projectile {
@@ -178,11 +184,55 @@ export interface RoomRuntime {
   barrels: BarrelState[];
   spikes: SpikeState[];
   enemySpawns: { kind: EnemyKind; tx: number; tz: number }[];
+  npcSpawns: { kind: NpcKind; tx: number; tz: number }[];
   hasBoss: boolean;
   cleared: boolean; // combat resolved (gates open forever)
   visited: boolean;
   group: THREE.Group;
 }
+
+// ---------------------------------------------------------------------------
+// NPCs
+// ---------------------------------------------------------------------------
+
+export type NpcKind =
+  | "villager"  // generic townsfolk
+  | "elder"    // gold-robed sage (quest giver)
+  | "merchant" // orange-clad trader
+  | "guard"    // steel-blue armored
+  | "hermit"   // wandering wise man in the forest
+  | "ghost";   // translucent restless dead haunting the dungeon
+
+export interface NpcLine {
+  who: string;
+  text: string;
+}
+
+export interface NpcData {
+  id: string;               // unique roster id ("meet:elder" ...)
+  kind: NpcKind;
+  root: THREE.Group;
+  anim: AnimSet;
+  state: "idle" | "walk" | "talking";
+  stateTime: number;
+  pos: THREE.Vector3;
+  home: THREE.Vector3;      // wander anchor
+  facing: Facing;
+  lines: NpcLine[];
+  lineIdx: number;
+  roomKey: string;
+  wanderTarget: THREE.Vector3;
+  wanderCooldown: number;
+  lastTalkedAt: number;     // performance.now()/1000 of last dialog advance
+}
+
+// ---------------------------------------------------------------------------
+// Game-wide event bus
+//
+// All UI updates go through this so systems don't have to know about the DOM.
+// v3: added onStory / onStoryTrigger so the narrator + dialog UI can be fed
+// from many sources (NPCs, story director, boss events) without coupling.
+// ---------------------------------------------------------------------------
 
 export interface GameEvents {
   onHudDirty: () => void;
@@ -191,4 +241,14 @@ export interface GameEvents {
   onGameOver: () => void;
   onVictory: () => void;
   onRoomChanged: (key: string) => void;
+  /** Narrator or NPC line; `who=null` = the omniscient chronicler voice. */
+  onStory: (who: string | null, text: string) => void;
+  /** Fires the first time an NPC's dialog is advanced (id === NpcSpec.id). */
+  onStoryTrigger: (id: string) => void;
+  /** Every enemy/boss hit by the sword — powers combo counter + screenshake. */
+  onSwordHit: (kind: "enemy" | "boss" | "barrel", pos: THREE.Vector3) => void;
+  /** Every player sword swing (before any hit) — used for screen shake ramp. */
+  onSwordSwing: (comboStep: 0 | 1) => void;
+  /** Fire an event beat by key ('got:bosskey', 'unlocked:bossdoor', ...). */
+  onGameEvent: (key: string) => void;
 }

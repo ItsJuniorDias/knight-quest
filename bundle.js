@@ -13275,6 +13275,166 @@
       }
     }
   };
+  var SpriteMaterial = class extends Material {
+    /**
+     * Constructs a new sprite material.
+     *
+     * @param {Object} [parameters] - An object with one or more properties
+     * defining the material's appearance. Any property of the material
+     * (including any property from inherited materials) can be passed
+     * in here. Color values can be passed any type of value accepted
+     * by {@link Color#set}.
+     */
+    constructor(parameters) {
+      super();
+      this.isSpriteMaterial = true;
+      this.type = "SpriteMaterial";
+      this.color = new Color(16777215);
+      this.map = null;
+      this.alphaMap = null;
+      this.rotation = 0;
+      this.sizeAttenuation = true;
+      this.transparent = true;
+      this.fog = true;
+      this.setValues(parameters);
+    }
+    copy(source) {
+      super.copy(source);
+      this.color.copy(source.color);
+      this.map = source.map;
+      this.alphaMap = source.alphaMap;
+      this.rotation = source.rotation;
+      this.sizeAttenuation = source.sizeAttenuation;
+      this.fog = source.fog;
+      return this;
+    }
+  };
+  var _geometry;
+  var _intersectPoint = /* @__PURE__ */ new Vector3();
+  var _worldScale = /* @__PURE__ */ new Vector3();
+  var _mvPosition = /* @__PURE__ */ new Vector3();
+  var _alignedPosition = /* @__PURE__ */ new Vector2();
+  var _rotatedPosition = /* @__PURE__ */ new Vector2();
+  var _viewWorldMatrix = /* @__PURE__ */ new Matrix4();
+  var _vA = /* @__PURE__ */ new Vector3();
+  var _vB = /* @__PURE__ */ new Vector3();
+  var _vC = /* @__PURE__ */ new Vector3();
+  var _uvA = /* @__PURE__ */ new Vector2();
+  var _uvB = /* @__PURE__ */ new Vector2();
+  var _uvC = /* @__PURE__ */ new Vector2();
+  var Sprite = class extends Object3D {
+    /**
+     * Constructs a new sprite.
+     *
+     * @param {(SpriteMaterial|SpriteNodeMaterial)} [material] - The sprite material.
+     */
+    constructor(material = new SpriteMaterial()) {
+      super();
+      this.isSprite = true;
+      this.type = "Sprite";
+      if (_geometry === void 0) {
+        _geometry = new BufferGeometry();
+        const float32Array = new Float32Array([
+          -0.5,
+          -0.5,
+          0,
+          0,
+          0,
+          0.5,
+          -0.5,
+          0,
+          1,
+          0,
+          0.5,
+          0.5,
+          0,
+          1,
+          1,
+          -0.5,
+          0.5,
+          0,
+          0,
+          1
+        ]);
+        const interleavedBuffer = new InterleavedBuffer(float32Array, 5);
+        _geometry.setIndex([0, 1, 2, 0, 2, 3]);
+        _geometry.setAttribute("position", new InterleavedBufferAttribute(interleavedBuffer, 3, 0, false));
+        _geometry.setAttribute("uv", new InterleavedBufferAttribute(interleavedBuffer, 2, 3, false));
+      }
+      this.geometry = _geometry;
+      this.material = material;
+      this.center = new Vector2(0.5, 0.5);
+      this.count = 1;
+    }
+    /**
+     * Computes intersection points between a casted ray and this sprite.
+     *
+     * @param {Raycaster} raycaster - The raycaster.
+     * @param {Array<Object>} intersects - The target array that holds the intersection points.
+     */
+    raycast(raycaster, intersects2) {
+      if (raycaster.camera === null) {
+        error('Sprite: "Raycaster.camera" needs to be set in order to raycast against sprites.');
+      }
+      _worldScale.setFromMatrixScale(this.matrixWorld);
+      _viewWorldMatrix.copy(raycaster.camera.matrixWorld);
+      this.modelViewMatrix.multiplyMatrices(raycaster.camera.matrixWorldInverse, this.matrixWorld);
+      _mvPosition.setFromMatrixPosition(this.modelViewMatrix);
+      if (raycaster.camera.isPerspectiveCamera && this.material.sizeAttenuation === false) {
+        _worldScale.multiplyScalar(-_mvPosition.z);
+      }
+      const rotation = this.material.rotation;
+      let sin, cos;
+      if (rotation !== 0) {
+        cos = Math.cos(rotation);
+        sin = Math.sin(rotation);
+      }
+      const center = this.center;
+      transformVertex(_vA.set(-0.5, -0.5, 0), _mvPosition, center, _worldScale, sin, cos);
+      transformVertex(_vB.set(0.5, -0.5, 0), _mvPosition, center, _worldScale, sin, cos);
+      transformVertex(_vC.set(0.5, 0.5, 0), _mvPosition, center, _worldScale, sin, cos);
+      _uvA.set(0, 0);
+      _uvB.set(1, 0);
+      _uvC.set(1, 1);
+      let intersect = raycaster.ray.intersectTriangle(_vA, _vB, _vC, false, _intersectPoint);
+      if (intersect === null) {
+        transformVertex(_vB.set(-0.5, 0.5, 0), _mvPosition, center, _worldScale, sin, cos);
+        _uvB.set(0, 1);
+        intersect = raycaster.ray.intersectTriangle(_vA, _vC, _vB, false, _intersectPoint);
+        if (intersect === null) {
+          return;
+        }
+      }
+      const distance = raycaster.ray.origin.distanceTo(_intersectPoint);
+      if (distance < raycaster.near || distance > raycaster.far) return;
+      intersects2.push({
+        distance,
+        point: _intersectPoint.clone(),
+        uv: Triangle.getInterpolation(_intersectPoint, _vA, _vB, _vC, _uvA, _uvB, _uvC, new Vector2()),
+        face: null,
+        object: this
+      });
+    }
+    copy(source, recursive) {
+      super.copy(source, recursive);
+      if (source.center !== void 0) this.center.copy(source.center);
+      this.material = source.material;
+      return this;
+    }
+  };
+  function transformVertex(vertexPosition, mvPosition, center, scale, sin, cos) {
+    _alignedPosition.subVectors(vertexPosition, center).addScalar(0.5).multiply(scale);
+    if (sin !== void 0) {
+      _rotatedPosition.x = cos * _alignedPosition.x - sin * _alignedPosition.y;
+      _rotatedPosition.y = sin * _alignedPosition.x + cos * _alignedPosition.y;
+    } else {
+      _rotatedPosition.copy(_alignedPosition);
+    }
+    vertexPosition.copy(mvPosition);
+    vertexPosition.x += _rotatedPosition.x;
+    vertexPosition.y += _rotatedPosition.y;
+    vertexPosition.applyMatrix4(_viewWorldMatrix);
+  }
   var _basePosition = /* @__PURE__ */ new Vector3();
   var _skinIndex = /* @__PURE__ */ new Vector4();
   var _skinWeight = /* @__PURE__ */ new Vector4();
@@ -14696,6 +14856,26 @@
       });
     }
   }
+  var CanvasTexture = class extends Texture {
+    /**
+     * Constructs a new texture.
+     *
+     * @param {HTMLCanvasElement} [canvas] - The HTML canvas element.
+     * @param {number} [mapping=Texture.DEFAULT_MAPPING] - The texture mapping.
+     * @param {number} [wrapS=ClampToEdgeWrapping] - The wrapS value.
+     * @param {number} [wrapT=ClampToEdgeWrapping] - The wrapT value.
+     * @param {number} [magFilter=LinearFilter] - The mag filter value.
+     * @param {number} [minFilter=LinearMipmapLinearFilter] - The min filter value.
+     * @param {number} [format=RGBAFormat] - The texture format.
+     * @param {number} [type=UnsignedByteType] - The texture type.
+     * @param {number} [anisotropy=Texture.DEFAULT_ANISOTROPY] - The anisotropy value.
+     */
+    constructor(canvas, mapping, wrapS, wrapT, magFilter, minFilter, format, type, anisotropy) {
+      super(canvas, mapping, wrapS, wrapT, magFilter, minFilter, format, type, anisotropy);
+      this.isCanvasTexture = true;
+      this.needsUpdate = true;
+    }
+  };
   var DepthTexture = class extends Texture {
     /**
      * Constructs a new depth texture.
@@ -36755,7 +36935,7 @@ void main() {
   // src/world/dungeon.ts
   var ROOMS = [
     // ============================================================
-    // ROW gy=5 — southern forest fringe (below the village)
+    // ROW gy=5 — southern forest (hermit's clearing below the village)
     // ============================================================
     {
       key: "0,5",
@@ -36770,7 +36950,7 @@ void main() {
         "Tg..fgg.f.gg.TT",
         "T.gggT..fggg.TT",
         "T.f...gT......T",
-        "Tgg.g.f...gg..T",
+        "Tgg.g.fY..gg..T",
         "T.f.gg.g.g.f..T",
         "T..g.f..g.f.g.T",
         "Tg..gg.gg..gg.T",
@@ -36796,11 +36976,11 @@ void main() {
         "T.fgg.f.gg.fg.T",
         "Tg.f.gg.f..g.gT",
         "T.gg.f.gg.f.g.T",
-        "T.f..g...gg.f.T",
+        "T.f..ggN.g.f.gT",
         "Tgg.f.gg.f.gg.T",
         "T.g..g.f.gg.f.D",
         "Tf.gg.f.gg.g.gT",
-        "T.g.f.gg.g.f..T",
+        "T.g.f.gg.gN.g.T",
         "Tg.gg.f..gg.g.T",
         "T.f.gg.gg..f.gT",
         "Tg..f..g.gg.f.T",
@@ -36815,19 +36995,27 @@ void main() {
       name: "Willowvale Village",
       biome: "village",
       startVisible: true,
+      // v3 village layout — 8 NPCs total, arranged so the elder is dead
+      // center and the merchants flank the east/west roads.
+      //   J = blacksmith at west edge         N = tavern keeper east
+      //   Q = west merchant     Q = east fruit-seller
+      //   E = Elder Alden (center-south of the campfire)
+      //   N = child running near the road
+      //   N = priestess by the well
+      //   N = farmer at the SE corner
       map: [
         "TTTTTTTDTTTTTTT",
         "T.fg.H.,.H.gg.T",
-        "Tg.f...,....f.T",
+        "T.J.f..,...N..T",
         "T.gg.,,,,,.gg.T",
-        "T.f.,,C,,,,.f.T",
-        "T.M.,,,,,,,.M.T",
-        "D,,,,,P,,,,,,,D",
+        "T.f.,,C,,,N.f.T",
+        "T.Q.,,,,,,,.Q.T",
+        "D,,,,,P,E,,,,,D",
         "T.f.,,,,,,,.f.T",
-        "T.gg.,,L,,,.g.T",
+        "T.gg.,,L,N,.g.T",
         "T.f...,,,..fggT",
         "Tg.H..,,..H.f.T",
-        "T.fg.U.,.gg.fgT",
+        "T.fg.U.,.gg.NgT",
         "TTTTTTTDTTTTTTT"
       ],
       doors: [
@@ -36848,12 +37036,12 @@ void main() {
         "TTTTTTTTTTTTTTT",
         "T.gg.f.g.fg.g.T",
         "Tf..gg.f..g.f.T",
-        "T.gg.f.gg.f.g.T",
+        "T.gg.f.gg.fN.gT",
         "T.f...gg.f.gg.T",
         "Tgg.f.g..gg.f.T",
         "D.g..gg.f..g.gT",
         "Tf.gg.f.gg.f..T",
-        "T.g.f..gg.g.g.T",
+        "T.gN.f..gg.g.gT",
         "Tg.gg.gg..f.f.T",
         "T.f.gg.g.gg.g.T",
         "Tg..f..gg..f..T",
@@ -36874,15 +37062,15 @@ void main() {
       startVisible: false,
       map: [
         "WWWWWWWWWWWWWWW",
-        "W.............W",
         "W..b.......b..W",
+        "W..1........1.W",
         "W.............W",
         "W....x.....x..W",
+        "W......G......W",
+        "W..o1......c1.D",
         "W.............W",
-        "W..o.......c..D",
-        "W.............W",
-        "W..b.......b..W",
-        "W.............W",
+        "W..b...1...b..W",
+        "W..1.......1..W",
         "W....S.....S..W",
         "W.............W",
         "WWWWWWWWWWWWWWW"
@@ -36901,12 +37089,12 @@ void main() {
         "WWWWWWWDWWWWWWW",
         "W.............W",
         "W..b.......b..W",
-        "W.............W",
+        "W..1........1.W",
         "W.............W",
         "W......P......W",
         "D.............D",
-        "W.............W",
-        "W.............W",
+        "W......1......W",
+        "W..1........1.W",
         "W..b...S...b..W",
         "W.............W",
         "W.............W",
@@ -36930,14 +37118,14 @@ void main() {
       map: [
         "WWWWWWWDWWWWWWW",
         "W..x.......x..W",
-        "W.............W",
+        "W..2........2.W",
+        "W.......G.....W",
         "W..2.......2..W",
-        "W.............W",
         "W......c......W",
         "D.............W",
-        "W.............W",
+        "W..2.......2..W",
         "W..o.......o..W",
-        "W.............W",
+        "W..1.......1..W",
         "W..b.......b..W",
         "W.............W",
         "WWWWWWWWWWWWWWW"
@@ -36961,15 +37149,15 @@ void main() {
       map: [
         "WWWWWWWWWWWWWWW",
         "W..x.......x..W",
-        "W.............W",
+        "W..1........1.W",
         "W..b.......b..W",
         "W.............W",
         "W......h......W",
-        "W.............D",
-        "W.............W",
+        "W......G......D",
+        "W..1.......1..W",
         "W..b.......b..W",
         "W.............W",
-        "W..o.......o..W",
+        "W..o...1...o..W",
         "W.............W",
         "WWWWWWWWWWWWWWW"
       ],
@@ -36986,15 +37174,15 @@ void main() {
       map: [
         "WWWWWWWDWWWWWWW",
         "W..x...x...x..W",
-        "W.............W",
         "W.2.........2.W",
         "W.............W",
+        "W.2.........2.W",
         "W..b...c...b..W",
-        "D.............D",
+        "D......G......D",
         "W..o.......o..W",
-        "W.............W",
         "W.2....s....2.W",
         "W.............W",
+        "W.....1.1.....W",
         "W..x.......x..W",
         "WWWWWWWWWWWWWWW"
       ],
@@ -37015,13 +37203,13 @@ void main() {
       map: [
         "WWWWWWWDWWWWWWW",
         "W.p.........p.W",
-        "W.............W",
         "W...1.....1...W",
         "W.............W",
+        "W....2.....2..W",
         "W......1......W",
         "D.............D",
         "W......1......W",
-        "W.............W",
+        "W....2.....2..W",
         "W...1.....1...W",
         "W.............W",
         "W.p.........p.W",
@@ -37045,13 +37233,13 @@ void main() {
       map: [
         "WWWWWWWDWWWWWWW",
         "W..s.......s..W",
-        "W.............W",
         "W...3.....3...W",
         "W.............W",
+        "W...s..G..s...W",
         "W......s......W",
         "D......3......W",
         "W......s......W",
-        "W.............W",
+        "W...s.....s...W",
         "W...3.....3...W",
         "W.............W",
         "W..s...c...s..W",
@@ -37076,14 +37264,14 @@ void main() {
       startVisible: false,
       map: [
         "WWWWWWWWWWWWWWW",
-        "W..b.......b..W",
+        "W..b...G...b..W",
         "W.............W",
         "W.....K.......W",
         "W.............W",
         "W..2.......2..W",
         "W......3......D",
         "W..2.......2..W",
-        "W.............W",
+        "W..2.......2..W",
         "W..h.......c..W",
         "W.............W",
         "W..B.......B..W",
@@ -37105,15 +37293,15 @@ void main() {
       map: [
         "WWWWWWWDWWWWWWW",
         "W.p...s...s.p.W",
-        "W.............W",
-        "W..1.......1..W",
-        "W.............W",
+        "W..2.......2..W",
+        "W...1.....1...W",
         "W......3......W",
-        "D.....s.s.....D",
+        "W......s......W",
+        "D......3......D",
+        "W......s......W",
         "W......3......W",
-        "W.............W",
-        "W..1.......1..W",
-        "W.............W",
+        "W...1.....1...W",
+        "W..2.......2..W",
         "W.p...s...s.p.W",
         "WWWWWWWDWWWWWWW"
       ],
@@ -37134,16 +37322,16 @@ void main() {
       startVisible: false,
       map: [
         "WWWWWWWWWWWWWWW",
-        "W..s.......s..W",
-        "W.............W",
+        "W..s...G...s..W",
         "W...3.....3...W",
         "W.............W",
         "W......h......W",
-        "D......c......W",
-        "W......s......W",
-        "W.............W",
+        "W......c......W",
+        "D......s......W",
         "W...3.....3...W",
-        "W.............W",
+        "W......3......W",
+        "W...s.....s...W",
+        "W..3.......3..W",
         "W..s.......s..W",
         "WWWWWWWDWWWWWWW"
       ],
@@ -37165,8 +37353,8 @@ void main() {
       startVisible: false,
       map: [
         "WWWWWWWWWWWWWWW",
-        "W.............W",
         "W.p.........p.W",
+        "W.............W",
         "W.............W",
         "W.............W",
         "W......Z......W",
@@ -37174,7 +37362,7 @@ void main() {
         "W.............W",
         "W.p.........p.W",
         "W.............W",
-        "W.............W",
+        "W......k......W",
         "W.............W",
         "WWWWWWWDWWWWWWW"
       ],
@@ -37235,6 +37423,16 @@ void main() {
     "1": "minion",
     "2": "rogue",
     "3": "mage"
+  };
+  var NPC_CHARS = {
+    N: "villager",
+    E: "elder",
+    Q: "merchant",
+    J: "guard",
+    Y: "hermit",
+    G: "ghost",
+    k: "ghost"
+    // king echo
   };
 
   // src/systems/physics.ts
@@ -37338,7 +37536,9 @@ void main() {
       attackDidHit: /* @__PURE__ */ new Set(),
       rollCooldown: 0,
       coins: 0,
-      hasBossKey: false
+      hasBossKey: false,
+      comboCount: 0,
+      comboTimer: 0
     };
   }
   var ATTACK_CLIPS = [
@@ -37397,6 +37597,7 @@ void main() {
         if (!frozen && (input.attackPressed || input.attackBuffered > 0)) {
           startAttack(p, 0);
           input.attackBuffered = 0;
+          events.onSwordSwing(0);
         } else if (!frozen && input.rollPressed && p.rollCooldown <= 0) {
           startRoll(p, wantLen > 0.01 ? { x: wantX / wantLen, z: wantZ / wantLen } : p.facing);
         }
@@ -37416,6 +37617,7 @@ void main() {
           play(p.anim, ["Idle"], { fade: 0.12 });
         } else if (input.attackPressed) {
           startAttack(p, 0);
+          events.onSwordSwing(0);
         }
         break;
       }
@@ -37428,6 +37630,7 @@ void main() {
           if (input.attackBuffered > 0 && p.attackIndex === 0) {
             startAttack(p, 1);
             input.attackBuffered = 0;
+            events.onSwordSwing(1);
           } else {
             p.state = "idle";
             p.stateTime = 0;
@@ -37761,6 +37964,7 @@ void main() {
             if (inSwordArc(player, e.pos, cfg.radius)) {
               player.attackDidHit.add(e.id);
               this.hurtEnemy(e, PLAYER.attackDamage, player.pos, pickups);
+              this.events.onSwordHit("enemy", e.pos);
             }
           }
         }
@@ -37864,7 +38068,8 @@ void main() {
         leapFrom: new Vector3(),
         leapTo: new Vector3(),
         active: false,
-        dead: false
+        dead: false,
+        enrageAnnounced: false
       };
     }
     /** Called when the player first enters the throne room. */
@@ -37879,6 +38084,7 @@ void main() {
       });
       this.events.onBossBar(1);
       this.events.onToast("Skeleton Warrior awakens!");
+      this.events.onGameEvent("boss:awake");
     }
     update(dt, player, roomMgr, projectiles, props) {
       const b = this.boss;
@@ -38036,7 +38242,12 @@ void main() {
         if (inSwordArc(player, b.pos, BOSS.radius)) {
           player.attackDidHit.add(-9999);
           this.hurt(PLAYER.attackDamage, player.pos);
+          this.events.onSwordHit("boss", b.pos);
         }
+      }
+      if (enraged && !b.enrageAnnounced && b.state !== "dying" && b.state !== "hurt") {
+        b.enrageAnnounced = true;
+        this.events.onStory(null, "The Skeleton King's axe begins to glow. He remembers who he was.");
       }
     }
     hurt(dmg, from) {
@@ -38092,7 +38303,16 @@ void main() {
       // <0 = not sliding
       /** Smoothed facing (so look-ahead doesn't snap when the knight turns). */
       this.facing = new Vector3(0, 0, -1);
+      /** Screen-shake amplitude (world units). Decays exponentially. */
+      this.shakeAmp = 0;
       this.camera = new PerspectiveCamera(RENDER.camFov, aspect2, 0.5, 260);
+    }
+    /**
+     * Add a burst of screen-shake. Called by combat systems on sword hits,
+     * boss chop landing, etc. Higher `strength` = more violent.
+     */
+    shake(strength) {
+      this.shakeAmp = Math.min(1.6, this.shakeAmp + strength);
     }
     /**
      * Where the camera would like the "look at" point to be, given the player's
@@ -38148,23 +38368,480 @@ void main() {
         const k = 1 - Math.exp(-RENDER.camLerp * dt);
         this.lookAt.lerp(this.target, k);
       }
+      this.shakeAmp *= Math.exp(-6 * dt);
+      if (this.shakeAmp < 5e-3) this.shakeAmp = 0;
       this.place();
     }
     place() {
       const el = RENDER.camElevation;
       const d = RENDER.camDistance;
+      const s = this.shakeAmp;
+      const jx = s ? (Math.random() - 0.5) * s : 0;
+      const jz = s ? (Math.random() - 0.5) * s : 0;
+      const jy = s ? (Math.random() - 0.5) * s * 0.5 : 0;
       this.camera.position.set(
-        this.lookAt.x,
-        Math.sin(el) * d,
-        this.lookAt.z + Math.cos(el) * d
+        this.lookAt.x + jx,
+        Math.sin(el) * d + jy,
+        this.lookAt.z + Math.cos(el) * d + jz
       );
-      this.camera.lookAt(this.lookAt.x, 0.5, this.lookAt.z);
+      this.camera.lookAt(this.lookAt.x + jx * 0.3, 0.5 + jy * 0.3, this.lookAt.z + jz * 0.3);
     }
     resize(aspect2) {
       this.camera.aspect = aspect2;
       this.camera.updateProjectionMatrix();
     }
   };
+
+  // src/systems/npcs.ts
+  var TALK_RADIUS = 3.4;
+  var WANDER_RADIUS = 2.2;
+  var BLOCK_RADIUS = 0.5;
+  var TINT = {
+    villager: [0.09, 0.55, 0.52],
+    // warm brown
+    elder: [0.13, 0.75, 0.55],
+    // gold
+    merchant: [0.05, 0.7, 0.5],
+    // russet orange
+    guard: [0.58, 0.55, 0.5],
+    // steel blue
+    hermit: [0.68, 0.15, 0.42],
+    // dusty purple-grey
+    ghost: [0.55, 0.6, 0.65]
+    // pale cyan (overridden with transparency)
+  };
+  var ROSTER = {
+    // ---- Willowvale Village -----------------------------------------------
+    "0,4:2,2": {
+      id: "meet:blacksmith",
+      name: "Bram the Blacksmith",
+      kind: "guard",
+      lines: [
+        "Ye look like a fighter. Good. Willowvale needs one.",
+        "Something crawls out of the old dungeon each night. Bones. Cold, cold bones.",
+        "Take the north road when yer ready. And mind the barracks \u2014 I heard my brother's voice in there last week. He's been dead six years.",
+        "Your sword's edge holds true. But your ARM decides where it goes. Keep the arm cool."
+      ]
+    },
+    "0,4:11,2": {
+      id: "meet:tavern-mira",
+      name: "Mira the Tavern Keeper",
+      kind: "villager",
+      lines: [
+        "Oh, a traveler! Sit, sit. There's stew on the fire.",
+        "The elder's been waiting for someone like you. He's the old man in the middle of the square \u2014 you can't miss him.",
+        "If you find my necklace down there... it was a gift from my mother. Please. Bring it back.",
+        "You know what I miss? Music. Nobody sings anymore. When you save us, sing something on your way out."
+      ]
+    },
+    "0,4:10,4": {
+      id: "meet:child",
+      name: "Little Wren",
+      kind: "villager",
+      lines: [
+        "Are you a REAL knight? Like in the stories?",
+        "Papa says the Skeleton King used to be a good king. A LONG time ago. Before he got sad.",
+        "If you fight him \u2014 please don't be scared. Being scared makes it worse. Mama says.",
+        "I drew you a picture. I'll give it to you when you come back. So you HAVE to come back, okay?"
+      ]
+    },
+    "0,4:2,5": {
+      id: "meet:merchant-village",
+      name: "Osric the Merchant",
+      kind: "merchant",
+      lines: [
+        "Ah, a customer! Sadly, my caravan hasn't returned from the north road. All my wares are... gone.",
+        "If you happen upon crates in the dungeon, break them open! Whatever's inside was mine anyway.",
+        "Come back rich, my friend. I'll be here. Probably.",
+        "Word of the wise: coins slow you down but heal purses. Hearts heal you. Choose your carry wisely."
+      ]
+    },
+    "0,4:12,5": {
+      id: "meet:merchant-east",
+      name: "Yara the Fruit-Seller",
+      kind: "merchant",
+      lines: [
+        "Apples! Fresh apples! ... You have no coins? A pity.",
+        "The forest orchards to the east are the last ones still bearing fruit. The rot spreads from the north.",
+        "Whatever's under that castle is killing the land. Please. Kill it back.",
+        "If you visit Grandfather Row in the orchard \u2014 tell him Yara sends her love. He planted every one of those trees."
+      ]
+    },
+    "0,4:8,6": {
+      id: "meet:elder",
+      name: "Elder Alden",
+      kind: "elder",
+      lines: [
+        "So. Another one comes to try.",
+        "The dungeon below us was the old royal keep. King Malric ruled from its Throne of Bones long before Willowvale was a village.",
+        "He was a good man. Then his queen fell to plague, and grief took his mind. He made a bargain with something ancient. Something patient.",
+        "Now he sits on that throne as a Skeleton Warrior. His mind is gone. His axe is not. Find the Boss Key in the treasury, unlock the Great Hall's northern door \u2014 and end him. For his sake as much as ours.",
+        "Go, knight. And listen to the ghosts as you pass. They remember more than we do."
+      ]
+    },
+    "0,4:9,8": {
+      id: "meet:priestess",
+      name: "Sister Ivy",
+      kind: "villager",
+      lines: [
+        "Bless you, traveler. Drink from the well \u2014 it's still clean, praise the light.",
+        "I lay hearts in the barrels down below when I dare. Break every one you find. Some of them still hold a blessing.",
+        "The dead down there are not your enemies. Not truly. They are trapped. Cut them down and you free them.",
+        "If your shield feels heavy, that's your fear. Set it down for a breath. Then pick it back up."
+      ]
+    },
+    "0,4:12,11": {
+      id: "meet:farmer",
+      name: "Old Harl",
+      kind: "villager",
+      lines: [
+        "Aye, another sword-arm come to save us all. That'll be the fifth this year.",
+        "The other four didn't come back. Just so you know.",
+        "...Bring my son's helm back, if you find one that looks like a badger. Reckon that's all that's left of him.",
+        "Bah. I've said too much. Go. And come back, will ye?"
+      ]
+    },
+    // ---- Willowvale Grove (west forest) -----------------------------------
+    "-1,4:7,4": {
+      id: "meet:grove-woman",
+      name: "Weeping Elin",
+      kind: "villager",
+      lines: [
+        "This grove was full of children once. Now it's only me and the birds.",
+        "Something calls from the west. A voice like a bell in deep water. I try not to listen.",
+        "You look like my brother did, before he went below. Same jaw. Same tired eyes."
+      ]
+    },
+    "-1,4:10,8": {
+      id: "meet:woodcutter",
+      name: "Tomas the Woodcutter",
+      kind: "villager",
+      lines: [
+        "Axe-work is honest work. Not like whatever you're doing.",
+        "The trees remember, you know. This grove has stood since before the king went mad.",
+        "If ye hear singing in the deep \u2014 don't answer. Just keep walking."
+      ]
+    },
+    // ---- Old Orchard (east forest) ----------------------------------------
+    "1,4:11,3": {
+      id: "meet:orchard-picker",
+      name: "Nell the Picker",
+      kind: "villager",
+      lines: [
+        "The apples are smaller every year. And redder. Almost like...",
+        "Never mind. Take one if you like. They still taste of home.",
+        "The best ones are near the top. Same in life. Reach a little higher."
+      ]
+    },
+    "1,4:3,8": {
+      id: "meet:orchard-old",
+      name: "Grandfather Row",
+      kind: "villager",
+      lines: [
+        "I planted every one of these trees. When I was a boy the king himself walked here.",
+        "He wore no crown, only a farmer's hat. He said crowns were heavy. He knew, even then.",
+        "If you meet him down there \u2014 remember he was a farmer too, once. Then swing."
+      ]
+    },
+    // ---- Southern Woods (hermit's home) -----------------------------------
+    "0,5:7,5": {
+      id: "meet:hermit",
+      name: "Elric the Hermit",
+      kind: "hermit",
+      lines: [
+        "Ha! You found my clearing. Few do.",
+        "I was court sorcerer to King Malric, once. I saw what he became. I ran.",
+        "The Boss Key is in the treasury on the western branch. Beyond the Great Hall's locked door lies his throne. His axe swings twice \u2014 dodge the second.",
+        "One last thing: the shockwaves he casts move in cardinal lines. Stand on the diagonals. Live.",
+        "You have my blessing. It weighs nothing. It costs nothing. It is all I have left to give."
+      ]
+    },
+    // ---- DUNGEON GHOSTS: the restless dead --------------------------------
+    "-1,3:7,5": {
+      id: "meet:ghost-watch",
+      name: "Ghost of Sir Adric",
+      kind: "ghost",
+      lines: [
+        "Turn back... turn back, brother. I could not stop what walks below.",
+        "I hear his axe in my bones. He does not remember me. I served him for thirty years.",
+        "Take my blade, if you can find one. Cut deeper than I did."
+      ]
+    },
+    "1,3:8,3": {
+      id: "meet:ghost-barracks",
+      name: "Ghost of Captain Roswin",
+      kind: "ghost",
+      lines: [
+        "The barracks are quiet now. Once we drilled here every dawn.",
+        "The king ordered us into the treasury to guard the key from his own hand. He knew what he was becoming.",
+        "We failed him. He locked us in. He locked himself in too."
+      ]
+    },
+    "-2,2:7,6": {
+      id: "meet:ghost-prisoner",
+      name: "Ghost of the Prisoner",
+      kind: "ghost",
+      lines: [
+        "Water... no. I don't need that anymore. Habit dies slowly.",
+        "I was thrown here for speaking against the queen's burial rites. She rose again, you see. And no one wanted to hear it.",
+        "Cut him down. Not for vengeance. For rest."
+      ]
+    },
+    "-1,2:7,6": {
+      id: "meet:ghost-armorer",
+      name: "Ghost of Fenn the Armorer",
+      kind: "ghost",
+      lines: [
+        "I forged his axe. Fine steel. I regret every strike of the hammer.",
+        "There is no shame in fleeing this room, if you must. There is shame in dying stupidly."
+      ]
+    },
+    "1,2:7,4": {
+      id: "meet:ghost-mage",
+      name: "Ghost of Archmage Cyn",
+      kind: "ghost",
+      lines: [
+        "The magi guarded these halls. Now we haunt them.",
+        "The bolts they fling are our old spells, twisted. Roll through them \u2014 the intent inside is hollow."
+      ]
+    },
+    "-1,1:7,1": {
+      id: "meet:ghost-treasurer",
+      name: "Ghost of Steward Bael",
+      kind: "ghost",
+      lines: [
+        "The Boss Key is in the great chest at the north. I put it there myself.",
+        "I locked it with the last strength I had. I hope you find it. I hope you use it well."
+      ]
+    },
+    "1,1:7,1": {
+      id: "meet:ghost-sorcerer",
+      name: "Ghost of the Court Sorcerer",
+      kind: "ghost",
+      lines: [
+        "You are close now. The king sits just beyond the northern hall.",
+        "When you strike him \u2014 do not hate him. He was kind, once. Hate makes for poor swordsmanship."
+      ]
+    },
+    "0,0:7,10": {
+      id: "meet:ghost-king-echo",
+      name: "Echo of King Malric",
+      kind: "ghost",
+      lines: [
+        "...Is that you, my queen?",
+        "No. A knight. A young one. You have come to kill me. Good.",
+        "Try to remember, when you swing \u2014 I was a man, once. And I loved this valley.",
+        "Do not fail. If you fall here, another must come, and another. Break the chain, knight. Please."
+      ]
+    }
+  };
+  function specKey(roomKey, tx, tz) {
+    return `${roomKey}:${tx},${tz}`;
+  }
+  function tintNpc(root, kind) {
+    const [h, s, l] = TINT[kind];
+    const color = new Color().setHSL(h, s, l);
+    const isGhost = kind === "ghost";
+    root.traverse((o) => {
+      const mesh = o;
+      if (!mesh.isMesh || !mesh.material) return;
+      const apply = (m) => {
+        const src = m;
+        const mat = new MeshLambertMaterial({
+          map: src.map ?? null,
+          color: color.clone(),
+          transparent: isGhost,
+          opacity: isGhost ? 0.55 : 1,
+          emissive: isGhost ? new Color(6728447) : new Color(0),
+          emissiveIntensity: isGhost ? 0.6 : 0,
+          side: src.side
+        });
+        return mat;
+      };
+      if (Array.isArray(mesh.material)) mesh.material = mesh.material.map(apply);
+      else mesh.material = apply(mesh.material);
+    });
+  }
+  var NpcSystem = class {
+    constructor(scene, events) {
+      this.npcs = [];
+      this.triggeredIds = /* @__PURE__ */ new Set();
+      /** the NPC currently in talk range (null if none) — read by hud for the prompt */
+      this.activeNpc = null;
+      this.scene = scene;
+      this.events = events;
+    }
+    spawn(kind, pos, roomKey, tx, tz) {
+      const assetKey = kind === "ghost" ? "skeleton_minion" : "knight";
+      const root = spawn(assetKey, { castShadow: kind !== "ghost" });
+      root.position.copy(pos);
+      tintNpc(root, kind);
+      this.scene.add(root);
+      if (assetKey === "knight") {
+        const HIDE = ["1H_Sword_Offhand", "Badge_Shield", "Rectangle_Shield", "Spike_Shield", "2H_Sword"];
+        if (kind === "merchant" || kind === "elder" || kind === "villager" || kind === "hermit") {
+          HIDE.push("1H_Sword");
+        }
+        root.traverse((o) => {
+          if (HIDE.includes(o.name)) o.visible = false;
+        });
+      }
+      const anim = buildAnimSet(root, getAnimations(assetKey));
+      play(anim, ["Idle"], { force: true });
+      const spec = ROSTER[specKey(roomKey, tx, tz)];
+      const lines = spec ? spec.lines.map((t) => ({ who: spec.name, text: t })) : [{
+        who: prettyKind(kind),
+        text: fallbackLine(kind)
+      }];
+      const id = spec?.id ?? `unnamed:${roomKey}:${tx},${tz}`;
+      const npc = {
+        id,
+        kind,
+        root,
+        anim,
+        state: "idle",
+        stateTime: 0,
+        pos: pos.clone(),
+        home: pos.clone(),
+        facing: { x: 0, z: 1 },
+        lines,
+        lineIdx: 0,
+        roomKey,
+        wanderTarget: pos.clone(),
+        wanderCooldown: 1 + Math.random() * 2,
+        lastTalkedAt: -999
+      };
+      const a = Math.random() * Math.PI * 2;
+      npc.facing.x = Math.sin(a);
+      npc.facing.z = Math.cos(a);
+      root.rotation.y = a;
+      this.npcs.push(npc);
+      return npc;
+    }
+    update(dt, player, roomMgr, input) {
+      const room = roomMgr.current;
+      let bestActive = null;
+      let bestDist = Infinity;
+      for (const npc of this.npcs) {
+        npc.stateTime += dt;
+        npc.anim.mixer.update(dt);
+        if (npc.roomKey !== room.key) continue;
+        const d = Math.hypot(player.pos.x - npc.pos.x, player.pos.z - npc.pos.z);
+        if (d < TALK_RADIUS) {
+          npc.state = "talking";
+          npc.stateTime = 0;
+          const dx = player.pos.x - npc.pos.x;
+          const dz = player.pos.z - npc.pos.z;
+          const norm = Math.hypot(dx, dz) || 1;
+          npc.facing.x = dx / norm;
+          npc.facing.z = dz / norm;
+          play(npc.anim, ["Idle"], { fade: 0.2 });
+          if (d < bestDist) {
+            bestDist = d;
+            bestActive = npc;
+          }
+        } else {
+          const canWander = npc.kind === "villager" || npc.kind === "merchant" || npc.kind === "elder" || npc.kind === "guard";
+          if (!canWander) {
+            play(npc.anim, ["Idle"], { fade: 0.25 });
+          } else {
+            npc.wanderCooldown -= dt;
+            if (npc.state === "idle") {
+              if (npc.wanderCooldown <= 0) {
+                const a = Math.random() * Math.PI * 2;
+                const r = Math.random() * WANDER_RADIUS;
+                npc.wanderTarget.set(
+                  npc.home.x + Math.cos(a) * r,
+                  0,
+                  npc.home.z + Math.sin(a) * r
+                );
+                npc.state = "walk";
+                npc.stateTime = 0;
+                npc.wanderCooldown = 2 + Math.random() * 2;
+                play(npc.anim, ["Walking_A", "Walking_D_Skeletons"], { fade: 0.25 });
+              } else {
+                play(npc.anim, ["Idle"], { fade: 0.25 });
+              }
+            } else if (npc.state === "walk") {
+              const dx = npc.wanderTarget.x - npc.pos.x;
+              const dz = npc.wanderTarget.z - npc.pos.z;
+              const dd = Math.hypot(dx, dz);
+              if (dd < 0.3 || npc.stateTime > 3.5) {
+                npc.state = "idle";
+                npc.stateTime = 0;
+                npc.wanderCooldown = 1.4 + Math.random() * 1.8;
+              } else {
+                const speed = 2;
+                const vx = dx / dd * speed;
+                const vz = dz / dd * speed;
+                npc.facing.x = dx / dd;
+                npc.facing.z = dz / dd;
+                const vel = new Vector3(vx, 0, vz);
+                moveCircle(npc.pos, vel, dt, 0.45, room);
+              }
+            }
+          }
+        }
+        const ang = Math.atan2(npc.facing.x, npc.facing.z);
+        let diff = ang - npc.root.rotation.y;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        npc.root.rotation.y += diff * Math.min(1, 8 * dt);
+        npc.root.position.copy(npc.pos);
+        if (npc.kind === "ghost") {
+          npc.root.position.y = Math.sin(npc.stateTime * 2 + npc.pos.x) * 0.15 + 0.15;
+        }
+        if (d < PLAYER.radius + BLOCK_RADIUS + 0.05) {
+          const dx = player.pos.x - npc.pos.x;
+          const dz = player.pos.z - npc.pos.z;
+          const dd = Math.hypot(dx, dz) || 1;
+          const push = PLAYER.radius + BLOCK_RADIUS - dd;
+          if (push > 0) {
+            player.pos.x += dx / dd * push;
+            player.pos.z += dz / dd * push;
+          }
+        }
+      }
+      this.activeNpc = bestActive;
+      if (bestActive && input.interactPressed) {
+        const npc = bestActive;
+        const line = npc.lines[npc.lineIdx];
+        this.events.onStory(line.who, line.text);
+        sfx.coin();
+        npc.lineIdx = (npc.lineIdx + 1) % npc.lines.length;
+        npc.lastTalkedAt = performance.now() / 1e3;
+        if (!this.triggeredIds.has(npc.id)) {
+          this.triggeredIds.add(npc.id);
+          this.events.onStoryTrigger(npc.id);
+        }
+      }
+    }
+    clearAll() {
+      for (const n of this.npcs) this.scene.remove(n.root);
+      this.npcs = [];
+      this.triggeredIds.clear();
+      this.activeNpc = null;
+    }
+  };
+  function prettyKind(k) {
+    return k[0].toUpperCase() + k.slice(1);
+  }
+  function fallbackLine(k) {
+    switch (k) {
+      case "villager":
+        return "Peace on you, traveler. Mind the north road.";
+      case "elder":
+        return "The old stones remember. Walk softly here.";
+      case "merchant":
+        return "Trade's slow. Bring coin next time.";
+      case "guard":
+        return "Halt \u2014 nay, pass. You look honest enough.";
+      case "hermit":
+        return "Few come this far. Fewer return.";
+      case "ghost":
+        return "Cold... so cold. Please, cut me free.";
+    }
+  }
 
   // src/systems/pickups.ts
   var PickupSystem = class {
@@ -38257,6 +38934,7 @@ void main() {
         player.hasBossKey = true;
         sfx.key();
         this.events.onToast("Got the Boss Key!");
+        this.events.onGameEvent("got:bosskey");
       }
       this.events.onHudDirty();
     }
@@ -38381,6 +39059,7 @@ void main() {
               up: 4,
               life: 0.7
             });
+            this.events.onSwordHit("barrel", b.pos);
             if (Math.random() < PROPS.barrelDropHeart) pickups.spawn("heart", b.pos);
             else if (Math.random() < PROPS.barrelDropCoin) pickups.spawn("coin", b.pos);
           }
@@ -38592,11 +39271,268 @@ void main() {
           if (door.lockIcon) door.lockIcon.visible = false;
           sfx.doorUnlock();
           this.events.onToast("The Boss Door opens!");
+          this.events.onGameEvent("unlocked:bossdoor");
           this.events.onHudDirty();
           return true;
         }
       }
       return false;
+    }
+  };
+
+  // src/systems/story.ts
+  var ROOM_BEATS = {
+    "0,4": [
+      { id: "room:0,4", who: null, text: "Willowvale rests uneasy in the pale sun. Even the crows are quiet." }
+    ],
+    "0,5": [
+      { id: "room:0,5", who: null, text: "The southern woods swallow the village noise. Something old lives here." }
+    ],
+    "-1,4": [
+      { id: "room:-1,4", who: null, text: "The grove is a cathedral of leaves. A child's laugh echoes and is gone." }
+    ],
+    "1,4": [
+      { id: "room:1,4", who: null, text: "The orchard rows stand in neat, dying columns. The last harvest ripens." }
+    ],
+    "0,3": [
+      { id: "room:0,3", who: null, text: "You cross the threshold of the old keep. The air turns cold. The stone remembers." }
+    ],
+    "-1,3": [
+      { id: "room:-1,3", who: null, text: "This was the outer watchpost. The soldiers here died at their posts." }
+    ],
+    "1,3": [
+      { id: "room:1,3", who: null, text: "The barracks. Beds still stand. The men in them do not." }
+    ],
+    "-2,2": [
+      { id: "room:-2,2", who: null, text: "A forgotten cell. Someone marked the days on the wall. Then stopped counting." }
+    ],
+    "-1,2": [
+      { id: "room:-1,2", who: null, text: "The armory. Every rack is bare \u2014 the weapons walk on their own now." }
+    ],
+    "0,2": [
+      { id: "room:0,2", who: null, text: "A crossing of four halls. Every door leads deeper. Every door leads to him." }
+    ],
+    "1,2": [
+      { id: "room:1,2", who: null, text: "The Hall of Mages. Purple fire crackles between the columns. Stay light on your feet." }
+    ],
+    "-1,1": [
+      { id: "room:-1,1", who: null, text: "The Treasury. Coin means nothing to the dead. But the KEY... the key means everything to YOU." }
+    ],
+    "0,1": [
+      { id: "room:0,1", who: null, text: "The Great Hall. Once, banquets. Once, laughter. The northern door is sealed against the throne itself." }
+    ],
+    "1,1": [
+      { id: "room:1,1", who: null, text: "The Sorcerer's Den. He still casts, in his sleep. His sleep never ends." }
+    ],
+    "0,0": [
+      { id: "room:0,0", who: null, text: "The Throne of Bones. And on it \u2014 a king who cannot die, wielding an axe that cannot be dropped." }
+    ]
+  };
+  var NPC_BEATS = {
+    "meet:elder": [
+      { id: "elder-quest", who: null, text: "So the quest is spoken aloud. It becomes real, the way stories always do.", delay: 900 }
+    ],
+    "meet:hermit": [
+      { id: "hermit-warning", who: null, text: "The hermit's warning coils in your chest. Two swings. Diagonals. Live.", delay: 900 }
+    ],
+    "meet:ghost-treasurer": [
+      { id: "treasurer-hint", who: null, text: "The Boss Key is close. Watch the chest with the golden clasp.", delay: 900 }
+    ],
+    "meet:ghost-king-echo": [
+      { id: "king-echo", who: null, text: "The king's own voice, thin as smoke. He is not gone. Not yet. Not quite.", delay: 900 }
+    ]
+  };
+  var EVENT_BEATS = {
+    "got:bosskey": [
+      { id: "got-bosskey", who: null, text: "The Boss Key is heavy in your hand. Warm, almost. It knows where it's going." }
+    ],
+    "unlocked:bossdoor": [
+      { id: "unlocked-bossdoor", who: null, text: "The northern door of the Great Hall grinds open. Beyond it \u2014 the throne. Beyond it \u2014 the end." }
+    ],
+    "boss:awake": [
+      { id: "boss-awake", who: null, text: "The Skeleton King stands. He remembers your face. He does not remember his own." }
+    ],
+    "boss:enraged": [
+      { id: "boss-enrage", who: null, text: "His axe glows. His step quickens. He fights not for himself now \u2014 for what he was." }
+    ],
+    "boss:dead": [
+      { id: "boss-dead", who: null, text: "The king falls. Bone becomes dust. Dust becomes wind. The valley exhales for the first time in a hundred years." }
+    ],
+    "start:game": [
+      { id: "start-game", who: null, text: "You are the knight the village has been waiting for. Whether you know it or not." }
+    ]
+  };
+  var StoryDirector = class {
+    constructor(events) {
+      this.fired = /* @__PURE__ */ new Set();
+      this.events = events;
+    }
+    reset() {
+      this.fired.clear();
+    }
+    fire(beat) {
+      if (this.fired.has(beat.id)) return;
+      this.fired.add(beat.id);
+      if (beat.delay && beat.delay > 0) {
+        window.setTimeout(() => this.events.onStory(beat.who, beat.text), beat.delay);
+      } else {
+        this.events.onStory(beat.who, beat.text);
+      }
+    }
+    onRoomChanged(key) {
+      const beats = ROOM_BEATS[key];
+      if (!beats) return;
+      for (const b of beats) this.fire(b);
+    }
+    onNpcTrigger(id) {
+      const beats = NPC_BEATS[id];
+      if (!beats) return;
+      for (const b of beats) this.fire(b);
+    }
+    onEvent(key) {
+      const beats = EVENT_BEATS[key];
+      if (!beats) return;
+      for (const b of beats) this.fire(b);
+    }
+  };
+
+  // src/art/sword-fx.ts
+  function makeArcMesh(step2) {
+    const arcAngle = PLAYER.attackArc;
+    const innerR = 0.7;
+    const outerR = PLAYER.attackRange + 0.2;
+    const segs = 24;
+    const geo = new BufferGeometry();
+    const positions = [];
+    const indices = [];
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      const a = -arcAngle / 2 + t * arcAngle;
+      const cx = Math.sin(a);
+      const cz = Math.cos(a);
+      positions.push(cx * innerR, 0, cz * innerR);
+      positions.push(cx * outerR, 0, cz * outerR);
+    }
+    for (let i = 0; i < segs; i++) {
+      const base = i * 2;
+      indices.push(base, base + 1, base + 2);
+      indices.push(base + 2, base + 1, base + 3);
+    }
+    geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    const color = step2 === 0 ? 14411519 : 16766074;
+    const mat = new MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.85,
+      side: DoubleSide,
+      depthWrite: false
+    });
+    const mesh = new Mesh(geo, mat);
+    mesh.rotation.x = 0;
+    mesh.position.y = 1;
+    return mesh;
+  }
+  function makeComboTexture(text, hot) {
+    const size = 128;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx2 = canvas.getContext("2d");
+    const r = Math.round(255);
+    const g = Math.round(210 - hot * 150);
+    const b = Math.round(120 - hot * 100);
+    ctx2.font = "bold 60px -apple-system, Segoe UI, sans-serif";
+    ctx2.textAlign = "center";
+    ctx2.textBaseline = "middle";
+    ctx2.lineWidth = 8;
+    ctx2.strokeStyle = "rgba(0,0,0,0.9)";
+    ctx2.strokeText(text, size / 2, size / 2);
+    ctx2.fillStyle = `rgb(${r},${g},${Math.max(0, b)})`;
+    ctx2.fillText(text, size / 2, size / 2);
+    const tex = new CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+  }
+  var SwordFxSystem = class {
+    constructor(scene) {
+      this.arcs = [];
+      this.popups = [];
+      this.scene = scene;
+    }
+    /**
+     * Spawn a slash arc mesh in front of the player, oriented to their
+     * facing. `step` is 0 or 1 (combo index).
+     */
+    spawnArc(pos, facing, step2) {
+      const mesh = makeArcMesh(step2);
+      mesh.position.set(pos.x, 1, pos.z);
+      const ang = Math.atan2(facing.x, facing.z);
+      mesh.rotation.y = ang;
+      this.scene.add(mesh);
+      this.arcs.push({
+        mesh,
+        life: 0,
+        maxLife: step2 === 0 ? 0.22 : 0.28,
+        swingStep: step2
+      });
+    }
+    /** Pop a combo counter above the hit target. Only shows when count >= 2. */
+    popCombo(pos, count) {
+      if (count < 2) return;
+      const hot = Math.min(1, (count - 2) / 8);
+      const tex = makeComboTexture(`${count}x`, hot);
+      const mat = new SpriteMaterial({
+        map: tex,
+        transparent: true,
+        opacity: 1,
+        depthWrite: false,
+        depthTest: false
+      });
+      const sprite = new Sprite(mat);
+      sprite.position.set(pos.x + (Math.random() - 0.5) * 0.6, 2, pos.z + (Math.random() - 0.5) * 0.6);
+      sprite.scale.setScalar(1.2 + hot * 0.9);
+      this.scene.add(sprite);
+      this.popups.push({
+        sprite,
+        life: 0,
+        maxLife: 0.9,
+        velY: 2.2,
+        texture: tex
+      });
+    }
+    update(dt) {
+      for (let i = this.arcs.length - 1; i >= 0; i--) {
+        const a = this.arcs[i];
+        a.life += dt;
+        const t = a.life / a.maxLife;
+        if (t >= 1) {
+          this.scene.remove(a.mesh);
+          a.mesh.geometry.dispose();
+          a.mesh.material.dispose();
+          this.arcs.splice(i, 1);
+          continue;
+        }
+        const s = 1 + t * 0.35;
+        a.mesh.scale.setScalar(s);
+        a.mesh.material.opacity = (1 - t) * 0.85;
+      }
+      for (let i = this.popups.length - 1; i >= 0; i--) {
+        const p = this.popups[i];
+        p.life += dt;
+        const t = p.life / p.maxLife;
+        if (t >= 1) {
+          this.scene.remove(p.sprite);
+          p.sprite.material.dispose();
+          p.texture.dispose();
+          this.popups.splice(i, 1);
+          continue;
+        }
+        p.sprite.position.y += p.velY * dt;
+        p.velY = Math.max(0, p.velY - 5 * dt);
+        p.sprite.material.opacity = 1 - t;
+      }
     }
   };
 
@@ -38944,6 +39880,8 @@ void main() {
             }
             break;
         }
+        const npcKind = NPC_CHARS[ch];
+        if (npcKind) runtime.npcSpawns.push({ kind: npcKind, tx, tz });
       }
     }
   }
@@ -39027,6 +39965,8 @@ void main() {
             runtime.solid[tz][tx] = true;
             break;
         }
+        const npcKind = NPC_CHARS[ch];
+        if (npcKind) runtime.npcSpawns.push({ kind: npcKind, tx, tz });
       }
     }
     return start;
@@ -39056,6 +39996,7 @@ void main() {
         barrels: [],
         spikes: [],
         enemySpawns: [],
+        npcSpawns: [],
         hasBoss: false,
         cleared: def.biome === "village",
         // villages never lock the player in
@@ -39254,6 +40195,8 @@ void main() {
             }
             const enemyKind = ENEMY_CHARS[ch];
             if (enemyKind) runtime.enemySpawns.push({ kind: enemyKind, tx, tz });
+            const npcKind = NPC_CHARS[ch];
+            if (npcKind) runtime.npcSpawns.push({ kind: npcKind, tx, tz });
           }
         }
       }
@@ -39306,6 +40249,8 @@ void main() {
   var Hud = class {
     constructor(mount) {
       this.toastTimer = null;
+      this.narrTimer = null;
+      this.narrQueue = [];
       mount.innerHTML = `
       <div id="hud-top">
         <div id="hud-hearts"></div>
@@ -39314,12 +40259,18 @@ void main() {
           <div id="hud-coins">\u{1F4B0} <span>0</span></div>
         </div>
       </div>
+      <div id="hud-combo" class="hidden"><span class="cx"></span><span class="clabel">COMBO</span></div>
       <div id="hud-room-label"></div>
       <div id="hud-boss-bar" class="hidden">
         <div id="hud-boss-fill"></div>
         <div id="hud-boss-label">SKELETON WARRIOR</div>
       </div>
       <div id="hud-toast" class="hidden"></div>
+      <div id="hud-interact" class="hidden"><span class="key">E</span> <span class="lbl">Talk</span></div>
+      <div id="hud-narrator" class="hidden">
+        <div id="hud-narr-speaker"></div>
+        <div id="hud-narr-text"></div>
+      </div>
     `;
       this.hearts = mount.querySelector("#hud-hearts");
       this.coins = mount.querySelector("#hud-coins span");
@@ -39328,6 +40279,11 @@ void main() {
       this.bossBar = mount.querySelector("#hud-boss-bar");
       this.bossFill = mount.querySelector("#hud-boss-fill");
       this.toastEl = mount.querySelector("#hud-toast");
+      this.narrPanel = mount.querySelector("#hud-narrator");
+      this.narrSpeaker = mount.querySelector("#hud-narr-speaker");
+      this.narrText = mount.querySelector("#hud-narr-text");
+      this.interactPrompt = mount.querySelector("#hud-interact");
+      this.comboBadge = mount.querySelector("#hud-combo");
     }
     render(player) {
       const totalHearts = PLAYER.maxHalfHearts / 2;
@@ -39363,6 +40319,70 @@ void main() {
         this.toastEl.classList.add("hidden");
         this.toastTimer = null;
       }, 2200);
+    }
+    /**
+     * Narrator / dialog line. `who` = null shows italic narrator styling,
+     * otherwise shows "Speaker Name" in gold on top of the text.
+     *
+     * If a line is already displayed, the new one queues behind it and rolls
+     * in when the current one auto-hides.
+     */
+    narrate(who, text) {
+      if (this.narrTimer !== null) {
+        this.narrQueue.push({ who, text });
+        return;
+      }
+      this.showNarrLine(who, text);
+    }
+    showNarrLine(who, text) {
+      if (who === null) {
+        this.narrSpeaker.classList.add("hidden");
+        this.narrText.classList.add("narrator");
+      } else {
+        this.narrSpeaker.classList.remove("hidden");
+        this.narrSpeaker.textContent = who;
+        this.narrText.classList.remove("narrator");
+      }
+      this.narrText.textContent = text;
+      this.narrPanel.classList.remove("hidden");
+      this.narrPanel.classList.remove("in");
+      void this.narrPanel.offsetWidth;
+      this.narrPanel.classList.add("in");
+      const dur = Math.min(6e3, Math.max(2400, text.length * 70));
+      this.narrTimer = window.setTimeout(() => {
+        this.narrPanel.classList.add("hidden");
+        this.narrTimer = null;
+        const next = this.narrQueue.shift();
+        if (next) window.setTimeout(() => this.showNarrLine(next.who, next.text), 200);
+      }, dur);
+    }
+    /** Show/hide the "Press E" prompt based on the current interact target. */
+    updateInteractPrompt(npc) {
+      if (!npc) {
+        this.interactPrompt.classList.add("hidden");
+        return;
+      }
+      this.interactPrompt.classList.remove("hidden");
+      const label = this.interactPrompt.querySelector(".lbl");
+      if (label) label.textContent = npc.kind === "ghost" ? "Listen" : "Talk";
+    }
+    /** Set the combo counter. 0 hides the badge. */
+    setCombo(count) {
+      if (count < 2) {
+        this.comboBadge.classList.add("hidden");
+        return;
+      }
+      this.comboBadge.classList.remove("hidden");
+      const cx = this.comboBadge.querySelector(".cx");
+      if (cx) cx.textContent = `${count}\xD7`;
+      const hot = Math.min(1, (count - 2) / 8);
+      this.comboBadge.style.setProperty(
+        "--combo-color",
+        `rgb(255, ${Math.max(0, 210 - hot * 150)}, ${Math.max(0, 120 - hot * 100)})`
+      );
+      this.comboBadge.classList.remove("bump");
+      void this.comboBadge.offsetWidth;
+      this.comboBadge.classList.add("bump");
     }
   };
   function heartSvg(cls) {
@@ -39677,6 +40697,9 @@ void main() {
     let props = null;
     let boss = null;
     let fx = null;
+    let npcs = null;
+    let story = null;
+    let swordFx = null;
     let running = false;
     const events = {
       onHudDirty: () => hud?.render(player),
@@ -39689,16 +40712,37 @@ void main() {
       onVictory: () => {
         running = false;
         if (player) playerCheer(player);
-        window.setTimeout(() => screens.showVictory(player?.coins ?? 0), 1400);
+        story?.onEvent("boss:dead");
+        window.setTimeout(() => screens.showVictory(player?.coins ?? 0), 1800);
       },
       onRoomChanged: (key) => {
         const def = roomAt(...key.split(",").map(Number));
         if (def) hud?.setRoomLabel(def.name);
         minimap?.markVisited(key);
+        story?.onRoomChanged(key);
         if (key === BOSS_ROOM_KEY && boss?.boss?.state === "waiting") {
           boss.wake();
         }
-      }
+      },
+      onStory: (who, text) => hud?.narrate(who, text),
+      onStoryTrigger: (id) => story?.onNpcTrigger(id),
+      onSwordHit: (kind, pos) => {
+        const strength = kind === "boss" ? 0.55 : kind === "enemy" ? 0.25 : 0.15;
+        cam.shake(strength);
+        if ((kind === "enemy" || kind === "boss") && player) {
+          player.comboCount += 1;
+          player.comboTimer = 1.6;
+          hud?.setCombo(player.comboCount);
+          swordFx?.popCombo(pos, player.comboCount);
+        }
+      },
+      onSwordSwing: (step2) => {
+        cam.shake(step2 === 0 ? 0.08 : 0.12);
+        if (player && swordFx) {
+          swordFx.spawnArc(player.pos, player.facing, step2);
+        }
+      },
+      onGameEvent: (key) => story?.onEvent(key)
     };
     async function startGame() {
       initAudio();
@@ -39707,11 +40751,14 @@ void main() {
       await loadAll((done, total, label) => screens.setLoadingProgress(done, total, label));
       world = buildWorld(scene);
       fx = new FxSystem(scene);
+      swordFx = new SwordFxSystem(scene);
       pickups = new PickupSystem(scene, fx, events);
       projectiles = new ProjectileSystem(scene, fx, events);
       props = new PropsSystem(fx, events);
       enemies = new EnemySystem(scene, fx, events);
       boss = new BossSystem(scene, fx, events);
+      npcs = new NpcSystem(scene, events);
+      story = new StoryDirector(events);
       player = createPlayer(scene, world.playerStart);
       roomMgr = new RoomManager(world.rooms, START_ROOM_KEY, events);
       hud = new Hud(hudMount);
@@ -39721,25 +40768,34 @@ void main() {
       minimap = new Minimap(hudMount);
       boss.spawn(world.bossSpawn);
       for (const [, room] of world.rooms) {
-        if (room.enemySpawns.length === 0) continue;
         for (const s of room.enemySpawns) {
           enemies.spawnEnemy(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
+        }
+        for (const s of room.npcSpawns) {
+          npcs.spawn(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key, s.tx, s.tz);
         }
       }
       cam.snap(player.pos, roomMgr.current, player.facing);
       startMusic();
       screens.hide();
       running = true;
+      window.setTimeout(() => story?.onEvent("start:game"), 700);
+      story.onRoomChanged(START_ROOM_KEY);
     }
     function restartGame() {
-      if (!player || !world || !roomMgr || !enemies || !pickups || !projectiles) return;
+      if (!player || !world || !roomMgr || !enemies || !pickups || !projectiles || !npcs || !story) return;
       enemies.clearAll();
       pickups.clearAll();
       projectiles.clearAll();
+      npcs.clearAll();
+      story.reset();
       for (const [, room] of world.rooms) {
         room.cleared = room.doors.length === 0 || room.enemySpawns.length === 0 && !room.hasBoss;
         for (const s of room.enemySpawns) {
           enemies.spawnEnemy(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
+        }
+        for (const s of room.npcSpawns) {
+          npcs.spawn(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key, s.tx, s.tz);
         }
       }
       reviveAtStart(player, world.playerStart);
@@ -39755,29 +40811,42 @@ void main() {
         r.group.visible = initial;
       }
       running = true;
+      story.onRoomChanged(START_ROOM_KEY);
     }
     let last = performance.now();
     function tick(now2) {
       const dt = Math.min(0.05, (now2 - last) / 1e3);
       last = now2;
-      if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && fx) {
+      if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && fx && npcs && swordFx) {
         pollKeyboard(input, touchUi.active());
         updatePlayer(player, input, dt, roomMgr, fx, events);
+        npcs.update(dt, player, roomMgr, input);
         enemies.update(dt, player, roomMgr, projectiles, pickups);
         boss.update(dt, player, roomMgr, projectiles, props);
         projectiles.update(dt, player, roomMgr);
         pickups.update(dt, player);
         props.update(dt, player, input, roomMgr, pickups);
-        if (input.interactPressed) roomMgr.tryUnlockNearbyDoor(player);
+        if (input.interactPressed && !npcs.activeNpc) {
+          roomMgr.tryUnlockNearbyDoor(player);
+        }
         roomMgr.update(dt, player, cam);
         cam.update(dt, player.pos, roomMgr.current, player.facing);
         updateTorches(roomMgr.current.key, now2 / 1e3);
         fx.update(dt);
+        swordFx.update(dt);
         const flashRoots = [player.root];
         for (const e of enemies.enemies) flashRoots.push(e.root);
         if (boss.boss) flashRoots.push(boss.boss.root);
         tickFlashes(flashRoots, now2 / 1e3);
+        if (player.comboTimer > 0) {
+          player.comboTimer -= dt;
+          if (player.comboTimer <= 0) {
+            player.comboCount = 0;
+            hud?.setCombo(0);
+          }
+        }
         hud?.render(player);
+        hud?.updateInteractPrompt(npcs.activeNpc);
         minimap?.render(world.rooms, roomMgr.current.key, now2 / 1e3);
         endFrame(input, dt);
       }

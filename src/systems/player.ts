@@ -52,6 +52,8 @@ export function createPlayer(scene: THREE.Scene, start: THREE.Vector3): PlayerDa
     rollCooldown: 0,
     coins: 0,
     hasBossKey: false,
+    comboCount: 0,
+    comboTimer: 0,
   };
 }
 
@@ -126,6 +128,7 @@ export function updatePlayer(
       if (!frozen && (input.attackPressed || input.attackBuffered > 0)) {
         startAttack(p, 0);
         input.attackBuffered = 0;
+        events.onSwordSwing(0);
       } else if (!frozen && input.rollPressed && p.rollCooldown <= 0) {
         startRoll(p, wantLen > 0.01 ? { x: wantX / wantLen, z: wantZ / wantLen } : p.facing);
       }
@@ -147,6 +150,7 @@ export function updatePlayer(
         play(p.anim, ["Idle"], { fade: 0.12 });
       } else if (input.attackPressed) {
         startAttack(p, 0);
+        events.onSwordSwing(0);
       }
       break;
     }
@@ -162,6 +166,7 @@ export function updatePlayer(
         if (input.attackBuffered > 0 && p.attackIndex === 0) {
           startAttack(p, 1);
           input.attackBuffered = 0;
+          events.onSwordSwing(1);
         } else {
           p.state = "idle";
           p.stateTime = 0;

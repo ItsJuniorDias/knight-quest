@@ -114,6 +114,7 @@ export class PickupSystem {
       player.hasBossKey = true;
       sfx.key();
       this.events.onToast("Got the Boss Key!");
+      this.events.onGameEvent("got:bosskey");
     }
     this.events.onHudDirty();
   }

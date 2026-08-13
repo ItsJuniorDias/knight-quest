@@ -1,11 +1,16 @@
 // ---------------------------------------------------------------------------
 // THE DUNGEON — pure data, no three.js. Testable in plain node.
 //
-// v2 layout: 22 rooms across 3 biomes (village + forest + dungeon) on a
-// 15x13 tile grid, giving each room roughly 3× the floor area of v1 and
-// enough breathing room for the new third-person camera. Rooms are laid
-// out in a Zelda-like open dungeon with looping corridors, an optional
-// treasury detour, and a forest fringe surrounding the village.
+// v3 layout: 17 rooms across 3 biomes (village + forest + dungeon) on a
+// 15x13 tile grid. Compared to v2 this version:
+//   • lays out the village as a rich hub with 8 named NPCs (blacksmith,
+//     tavern keeper, elder, priestess, merchants, farmer, child) so the
+//     first minutes of the game are a busy overworld, not an empty park;
+//   • sprinkles hermit / villager NPCs across the surrounding forest rooms;
+//   • fills every dungeon room with a "ghost of ___" NPC — flavor for the
+//     story director and one-shot narrative beats;
+//   • roughly triples the enemy density in the dungeon (Zelda-ish waves of
+//     3-6 per room, mixed kinds, with rogues + mages guarding key rooms).
 //
 // Legend (shared):
 //   W wall            . floor           D door cell (must sit on the edge,
@@ -22,12 +27,16 @@
 //   M market stall     C campfire   ~ stream water        = bridge post
 //   r roadsign         P player start   , dirt road   . grass floor
 //
+// NPC chars (added v3 — same for village/forest/dungeon):
+//   N villager   E elder      Q merchant   J guard      Y hermit
+//   G ghost      k king-echo (Throne-room special)
+//
 // Doors are declared explicitly per room; the map's D cells are validated
 // against them by test/dungeon.test.mjs so the two can never drift apart.
 // ---------------------------------------------------------------------------
 
 import { ROOM_H, ROOM_W } from "../config";
-import type { DoorDir, EnemyKind } from "../types";
+import type { DoorDir, EnemyKind, NpcKind } from "../types";
 
 export type RoomBiome = "dungeon" | "village" | "forest";
 
@@ -51,7 +60,7 @@ export interface RoomDef {
 
 export const ROOMS: RoomDef[] = [
   // ============================================================
-  // ROW gy=5 — southern forest fringe (below the village)
+  // ROW gy=5 — southern forest (hermit's clearing below the village)
   // ============================================================
   {
     key: "0,5",
@@ -66,7 +75,7 @@ export const ROOMS: RoomDef[] = [
       "Tg..fgg.f.gg.TT",
       "T.gggT..fggg.TT",
       "T.f...gT......T",
-      "Tgg.g.f...gg..T",
+      "Tgg.g.fY..gg..T",
       "T.f.gg.g.g.f..T",
       "T..g.f..g.f.g.T",
       "Tg..gg.gg..gg.T",
@@ -93,11 +102,11 @@ export const ROOMS: RoomDef[] = [
       "T.fgg.f.gg.fg.T",
       "Tg.f.gg.f..g.gT",
       "T.gg.f.gg.f.g.T",
-      "T.f..g...gg.f.T",
+      "T.f..ggN.g.f.gT",
       "Tgg.f.gg.f.gg.T",
       "T.g..g.f.gg.f.D",
       "Tf.gg.f.gg.g.gT",
-      "T.g.f.gg.g.f..T",
+      "T.g.f.gg.gN.g.T",
       "Tg.gg.f..gg.g.T",
       "T.f.gg.gg..f.gT",
       "Tg..f..g.gg.f.T",
@@ -112,19 +121,27 @@ export const ROOMS: RoomDef[] = [
     name: "Willowvale Village",
     biome: "village",
     startVisible: true,
+    // v3 village layout — 8 NPCs total, arranged so the elder is dead
+    // center and the merchants flank the east/west roads.
+    //   J = blacksmith at west edge         N = tavern keeper east
+    //   Q = west merchant     Q = east fruit-seller
+    //   E = Elder Alden (center-south of the campfire)
+    //   N = child running near the road
+    //   N = priestess by the well
+    //   N = farmer at the SE corner
     map: [
       "TTTTTTTDTTTTTTT",
       "T.fg.H.,.H.gg.T",
-      "Tg.f...,....f.T",
+      "T.J.f..,...N..T",
       "T.gg.,,,,,.gg.T",
-      "T.f.,,C,,,,.f.T",
-      "T.M.,,,,,,,.M.T",
-      "D,,,,,P,,,,,,,D",
+      "T.f.,,C,,,N.f.T",
+      "T.Q.,,,,,,,.Q.T",
+      "D,,,,,P,E,,,,,D",
       "T.f.,,,,,,,.f.T",
-      "T.gg.,,L,,,.g.T",
+      "T.gg.,,L,N,.g.T",
       "T.f...,,,..fggT",
       "Tg.H..,,..H.f.T",
-      "T.fg.U.,.gg.fgT",
+      "T.fg.U.,.gg.NgT",
       "TTTTTTTDTTTTTTT",
     ],
     doors: [
@@ -145,12 +162,12 @@ export const ROOMS: RoomDef[] = [
       "TTTTTTTTTTTTTTT",
       "T.gg.f.g.fg.g.T",
       "Tf..gg.f..g.f.T",
-      "T.gg.f.gg.f.g.T",
+      "T.gg.f.gg.fN.gT",
       "T.f...gg.f.gg.T",
       "Tgg.f.g..gg.f.T",
       "D.g..gg.f..g.gT",
       "Tf.gg.f.gg.f..T",
-      "T.g.f..gg.g.g.T",
+      "T.gN.f..gg.g.gT",
       "Tg.gg.gg..f.f.T",
       "T.f.gg.g.gg.g.T",
       "Tg..f..gg..f..T",
@@ -172,15 +189,15 @@ export const ROOMS: RoomDef[] = [
     startVisible: false,
     map: [
       "WWWWWWWWWWWWWWW",
-      "W.............W",
       "W..b.......b..W",
+      "W..1........1.W",
       "W.............W",
       "W....x.....x..W",
+      "W......G......W",
+      "W..o1......c1.D",
       "W.............W",
-      "W..o.......c..D",
-      "W.............W",
-      "W..b.......b..W",
-      "W.............W",
+      "W..b...1...b..W",
+      "W..1.......1..W",
       "W....S.....S..W",
       "W.............W",
       "WWWWWWWWWWWWWWW",
@@ -199,12 +216,12 @@ export const ROOMS: RoomDef[] = [
       "WWWWWWWDWWWWWWW",
       "W.............W",
       "W..b.......b..W",
-      "W.............W",
+      "W..1........1.W",
       "W.............W",
       "W......P......W",
       "D.............D",
-      "W.............W",
-      "W.............W",
+      "W......1......W",
+      "W..1........1.W",
       "W..b...S...b..W",
       "W.............W",
       "W.............W",
@@ -228,14 +245,14 @@ export const ROOMS: RoomDef[] = [
     map: [
       "WWWWWWWDWWWWWWW",
       "W..x.......x..W",
-      "W.............W",
+      "W..2........2.W",
+      "W.......G.....W",
       "W..2.......2..W",
-      "W.............W",
       "W......c......W",
       "D.............W",
-      "W.............W",
+      "W..2.......2..W",
       "W..o.......o..W",
-      "W.............W",
+      "W..1.......1..W",
       "W..b.......b..W",
       "W.............W",
       "WWWWWWWWWWWWWWW",
@@ -260,15 +277,15 @@ export const ROOMS: RoomDef[] = [
     map: [
       "WWWWWWWWWWWWWWW",
       "W..x.......x..W",
-      "W.............W",
+      "W..1........1.W",
       "W..b.......b..W",
       "W.............W",
       "W......h......W",
-      "W.............D",
-      "W.............W",
+      "W......G......D",
+      "W..1.......1..W",
       "W..b.......b..W",
       "W.............W",
-      "W..o.......o..W",
+      "W..o...1...o..W",
       "W.............W",
       "WWWWWWWWWWWWWWW",
     ],
@@ -285,15 +302,15 @@ export const ROOMS: RoomDef[] = [
     map: [
       "WWWWWWWDWWWWWWW",
       "W..x...x...x..W",
-      "W.............W",
       "W.2.........2.W",
       "W.............W",
+      "W.2.........2.W",
       "W..b...c...b..W",
-      "D.............D",
+      "D......G......D",
       "W..o.......o..W",
-      "W.............W",
       "W.2....s....2.W",
       "W.............W",
+      "W.....1.1.....W",
       "W..x.......x..W",
       "WWWWWWWWWWWWWWW",
     ],
@@ -314,13 +331,13 @@ export const ROOMS: RoomDef[] = [
     map: [
       "WWWWWWWDWWWWWWW",
       "W.p.........p.W",
-      "W.............W",
       "W...1.....1...W",
       "W.............W",
+      "W....2.....2..W",
       "W......1......W",
       "D.............D",
       "W......1......W",
-      "W.............W",
+      "W....2.....2..W",
       "W...1.....1...W",
       "W.............W",
       "W.p.........p.W",
@@ -344,13 +361,13 @@ export const ROOMS: RoomDef[] = [
     map: [
       "WWWWWWWDWWWWWWW",
       "W..s.......s..W",
-      "W.............W",
       "W...3.....3...W",
       "W.............W",
+      "W...s..G..s...W",
       "W......s......W",
       "D......3......W",
       "W......s......W",
-      "W.............W",
+      "W...s.....s...W",
       "W...3.....3...W",
       "W.............W",
       "W..s...c...s..W",
@@ -376,14 +393,14 @@ export const ROOMS: RoomDef[] = [
     startVisible: false,
     map: [
       "WWWWWWWWWWWWWWW",
-      "W..b.......b..W",
+      "W..b...G...b..W",
       "W.............W",
       "W.....K.......W",
       "W.............W",
       "W..2.......2..W",
       "W......3......D",
       "W..2.......2..W",
-      "W.............W",
+      "W..2.......2..W",
       "W..h.......c..W",
       "W.............W",
       "W..B.......B..W",
@@ -405,15 +422,15 @@ export const ROOMS: RoomDef[] = [
     map: [
       "WWWWWWWDWWWWWWW",
       "W.p...s...s.p.W",
-      "W.............W",
-      "W..1.......1..W",
-      "W.............W",
+      "W..2.......2..W",
+      "W...1.....1...W",
       "W......3......W",
-      "D.....s.s.....D",
+      "W......s......W",
+      "D......3......D",
+      "W......s......W",
       "W......3......W",
-      "W.............W",
-      "W..1.......1..W",
-      "W.............W",
+      "W...1.....1...W",
+      "W..2.......2..W",
       "W.p...s...s.p.W",
       "WWWWWWWDWWWWWWW",
     ],
@@ -434,16 +451,16 @@ export const ROOMS: RoomDef[] = [
     startVisible: false,
     map: [
       "WWWWWWWWWWWWWWW",
-      "W..s.......s..W",
-      "W.............W",
+      "W..s...G...s..W",
       "W...3.....3...W",
       "W.............W",
       "W......h......W",
-      "D......c......W",
-      "W......s......W",
-      "W.............W",
+      "W......c......W",
+      "D......s......W",
       "W...3.....3...W",
-      "W.............W",
+      "W......3......W",
+      "W...s.....s...W",
+      "W..3.......3..W",
       "W..s.......s..W",
       "WWWWWWWDWWWWWWW",
     ],
@@ -466,8 +483,8 @@ export const ROOMS: RoomDef[] = [
     startVisible: false,
     map: [
       "WWWWWWWWWWWWWWW",
-      "W.............W",
       "W.p.........p.W",
+      "W.............W",
       "W.............W",
       "W.............W",
       "W......Z......W",
@@ -475,7 +492,7 @@ export const ROOMS: RoomDef[] = [
       "W.............W",
       "W.p.........p.W",
       "W.............W",
-      "W.............W",
+      "W......k......W",
       "W.............W",
       "WWWWWWWDWWWWWWW",
     ],
@@ -535,6 +552,18 @@ export const ENEMY_CHARS: Record<string, EnemyKind> = {
   "1": "minion",
   "2": "rogue",
   "3": "mage",
+};
+
+// v3: NPC characters. The special "k" (king echo) is a ghost with a
+// throne-room-only dialog, but the builder treats it as a "ghost" kind.
+export const NPC_CHARS: Record<string, NpcKind> = {
+  N: "villager",
+  E: "elder",
+  Q: "merchant",
+  J: "guard",
+  Y: "hermit",
+  G: "ghost",
+  k: "ghost", // king echo
 };
 
 /** Cells the movement system treats as solid (before doors/props are applied). */
