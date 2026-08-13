@@ -507,7 +507,7 @@ export class NpcSystem {
       const npc = bestActive;
       const line = npc.lines[npc.lineIdx];
       this.events.onStory(line.who, line.text);
-      sfx.coin(); // little "blip" for dialog beat
+      sfx.npcTalk(); // brief two-note blip that isn't the coin ping
       npc.lineIdx = (npc.lineIdx + 1) % npc.lines.length;
       npc.lastTalkedAt = performance.now() / 1000;
       // fire the story trigger once per id

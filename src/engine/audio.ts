@@ -1,6 +1,19 @@
 // ---------------------------------------------------------------------------
 // Procedural audio — zero asset files, same approach as Spell Storm's
-// audio/procedural.ts. A tiny synth layer plus a step-sequenced dungeon loop.
+// audio/procedural.ts. A tiny synth layer plus step-sequenced music tracks,
+// ONE PER CONTEXT so every screen and biome gets its own vibe:
+//
+//   - title      : title screen — slow, hopeful, sparse
+//   - village    : peaceful pastoral loop, folk harmony, soft
+//   - forest     : mysterious woods, minor mode with pentatonic flute
+//   - dungeon    : brooding dungeon crawl — the original v3 loop, retuned
+//   - boss       : intense driving loop for the throne room
+//   - victory    : triumphant fanfare (short, non-looping)
+//   - gameover   : sad descending loop
+//
+// The scheduler runs one active track at a time. Cross-fades are handled by
+// ramping musicGain on switch — the new track starts on the next bar so a
+// beat pulse doesn't drop mid-note.
 //
 // Everything is created lazily on the first user gesture (browser autoplay
 // policy). Every public function is safe to call before init.
@@ -11,6 +24,20 @@ let master: GainNode | null = null;
 let musicGain: GainNode | null = null;
 let musicTimer: number | null = null;
 let muted = false;
+
+/** Music context/mood keys. */
+export type MusicTrack =
+  | "title"
+  | "village"
+  | "forest"
+  | "dungeon"
+  | "boss"
+  | "victory"
+  | "gameover";
+
+// Currently active track, and the one queued for switch-on-next-bar.
+let currentTrack: MusicTrack | null = null;
+let pendingTrack: MusicTrack | null = null;
 
 export function initAudio(): void {
   if (ctx) {
@@ -69,7 +96,7 @@ function tone(o: ToneOpts): void {
   osc.stop(t0 + o.dur + 0.05);
 }
 
-function noise(dur: number, gain: number, filterFreq: number, filterEnd?: number, when?: number): void {
+function noise(dur: number, gain: number, filterFreq: number, filterEnd?: number, when?: number, dest?: AudioNode): void {
   if (!ctx || !master) return;
   const t0 = when ?? now();
   const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
@@ -85,7 +112,7 @@ function noise(dur: number, gain: number, filterFreq: number, filterEnd?: number
   const g = ctx.createGain();
   g.gain.setValueAtTime(gain, t0);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-  src.connect(filter).connect(g).connect(master);
+  src.connect(filter).connect(g).connect(dest ?? master);
   src.start(t0);
 }
 
@@ -165,6 +192,10 @@ export const sfx = {
     noise(0.5, 0.16, 400, 900);
     tone({ freq: 100, freqEnd: 180, dur: 0.5, type: "triangle", gain: 0.12 });
   },
+  npcTalk(): void {
+    tone({ freq: 520, dur: 0.05, type: "square", gain: 0.09 });
+    tone({ freq: 660, dur: 0.05, type: "square", gain: 0.09, when: now() + 0.05 });
+  },
   victory(): void {
     const t = now();
     const seq: [number, number][] = [
@@ -184,49 +215,275 @@ export const sfx = {
   },
 };
 
-// ------------------------------ music ---------------------------------------
+// ============================================================================
+// MUSIC
 //
-// A brooding little dungeon loop: minor bass ostinato + sparse arpeggio +
-// noise-hat pulse. Scheduled bar by bar with lookahead.
+// A tiny bar-scheduled step sequencer with lookahead. Every track defines an
+// array of 16 eighth-notes for BASS + MELODY + optional HAT/COLOR. The active
+// track is picked by playMusic(track). Bar boundary is a natural place to
+// switch tracks so the change lands musically.
+// ============================================================================
 
-const BPM = 92;
-const STEP = 60 / BPM / 2; // eighth notes
-// A minor-ish: A2 root walk + harmonic color
-const BASS = [110, 110, 0, 110, 98, 0, 110, 0, 87.3, 87.3, 0, 87.3, 103.8, 0, 98, 0];
-const ARP = [440, 0, 523, 0, 659, 0, 523, 0, 415, 0, 523, 0, 622, 0, 523, 0];
+interface Track {
+  bpm: number;          // beats per minute
+  bassGain: number;     // base gain multipliers per voice
+  melodyGain: number;
+  colorGain: number;
+  bass: number[];       // 16 steps (0 = rest, Hz otherwise)
+  melody: number[];     // 16 steps
+  /** Called once per step by scheduler. `bar` = bar index (0..3), `i` = step (0..15). */
+  color?(bar: number, i: number, t: number): void;
+}
 
+// ---- Village: pastoral, gentle, C major, folk feel ----
+// Steady root+fifth bass, sparse plucky melody on triangle, no hat.
+const VILLAGE: Track = {
+  bpm: 78,
+  bassGain: 0.14,
+  melodyGain: 0.09,
+  colorGain: 0.05,
+  //         0    1    2    3    4    5    6    7    8    9    10   11   12   13   14   15
+  bass:    [130.8, 0,   0,   0,   196, 0,   0,   0,   164.8, 0, 0,   0,   146.8, 0, 0,   0],
+  melody:  [523,  0,   659, 0,   784, 0,   659, 0,   523,  0,  587, 0,   659,  0, 587, 523],
+  color: (bar, i, t) => {
+    // A soft "bell" chime every 8 bars on the downbeat
+    if (bar === 3 && i === 0) {
+      tone({ freq: 1046, dur: 1.2, type: "triangle", gain: 0.05, when: t, dest: musicGain ?? undefined });
+      tone({ freq: 1319, dur: 1.2, type: "triangle", gain: 0.035, when: t, dest: musicGain ?? undefined });
+    }
+  },
+};
+
+// ---- Forest: mysterious minor with pentatonic flute-like melody ----
+const FOREST: Track = {
+  bpm: 70,
+  bassGain: 0.13,
+  melodyGain: 0.08,
+  colorGain: 0.04,
+  //        E2 low ostinato
+  bass:    [82.4, 0, 0, 0, 82.4, 0, 110, 0, 82.4, 0, 0, 0, 98, 0, 0, 0],
+  //        A minor pentatonic: A C D E G
+  melody:  [0, 0, 440, 0, 0, 523, 0, 587, 0, 0, 659, 0, 523, 0, 440, 0],
+  color: (bar, i, t) => {
+    // "wind" — quiet high noise every 4 bars, on step 8
+    if (i === 8 && bar % 2 === 0) {
+      noise(0.5, 0.03, 4000, 800, t, musicGain ?? undefined);
+    }
+    // low "hoot" (owl) on bar 3, step 12
+    if (bar === 2 && i === 12) {
+      tone({ freq: 220, freqEnd: 174.6, dur: 0.6, type: "sine", gain: 0.06, when: t, dest: musicGain ?? undefined });
+    }
+  },
+};
+
+// ---- Dungeon: the original v3 loop, brooding ----
+const DUNGEON: Track = {
+  bpm: 92,
+  bassGain: 0.22,
+  melodyGain: 0.05,
+  colorGain: 0.05,
+  bass:    [110, 110, 0, 110, 98, 0, 110, 0, 87.3, 87.3, 0, 87.3, 103.8, 0, 98, 0],
+  melody:  [440, 0, 523, 0, 659, 0, 523, 0, 415, 0, 523, 0, 622, 0, 523, 0],
+  color: (_bar, i, t) => {
+    // noise-hat pulse — quiet high tick on off-beats
+    if (i % 4 === 2) noise(0.03, 0.05, 6000, undefined, t, musicGain ?? undefined);
+  },
+};
+
+// ---- Boss: fast driving loop, low & aggressive ----
+const BOSS: Track = {
+  bpm: 128,
+  bassGain: 0.26,
+  melodyGain: 0.09,
+  colorGain: 0.06,
+  //        Aggressive syncopated D minor bass line
+  bass:    [73.4, 73.4, 110, 73.4, 87.3, 73.4, 110, 73.4, 73.4, 73.4, 98, 73.4, 87.3, 73.4, 110, 73.4],
+  //        High siren-ish melody in D minor (D F A) crescendos across bars
+  melody:  [587, 0, 698, 0, 880, 0, 698, 0, 587, 0, 784, 0, 880, 0, 1046, 880],
+  color: (bar, i, t) => {
+    // heavy kick every downbeat (steps 0, 4, 8, 12)
+    if (i % 4 === 0) {
+      tone({ freq: 90, freqEnd: 40, dur: 0.12, type: "sine", gain: 0.16, when: t, dest: musicGain ?? undefined });
+    }
+    // war drums (noise burst) on 2 and 4
+    if (i === 4 || i === 12) {
+      noise(0.08, 0.08, 900, 200, t, musicGain ?? undefined);
+    }
+    // scream/wail every 4 bars — a rising sawtooth
+    if (bar === 3 && i === 0) {
+      tone({ freq: 220, freqEnd: 440, dur: 0.9, type: "sawtooth", gain: 0.06, when: t, dest: musicGain ?? undefined });
+    }
+  },
+};
+
+// ---- Title: hopeful major, sparse, long notes ----
+const TITLE: Track = {
+  bpm: 60,
+  bassGain: 0.12,
+  melodyGain: 0.09,
+  colorGain: 0.05,
+  bass:    [110, 0, 0, 0, 0, 0, 0, 0, 146.8, 0, 0, 0, 0, 0, 0, 0],
+  melody:  [659, 0, 0, 0, 784, 0, 0, 0, 880, 0, 0, 0, 784, 0, 659, 0],
+  color: (bar, i, t) => {
+    // dreamy pad triad on every downbeat
+    if (i === 0) {
+      tone({ freq: 261.6, dur: 3.0, type: "sine", gain: 0.03, when: t, dest: musicGain ?? undefined });
+      tone({ freq: 329.6, dur: 3.0, type: "sine", gain: 0.025, when: t, dest: musicGain ?? undefined });
+      tone({ freq: 392, dur: 3.0, type: "sine", gain: 0.02, when: t, dest: musicGain ?? undefined });
+    }
+    // sparkle every 4 bars
+    if (bar === 3 && i === 8) {
+      const chord = [1046, 1319, 1568];
+      chord.forEach((f, k) => tone({ freq: f, dur: 0.4, type: "triangle", gain: 0.04, when: t + k * 0.08, dest: musicGain ?? undefined }));
+    }
+  },
+};
+
+// ---- Victory: triumphant, one-shot-style (loops but feels celebratory) ----
+const VICTORY: Track = {
+  bpm: 108,
+  bassGain: 0.16,
+  melodyGain: 0.14,
+  colorGain: 0.08,
+  //        C major fanfare: C - G - F - C
+  bass:    [130.8, 0, 130.8, 0, 196, 0, 196, 0, 174.6, 0, 174.6, 0, 130.8, 0, 130.8, 0],
+  melody:  [523, 659, 784, 1046, 784, 659, 523, 659, 698, 880, 1046, 880, 784, 659, 523, 0],
+  color: (_bar, i, t) => {
+    // bright horn stab on downbeats
+    if (i % 4 === 0) {
+      tone({ freq: 261.6, dur: 0.2, type: "square", gain: 0.08, when: t, dest: musicGain ?? undefined });
+      tone({ freq: 329.6, dur: 0.2, type: "square", gain: 0.06, when: t, dest: musicGain ?? undefined });
+    }
+  },
+};
+
+// ---- Game over: descending minor, slow and mournful ----
+const GAMEOVER: Track = {
+  bpm: 54,
+  bassGain: 0.14,
+  melodyGain: 0.1,
+  colorGain: 0.03,
+  bass:    [110, 0, 0, 0, 98, 0, 0, 0, 87.3, 0, 0, 0, 82.4, 0, 0, 0],
+  melody:  [440, 0, 0, 0, 415, 0, 0, 0, 392, 0, 0, 0, 349, 0, 0, 0],
+  color: (bar, i, t) => {
+    // low tolling bell every 2 bars
+    if (bar % 2 === 0 && i === 0) {
+      tone({ freq: 220, dur: 2.5, type: "sine", gain: 0.05, when: t, dest: musicGain ?? undefined });
+    }
+  },
+};
+
+const TRACKS: Record<MusicTrack, Track> = {
+  title: TITLE,
+  village: VILLAGE,
+  forest: FOREST,
+  dungeon: DUNGEON,
+  boss: BOSS,
+  victory: VICTORY,
+  gameover: GAMEOVER,
+};
+
+// ---- Scheduler ----
 let step = 0;
 let nextStepTime = 0;
 
 function scheduleMusic(): void {
   if (!ctx || !musicGain) return;
-  const ahead = 0.15;
+  if (!currentTrack && !pendingTrack) return;
+  const active = TRACKS[currentTrack ?? pendingTrack!];
+  const stepDur = 60 / active.bpm / 2;
+  const ahead = 0.18;
   while (nextStepTime < ctx.currentTime + ahead) {
+    // Switch tracks on the bar boundary (every 16 steps) so we don't drop
+    // notes mid-phrase when the biome changes.
+    if (pendingTrack && step % 16 === 0) {
+      currentTrack = pendingTrack;
+      pendingTrack = null;
+    }
+    const tr = TRACKS[currentTrack ?? "village"];
     const i = step % 16;
     const bar = Math.floor(step / 16) % 4;
-    const b = BASS[i];
-    if (b) tone({ freq: b, dur: STEP * 0.9, type: "triangle", gain: 0.22, when: nextStepTime, dest: musicGain });
-    // arpeggio enters on bars 2-4 to keep the loop breathing
-    const a = ARP[i];
-    if (a && bar > 0) {
-      tone({ freq: a, dur: STEP * 0.6, type: "square", gain: 0.05, when: nextStepTime, dest: musicGain });
+
+    const b = tr.bass[i];
+    if (b) {
+      tone({
+        freq: b,
+        dur: stepDur * 0.9,
+        type: "triangle",
+        gain: tr.bassGain,
+        when: nextStepTime,
+        dest: musicGain,
+      });
     }
-    if (i % 4 === 2) noise(0.03, 0.05, 6000, undefined, nextStepTime);
-    nextStepTime += STEP;
+    const m = tr.melody[i];
+    if (m) {
+      // melody comes in after the first bar to let the ear anchor to bass
+      const g = bar === 0 ? tr.melodyGain * 0.5 : tr.melodyGain;
+      tone({
+        freq: m,
+        dur: stepDur * 0.6,
+        type: "square",
+        gain: g,
+        when: nextStepTime,
+        dest: musicGain,
+      });
+    }
+    tr.color?.(bar, i, nextStepTime);
+
+    nextStepTime += stepDur;
     step++;
   }
 }
 
-export function startMusic(): void {
-  if (!ctx || musicTimer !== null) return;
-  step = 0;
+/** Start scheduling loop (idempotent — safe to call multiple times). */
+function ensureSchedulerRunning(): void {
+  if (!ctx) return;
+  if (musicTimer !== null) return;
   nextStepTime = ctx.currentTime + 0.1;
-  musicTimer = window.setInterval(scheduleMusic, 50);
+  step = 0;
+  musicTimer = window.setInterval(scheduleMusic, 40);
 }
 
+/**
+ * Switch to (or start) a given music track. If a track is already playing,
+ * the switch happens at the next bar boundary so notes don't glitch.
+ * If nothing is playing yet, the new track kicks in immediately.
+ */
+export function playMusic(track: MusicTrack): void {
+  if (!ctx || !musicGain) return;
+  ensureSchedulerRunning();
+  if (currentTrack === null) {
+    // First play: gently fade in and start at step 0.
+    currentTrack = track;
+    pendingTrack = null;
+    step = 0;
+    nextStepTime = ctx.currentTime + 0.1;
+    musicGain.gain.cancelScheduledValues(ctx.currentTime);
+    musicGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    musicGain.gain.exponentialRampToValueAtTime(0.34, ctx.currentTime + 0.6);
+    return;
+  }
+  if (currentTrack === track) return;
+  // Queue for the next bar boundary.
+  pendingTrack = track;
+}
+
+/** Legacy alias — kept for existing callers that used the v3 API. */
+export function startMusic(): void {
+  playMusic("dungeon");
+}
+
+/** Stop scheduling and fade the music out. */
 export function stopMusic(): void {
+  if (musicGain && ctx) {
+    musicGain.gain.cancelScheduledValues(ctx.currentTime);
+    musicGain.gain.setValueAtTime(musicGain.gain.value, ctx.currentTime);
+    musicGain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
+  }
   if (musicTimer !== null) {
     clearInterval(musicTimer);
     musicTimer = null;
   }
+  currentTrack = null;
+  pendingTrack = null;
 }

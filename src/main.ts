@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { COLORS, RENDER } from "./config";
 import { FxSystem, tickFlashes } from "./art/fx";
-import { initAudio, startMusic } from "./engine/audio";
+import { initAudio, playMusic, sfx, stopMusic } from "./engine/audio";
 import { attachKeyboard, createInputState, endFrame, pollKeyboard } from "./engine/input";
 import { loadAll } from "./engine/loader";
 import { BossSystem } from "./systems/boss";
@@ -115,12 +115,14 @@ async function main(): Promise<void> {
     onBossBar: (frac) => hud?.setBossBar(frac),
     onGameOver: () => {
       running = false;
+      playMusic("gameover");
       window.setTimeout(() => screens.showGameOver(player?.coins ?? 0), 900);
     },
     onVictory: () => {
       running = false;
       if (player) playerCheer(player);
       story?.onEvent("boss:dead");
+      playMusic("victory");
       window.setTimeout(() => screens.showVictory(player?.coins ?? 0), 1800);
     },
     onRoomChanged: (key) => {
@@ -128,6 +130,18 @@ async function main(): Promise<void> {
       if (def) hud?.setRoomLabel(def.name);
       minimap?.markVisited(key);
       story?.onRoomChanged(key);
+      // v4: music switches with biome. The boss room gets its own aggressive
+      // track as soon as the player enters; everywhere else is village/forest/
+      // dungeon based on the room's declared biome.
+      if (key === BOSS_ROOM_KEY) {
+        playMusic("boss");
+      } else if (def?.biome === "village") {
+        playMusic("village");
+      } else if (def?.biome === "forest") {
+        playMusic("forest");
+      } else if (def?.biome === "dungeon") {
+        playMusic("dungeon");
+      }
       if (key === BOSS_ROOM_KEY && boss?.boss?.state === "waiting") {
         boss.wake();
       }
@@ -158,6 +172,10 @@ async function main(): Promise<void> {
 
   async function startGame(): Promise<void> {
     initAudio();
+    // v4: kick off the title-screen loop the moment audio can play (browser
+    // autoplay policy requires a user gesture, which is the start click).
+    // It'll cross-fade to the biome track once the world finishes loading.
+    playMusic("title");
     screens.showLoading();
     await preloadWeapons();
     await loadAll((done, total, label) => screens.setLoadingProgress(done, total, label));
@@ -198,7 +216,12 @@ async function main(): Promise<void> {
     }
 
     cam.snap(player.pos, roomMgr.current, player.facing);
-    startMusic();
+    // v4: start on the biome-appropriate track. Village hub → village loop.
+    const startDefRoom = roomAt(...(START_ROOM_KEY.split(",").map(Number) as [number, number]));
+    const startTrack =
+      startDefRoom?.biome === "village" ? "village" :
+      startDefRoom?.biome === "forest" ? "forest" : "dungeon";
+    playMusic(startTrack);
     screens.hide();
     running = true;
 
@@ -238,6 +261,8 @@ async function main(): Promise<void> {
       r.group.visible = initial;
     }
     running = true;
+    // Restart music from the village track — restartGame always spawns at start.
+    playMusic("village");
     story.onRoomChanged(START_ROOM_KEY);
   }
 

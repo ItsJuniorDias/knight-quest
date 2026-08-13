@@ -77,6 +77,27 @@ Block (hold), Interact, Attack (big red), Dodge roll.
 - Combo counter badge (yellow -> orange -> red) with floating popups.
 - Combo resets after ~1.6s without a hit.
 
+## Audio (v4)
+
+Everything is generated at runtime via Web Audio — zero asset files.
+
+Seven procedural music tracks that swap automatically with the game context:
+
+| Track      | When it plays                          | Vibe                                |
+| ---------- | -------------------------------------- | ----------------------------------- |
+| `title`    | While the world is loading             | Slow, hopeful, dreamy pad + sparkle |
+| `village`  | Willowvale (start room)                | Pastoral C major, folk pluck        |
+| `forest`   | Forest biome rooms                     | Minor pentatonic, wind, owl hoot    |
+| `dungeon`  | Every dungeon room (non-boss)          | Brooding A-minor ostinato + noise hat |
+| `boss`     | Throne of Bones                        | 128 BPM D-minor drive + war drums   |
+| `victory`  | Boss defeated                          | Triumphant C-major fanfare + horn stabs |
+| `gameover` | Player dies                            | Slow descending minor + tolling bell |
+
+Tracks cross-switch on the next bar boundary so notes never glitch. Every
+sound (bass, melody, drums, ambience) is a small oscillator/noise burst
+scheduled with lookahead — the whole music system fits in ~450 lines and
+adds zero bytes to the asset payload.
+
 ## Narrative
 
 Every room has a narrator beat the first time you enter, italic-styled

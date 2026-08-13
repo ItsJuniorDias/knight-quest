@@ -257,6 +257,7 @@ export class BossSystem {
     ) {
       b.enrageAnnounced = true;
       this.events.onStory(null, "The Skeleton King's axe begins to glow. He remembers who he was.");
+      this.events.onGameEvent?.("boss:enraged");
     }
   }
 

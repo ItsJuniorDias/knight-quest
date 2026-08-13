@@ -33877,6 +33877,8 @@ void main() {
   var master = null;
   var musicGain = null;
   var musicTimer = null;
+  var currentTrack = null;
+  var pendingTrack = null;
   function initAudio() {
     if (ctx) {
       if (ctx.state === "suspended") void ctx.resume();
@@ -33912,7 +33914,7 @@ void main() {
     osc.start(t0);
     osc.stop(t0 + o.dur + 0.05);
   }
-  function noise(dur, gain, filterFreq, filterEnd, when) {
+  function noise(dur, gain, filterFreq, filterEnd, when, dest) {
     if (!ctx || !master) return;
     const t0 = when ?? now();
     const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
@@ -33928,7 +33930,7 @@ void main() {
     const g = ctx.createGain();
     g.gain.setValueAtTime(gain, t0);
     g.gain.exponentialRampToValueAtTime(1e-4, t0 + dur);
-    src.connect(filter).connect(g).connect(master);
+    src.connect(filter).connect(g).connect(dest ?? master);
     src.start(t0);
   }
   var sfx = {
@@ -34005,6 +34007,10 @@ void main() {
       noise(0.5, 0.16, 400, 900);
       tone({ freq: 100, freqEnd: 180, dur: 0.5, type: "triangle", gain: 0.12 });
     },
+    npcTalk() {
+      tone({ freq: 520, dur: 0.05, type: "square", gain: 0.09 });
+      tone({ freq: 660, dur: 0.05, type: "square", gain: 0.09, when: now() + 0.05 });
+    },
     victory() {
       const t = now();
       const seq = [
@@ -34030,34 +34036,193 @@ void main() {
       );
     }
   };
-  var BPM = 92;
-  var STEP = 60 / BPM / 2;
-  var BASS = [110, 110, 0, 110, 98, 0, 110, 0, 87.3, 87.3, 0, 87.3, 103.8, 0, 98, 0];
-  var ARP = [440, 0, 523, 0, 659, 0, 523, 0, 415, 0, 523, 0, 622, 0, 523, 0];
+  var VILLAGE = {
+    bpm: 78,
+    bassGain: 0.14,
+    melodyGain: 0.09,
+    colorGain: 0.05,
+    //         0    1    2    3    4    5    6    7    8    9    10   11   12   13   14   15
+    bass: [130.8, 0, 0, 0, 196, 0, 0, 0, 164.8, 0, 0, 0, 146.8, 0, 0, 0],
+    melody: [523, 0, 659, 0, 784, 0, 659, 0, 523, 0, 587, 0, 659, 0, 587, 523],
+    color: (bar, i, t) => {
+      if (bar === 3 && i === 0) {
+        tone({ freq: 1046, dur: 1.2, type: "triangle", gain: 0.05, when: t, dest: musicGain ?? void 0 });
+        tone({ freq: 1319, dur: 1.2, type: "triangle", gain: 0.035, when: t, dest: musicGain ?? void 0 });
+      }
+    }
+  };
+  var FOREST = {
+    bpm: 70,
+    bassGain: 0.13,
+    melodyGain: 0.08,
+    colorGain: 0.04,
+    //        E2 low ostinato
+    bass: [82.4, 0, 0, 0, 82.4, 0, 110, 0, 82.4, 0, 0, 0, 98, 0, 0, 0],
+    //        A minor pentatonic: A C D E G
+    melody: [0, 0, 440, 0, 0, 523, 0, 587, 0, 0, 659, 0, 523, 0, 440, 0],
+    color: (bar, i, t) => {
+      if (i === 8 && bar % 2 === 0) {
+        noise(0.5, 0.03, 4e3, 800, t, musicGain ?? void 0);
+      }
+      if (bar === 2 && i === 12) {
+        tone({ freq: 220, freqEnd: 174.6, dur: 0.6, type: "sine", gain: 0.06, when: t, dest: musicGain ?? void 0 });
+      }
+    }
+  };
+  var DUNGEON = {
+    bpm: 92,
+    bassGain: 0.22,
+    melodyGain: 0.05,
+    colorGain: 0.05,
+    bass: [110, 110, 0, 110, 98, 0, 110, 0, 87.3, 87.3, 0, 87.3, 103.8, 0, 98, 0],
+    melody: [440, 0, 523, 0, 659, 0, 523, 0, 415, 0, 523, 0, 622, 0, 523, 0],
+    color: (_bar, i, t) => {
+      if (i % 4 === 2) noise(0.03, 0.05, 6e3, void 0, t, musicGain ?? void 0);
+    }
+  };
+  var BOSS2 = {
+    bpm: 128,
+    bassGain: 0.26,
+    melodyGain: 0.09,
+    colorGain: 0.06,
+    //        Aggressive syncopated D minor bass line
+    bass: [73.4, 73.4, 110, 73.4, 87.3, 73.4, 110, 73.4, 73.4, 73.4, 98, 73.4, 87.3, 73.4, 110, 73.4],
+    //        High siren-ish melody in D minor (D F A) crescendos across bars
+    melody: [587, 0, 698, 0, 880, 0, 698, 0, 587, 0, 784, 0, 880, 0, 1046, 880],
+    color: (bar, i, t) => {
+      if (i % 4 === 0) {
+        tone({ freq: 90, freqEnd: 40, dur: 0.12, type: "sine", gain: 0.16, when: t, dest: musicGain ?? void 0 });
+      }
+      if (i === 4 || i === 12) {
+        noise(0.08, 0.08, 900, 200, t, musicGain ?? void 0);
+      }
+      if (bar === 3 && i === 0) {
+        tone({ freq: 220, freqEnd: 440, dur: 0.9, type: "sawtooth", gain: 0.06, when: t, dest: musicGain ?? void 0 });
+      }
+    }
+  };
+  var TITLE = {
+    bpm: 60,
+    bassGain: 0.12,
+    melodyGain: 0.09,
+    colorGain: 0.05,
+    bass: [110, 0, 0, 0, 0, 0, 0, 0, 146.8, 0, 0, 0, 0, 0, 0, 0],
+    melody: [659, 0, 0, 0, 784, 0, 0, 0, 880, 0, 0, 0, 784, 0, 659, 0],
+    color: (bar, i, t) => {
+      if (i === 0) {
+        tone({ freq: 261.6, dur: 3, type: "sine", gain: 0.03, when: t, dest: musicGain ?? void 0 });
+        tone({ freq: 329.6, dur: 3, type: "sine", gain: 0.025, when: t, dest: musicGain ?? void 0 });
+        tone({ freq: 392, dur: 3, type: "sine", gain: 0.02, when: t, dest: musicGain ?? void 0 });
+      }
+      if (bar === 3 && i === 8) {
+        const chord = [1046, 1319, 1568];
+        chord.forEach((f, k) => tone({ freq: f, dur: 0.4, type: "triangle", gain: 0.04, when: t + k * 0.08, dest: musicGain ?? void 0 }));
+      }
+    }
+  };
+  var VICTORY = {
+    bpm: 108,
+    bassGain: 0.16,
+    melodyGain: 0.14,
+    colorGain: 0.08,
+    //        C major fanfare: C - G - F - C
+    bass: [130.8, 0, 130.8, 0, 196, 0, 196, 0, 174.6, 0, 174.6, 0, 130.8, 0, 130.8, 0],
+    melody: [523, 659, 784, 1046, 784, 659, 523, 659, 698, 880, 1046, 880, 784, 659, 523, 0],
+    color: (_bar, i, t) => {
+      if (i % 4 === 0) {
+        tone({ freq: 261.6, dur: 0.2, type: "square", gain: 0.08, when: t, dest: musicGain ?? void 0 });
+        tone({ freq: 329.6, dur: 0.2, type: "square", gain: 0.06, when: t, dest: musicGain ?? void 0 });
+      }
+    }
+  };
+  var GAMEOVER = {
+    bpm: 54,
+    bassGain: 0.14,
+    melodyGain: 0.1,
+    colorGain: 0.03,
+    bass: [110, 0, 0, 0, 98, 0, 0, 0, 87.3, 0, 0, 0, 82.4, 0, 0, 0],
+    melody: [440, 0, 0, 0, 415, 0, 0, 0, 392, 0, 0, 0, 349, 0, 0, 0],
+    color: (bar, i, t) => {
+      if (bar % 2 === 0 && i === 0) {
+        tone({ freq: 220, dur: 2.5, type: "sine", gain: 0.05, when: t, dest: musicGain ?? void 0 });
+      }
+    }
+  };
+  var TRACKS = {
+    title: TITLE,
+    village: VILLAGE,
+    forest: FOREST,
+    dungeon: DUNGEON,
+    boss: BOSS2,
+    victory: VICTORY,
+    gameover: GAMEOVER
+  };
   var step = 0;
   var nextStepTime = 0;
   function scheduleMusic() {
     if (!ctx || !musicGain) return;
-    const ahead = 0.15;
+    if (!currentTrack && !pendingTrack) return;
+    const active = TRACKS[currentTrack ?? pendingTrack];
+    const stepDur = 60 / active.bpm / 2;
+    const ahead = 0.18;
     while (nextStepTime < ctx.currentTime + ahead) {
+      if (pendingTrack && step % 16 === 0) {
+        currentTrack = pendingTrack;
+        pendingTrack = null;
+      }
+      const tr = TRACKS[currentTrack ?? "village"];
       const i = step % 16;
       const bar = Math.floor(step / 16) % 4;
-      const b = BASS[i];
-      if (b) tone({ freq: b, dur: STEP * 0.9, type: "triangle", gain: 0.22, when: nextStepTime, dest: musicGain });
-      const a = ARP[i];
-      if (a && bar > 0) {
-        tone({ freq: a, dur: STEP * 0.6, type: "square", gain: 0.05, when: nextStepTime, dest: musicGain });
+      const b = tr.bass[i];
+      if (b) {
+        tone({
+          freq: b,
+          dur: stepDur * 0.9,
+          type: "triangle",
+          gain: tr.bassGain,
+          when: nextStepTime,
+          dest: musicGain
+        });
       }
-      if (i % 4 === 2) noise(0.03, 0.05, 6e3, void 0, nextStepTime);
-      nextStepTime += STEP;
+      const m = tr.melody[i];
+      if (m) {
+        const g = bar === 0 ? tr.melodyGain * 0.5 : tr.melodyGain;
+        tone({
+          freq: m,
+          dur: stepDur * 0.6,
+          type: "square",
+          gain: g,
+          when: nextStepTime,
+          dest: musicGain
+        });
+      }
+      tr.color?.(bar, i, nextStepTime);
+      nextStepTime += stepDur;
       step++;
     }
   }
-  function startMusic() {
-    if (!ctx || musicTimer !== null) return;
-    step = 0;
+  function ensureSchedulerRunning() {
+    if (!ctx) return;
+    if (musicTimer !== null) return;
     nextStepTime = ctx.currentTime + 0.1;
-    musicTimer = window.setInterval(scheduleMusic, 50);
+    step = 0;
+    musicTimer = window.setInterval(scheduleMusic, 40);
+  }
+  function playMusic(track) {
+    if (!ctx || !musicGain) return;
+    ensureSchedulerRunning();
+    if (currentTrack === null) {
+      currentTrack = track;
+      pendingTrack = null;
+      step = 0;
+      nextStepTime = ctx.currentTime + 0.1;
+      musicGain.gain.cancelScheduledValues(ctx.currentTime);
+      musicGain.gain.setValueAtTime(1e-4, ctx.currentTime);
+      musicGain.gain.exponentialRampToValueAtTime(0.34, ctx.currentTime + 0.6);
+      return;
+    }
+    if (currentTrack === track) return;
+    pendingTrack = track;
   }
 
   // src/engine/input.ts
@@ -39148,6 +39313,7 @@ void main() {
       if (enraged && !b.enrageAnnounced && b.state !== "dying" && b.state !== "hurt") {
         b.enrageAnnounced = true;
         this.events.onStory(null, "The Skeleton King's axe begins to glow. He remembers who he was.");
+        this.events.onGameEvent?.("boss:enraged");
       }
     }
     hurt(dmg, from) {
@@ -39707,7 +39873,7 @@ void main() {
         const npc = bestActive;
         const line = npc.lines[npc.lineIdx];
         this.events.onStory(line.who, line.text);
-        sfx.coin();
+        sfx.npcTalk();
         npc.lineIdx = (npc.lineIdx + 1) % npc.lines.length;
         npc.lastTalkedAt = performance.now() / 1e3;
         if (!this.triggeredIds.has(npc.id)) {
@@ -42119,12 +42285,14 @@ void main() {
       onBossBar: (frac) => hud?.setBossBar(frac),
       onGameOver: () => {
         running = false;
+        playMusic("gameover");
         window.setTimeout(() => screens.showGameOver(player?.coins ?? 0), 900);
       },
       onVictory: () => {
         running = false;
         if (player) playerCheer(player);
         story?.onEvent("boss:dead");
+        playMusic("victory");
         window.setTimeout(() => screens.showVictory(player?.coins ?? 0), 1800);
       },
       onRoomChanged: (key) => {
@@ -42132,6 +42300,15 @@ void main() {
         if (def) hud?.setRoomLabel(def.name);
         minimap?.markVisited(key);
         story?.onRoomChanged(key);
+        if (key === BOSS_ROOM_KEY) {
+          playMusic("boss");
+        } else if (def?.biome === "village") {
+          playMusic("village");
+        } else if (def?.biome === "forest") {
+          playMusic("forest");
+        } else if (def?.biome === "dungeon") {
+          playMusic("dungeon");
+        }
         if (key === BOSS_ROOM_KEY && boss?.boss?.state === "waiting") {
           boss.wake();
         }
@@ -42158,6 +42335,7 @@ void main() {
     };
     async function startGame() {
       initAudio();
+      playMusic("title");
       screens.showLoading();
       await preloadWeapons();
       await loadAll((done, total, label) => screens.setLoadingProgress(done, total, label));
@@ -42188,7 +42366,9 @@ void main() {
         }
       }
       cam.snap(player.pos, roomMgr.current, player.facing);
-      startMusic();
+      const startDefRoom = roomAt(...START_ROOM_KEY.split(",").map(Number));
+      const startTrack = startDefRoom?.biome === "village" ? "village" : startDefRoom?.biome === "forest" ? "forest" : "dungeon";
+      playMusic(startTrack);
       screens.hide();
       running = true;
       window.setTimeout(() => story?.onEvent("start:game"), 700);
@@ -42223,6 +42403,7 @@ void main() {
         r.group.visible = initial;
       }
       running = true;
+      playMusic("village");
       story.onRoomChanged(START_ROOM_KEY);
     }
     let last = performance.now();
