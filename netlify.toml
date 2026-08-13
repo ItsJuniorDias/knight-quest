@@ -1,0 +1,23 @@
+[build]
+  command = "npm install && node build.mjs"
+  publish = "."
+
+# GLB files need the right MIME type so browsers cache them correctly and
+# three.js's fetch treats them as binary rather than text.
+[[headers]]
+  for = "/*.glb"
+  [headers.values]
+    Content-Type = "model/gltf-binary"
+
+# Assets are content-addressed by the source pack version — safe to cache
+# aggressively.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    Access-Control-Allow-Origin = "*"
+
+[[headers]]
+  for = "/bundle.js"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"

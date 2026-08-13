@@ -1,0 +1,23 @@
+{
+  "name": "knight-quest",
+  "version": "1.0.0",
+  "description": "A Zelda-like top-down action game built with three.js. Uses KayKit + Synty POLYGON assets.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node test/dungeon.test.mjs",
+    "serve": "npx serve -l 3000 ."
+  },
+  "dependencies": {
+    "three": "0.182.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.182.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  },
+  "author": "Alexandre Junior (Magic World)",
+  "license": "SEE CREDITS.md"
+}
