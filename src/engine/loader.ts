@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { RENDER } from "../config";
 
@@ -11,8 +12,14 @@ import { RENDER } from "../config";
 // applies a 0.01x baked scale automatically so callers can place everything
 // in the same meter-based grid regardless of origin pack.
 //
-// PORTING NOTE (expo-gl): swap the import above for
-//   import { GLTFLoader } from "three-stdlib";
+// v4: added the FULL Synty POLYGON pack via OBJ files. The pack uses ONE
+// shared texture atlas (PolyAdventureTexture_01.png, 256×256) — every OBJ
+// is a plain mesh with UVs pointing into it. We load the atlas once, then
+// apply a single MeshLambertMaterial to every OBJ. This is dramatically
+// cheaper than shipping ~220 GLB files each with an embedded copy of the
+// same 24KB texture.
+//
+// PORTING NOTE (expo-gl): swap the imports for the three-stdlib equivalents
 // and resolve each url via expo-asset before calling loader.loadAsync.
 // ---------------------------------------------------------------------------
 
@@ -53,8 +60,10 @@ const MANIFEST_KAYKIT = {
   spikes: "assets/dungeon/floor_tile_big_spikes.glb",
 } as const;
 
-// Synty POLYGON — all in centimeters, auto-scaled 0.01x at spawn.
-const MANIFEST_POLYGON = {
+// ---------------------------------------------------------------------------
+// Synty POLYGON (existing GLBs kept as-is; new .obj additions below)
+// ---------------------------------------------------------------------------
+const MANIFEST_POLYGON_GLB = {
   // village buildings
   poly_house_a: "assets/polygon/house_a.glb",
   poly_house_b: "assets/polygon/house_b.glb",
@@ -129,12 +138,115 @@ const MANIFEST_POLYGON = {
   poly_cloud_b: "assets/polygon/cloud_b.glb",
 } as const;
 
-const MANIFEST = { ...MANIFEST_KAYKIT, ...MANIFEST_POLYGON };
-export type AssetKey = keyof typeof MANIFEST;
+// ---------------------------------------------------------------------------
+// v4: EVERY OBJ in Synty POLYGON Adventure Pack (220 files, minus Snow variants).
+// All share one atlas texture that lives beside them at assets/polygon-obj/atlas.png.
+// Keys prefixed `polyx_` so we can distinguish them from the older GLB copies at
+// runtime without exploding builder.ts.
+// ---------------------------------------------------------------------------
+const MANIFEST_POLYGON_OBJ_LIST = [
+  // buildings
+  "bld_fence_01", "bld_fence_02", "bld_fencepost_01", "bld_hut_01", "bld_hutdoor_01",
+  "bld_stall_01", "bld_stall_02", "bld_stall_03", "bld_stall_04",
+  "bld_stall_cover_01", "bld_stall_cover_02", "bld_stall_cover_03",
+  "bld_stall_cover_04", "bld_stall_cover_05",
+  "bld_village_01", "bld_village_02", "bld_village_03", "bld_village_04",
+  "bld_village_05", "bld_village_06", "bld_village_07",
+  "bld_village_hangingcloth_01", "bld_village_top_01", "bld_village_windowdrapes_01",
+  "bld_wall_01", "bld_wall_02", "bld_well_01",
+  // env — big/nature
+  "env_bridge_01",
+  "env_bush_01", "env_bush_02", "env_bush_03", "env_bush_04",
+  "env_campfire_01",
+  "env_cloud_01", "env_cloud_02", "env_cloud_03", "env_cloud_04",
+  "env_cloud_05", "env_cloud_06", "env_cloud_07",
+  "env_dirtmound_01",
+  "env_floortile_01", "env_floortile_02", "env_floortile_03", "env_floortile_04",
+  "env_floortile_05", "env_floortile_06", "env_floortile_07",
+  "env_flower_01", "env_flower_02", "env_flower_03", "env_flower_04",
+  "env_flower_05", "env_flower_06", "env_flower_07", "env_flower_08",
+  "env_grass_01", "env_grass_02",
+  "env_groundmounds_01", "env_groundmounds_02", "env_groundmounds_03",
+  "env_groundmounds_04", "env_groundmounds_05", "env_groundmounds_06",
+  "env_groundmounds_07", "env_groundmounds_08", "env_groundmounds_09",
+  "env_groundmounds_10",
+  "env_hedge_01",
+  "env_hill_01", "env_hill_02", "env_hill_03", "env_hill_04",
+  "env_ice_01", "env_ice_02", "env_ice_03",
+  "env_lillypads_01", "env_lillypads_02", "env_lillypads_03",
+  "env_mushroom_01",
+  "env_pebble_01", "env_pebble_02", "env_pebble_03", "env_pebble_04",
+  "env_pebble_05", "env_pebble_06", "env_pebble_07",
+  "env_plant_01", "env_plant_02", "env_plant_03", "env_plant_04", "env_plant_05",
+  "env_reeds_01", "env_reeds_02", "env_reeds_03",
+  "env_road_corner_01", "env_road_cross_01",
+  "env_road_straight_01", "env_road_straight_02", "env_road_t_01",
+  "env_rock_01", "env_rock_02", "env_rock_03", "env_rock_04", "env_rock_05",
+  "env_rock_07", "env_rock_08", "env_rock_09",
+  "env_rock_010", "env_rock_011", "env_rock_012", "env_rock_013",
+  "env_rock_014", "env_rock_015", "env_rock_016",
+  "env_stalagmite_01", "env_stalagmite_02", "env_stalagmite_03",
+  "env_stream_corner_01", "env_stream_straight_01", "env_stream_straight_02",
+  "env_tree_01", "env_tree_02", "env_tree_03", "env_tree_04", "env_tree_05",
+  "env_tree_06", "env_tree_07", "env_tree_08", "env_tree_09",
+  "env_tree_010", "env_tree_011", "env_tree_012", "env_tree_013",
+  "env_tree_014", "env_tree_015", "env_tree_016",
+  "env_treebirch_01", "env_treebirch_02", "env_treebirch_03",
+  "env_treedead_01", "env_treedead_02",
+  "env_treelog_01",
+  "env_treepine_01", "env_treepine_02", "env_treepine_03", "env_treepine_04",
+  "env_treestump_01",
+  // items
+  "item_canteen_01",
+  "item_fruit_01", "item_fruit_02", "item_fruit_03",
+  "item_gourd_01",
+  "item_lantern_01", "item_lantern_02",
+  "item_potion_01", "item_potion_02", "item_potion_03",
+  "item_potion_04", "item_potion_05", "item_potion_06",
+  "item_pouch_01",
+  "item_waterskin_01",
+  "item_wine_01", "item_wine_02",
+  // props
+  "prop_barrel_01", "prop_barrel_02",
+  "prop_basket_01", "prop_basket_02", "prop_basket_03", "prop_basket_04",
+  "prop_book_01", "prop_book_02", "prop_book_03",
+  "prop_cart_01", "prop_cart_02", "prop_cart_03", "prop_cart_wheel_01",
+  "prop_cheese_01", "prop_cheese_02", "prop_cheese_03",
+  "prop_chest_01", "prop_chest_lid_01",
+  "prop_crate_01", "prop_crate_02",
+  "prop_loghalf_01", "prop_loghalf_02", "prop_logpile_01",
+  "prop_meat_01", "prop_meat_02", "prop_meat_03",
+  "prop_pot_01", "prop_pot_02", "prop_pot_03",
+  "prop_pumpkin_01", "prop_pumpkin_02",
+  "prop_roadsign_01",
+  "prop_sack_01", "prop_sack_02", "prop_sack_03", "prop_sack_04",
+  "prop_scroll_01", "prop_scroll_02",
+  "prop_stall_table_01", "prop_stoneblock_01",
+  "prop_washingline_01", "prop_washingline_02", "prop_washingline_03",
+  // weapons
+  "wep_axe_01", "wep_dagger_01", "wep_greataxe_01",
+  "wep_musketpistol_01", "wep_pitchfork_01", "wep_scythe_01",
+  "wep_sheild_01", "wep_sheild_02", "wep_sheild_03",
+  "wep_staff_01", "wep_staff_02", "wep_sword_01",
+] as const;
+
+// Build the OBJ manifest with url + key
+const MANIFEST_POLYGON_OBJ: Record<string, string> = {};
+for (const name of MANIFEST_POLYGON_OBJ_LIST) {
+  MANIFEST_POLYGON_OBJ[`polyx_${name}`] = `assets/polygon-obj/${name}.obj`;
+}
+
+const MANIFEST = {
+  ...MANIFEST_KAYKIT,
+  ...MANIFEST_POLYGON_GLB,
+  ...MANIFEST_POLYGON_OBJ,
+} as const;
+export type AssetKey = keyof typeof MANIFEST | `polyx_${(typeof MANIFEST_POLYGON_OBJ_LIST)[number]}`;
 
 /** Native scale: POLYGON is cm (0.01x), KayKit is meters (1x). */
 function nativeScale(key: string): number {
-  return key.startsWith("poly_") ? 0.01 : 1;
+  if (key.startsWith("poly_") || key.startsWith("polyx_")) return 0.01;
+  return 1;
 }
 
 export interface LoadedAsset {
@@ -142,7 +254,11 @@ export interface LoadedAsset {
   animations: THREE.AnimationClip[];
 }
 
-const cache = new Map<AssetKey, LoadedAsset>();
+const cache = new Map<string, LoadedAsset>();
+
+/** The single shared atlas texture for all polyx_ OBJ assets. */
+let atlasTexture: THREE.Texture | null = null;
+let atlasMaterial: THREE.MeshLambertMaterial | null = null;
 
 function convertMaterials(root: THREE.Object3D): void {
   if (!RENDER.useLambert) return;
@@ -167,6 +283,20 @@ function convertMaterials(root: THREE.Object3D): void {
   });
 }
 
+/**
+ * Apply the shared atlas material to every mesh under `root`. Called on
+ * every OBJ load. The material is REUSED across meshes (not cloned) so
+ * hundreds of props still ship a single GL material — huge draw-call win.
+ */
+function applyAtlasMaterial(root: THREE.Object3D): void {
+  if (!atlasMaterial) return;
+  root.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.material = atlasMaterial!;
+  });
+}
+
 function enableShadows(root: THREE.Object3D, cast: boolean, receive: boolean): void {
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
@@ -179,25 +309,72 @@ function enableShadows(root: THREE.Object3D, cast: boolean, receive: boolean): v
   });
 }
 
+/** Preload the shared atlas texture used by every polyx_ OBJ. */
+async function loadAtlas(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    new THREE.TextureLoader().load(
+      "assets/polygon-obj/atlas.png",
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.magFilter = THREE.NearestFilter; // pixel-crisp look
+        tex.minFilter = THREE.NearestMipmapLinearFilter;
+        tex.generateMipmaps = true;
+        tex.wrapS = THREE.ClampToEdgeWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        atlasTexture = tex;
+        atlasMaterial = new THREE.MeshLambertMaterial({
+          map: tex,
+          side: THREE.DoubleSide, // some pack meshes have single-sided flags flipped
+          color: 0xffffff,
+        });
+        resolve();
+      },
+      undefined,
+      (err) => reject(err),
+    );
+  });
+}
+
 export async function loadAll(
   onProgress: (done: number, total: number, label: string) => void,
 ): Promise<void> {
-  const loader = new GLTFLoader();
-  const entries = Object.entries(MANIFEST) as [AssetKey, string][];
+  const gltfLoader = new GLTFLoader();
+  const objLoader = new OBJLoader();
+
+  // atlas first — every OBJ needs it
+  onProgress(0, 1, "loading atlas texture");
+  await loadAtlas();
+
+  const gltfEntries = Object.entries({ ...MANIFEST_KAYKIT, ...MANIFEST_POLYGON_GLB }) as [string, string][];
+  const objEntries = Object.entries(MANIFEST_POLYGON_OBJ) as [string, string][];
+  const total = gltfEntries.length + objEntries.length;
   let done = 0;
-  for (const [key, url] of entries) {
-    onProgress(done, entries.length, url.split("/").pop() ?? url);
-    const gltf: GLTF = await loader.loadAsync(url);
+
+  for (const [key, url] of gltfEntries) {
+    onProgress(done, total, url.split("/").pop() ?? url);
+    const gltf: GLTF = await gltfLoader.loadAsync(url);
     convertMaterials(gltf.scene);
     cache.set(key, { scene: gltf.scene, animations: gltf.animations });
     done++;
   }
-  onProgress(entries.length, entries.length, "done");
+  for (const [key, url] of objEntries) {
+    onProgress(done, total, url.split("/").pop() ?? url);
+    try {
+      const grp: THREE.Group = await objLoader.loadAsync(url);
+      applyAtlasMaterial(grp);
+      cache.set(key, { scene: grp, animations: [] });
+    } catch (e) {
+      // Some OBJs may fail loading — skip and continue to avoid breaking the game
+      console.warn(`Failed to load ${url}:`, e);
+    }
+    done++;
+  }
+  onProgress(total, total, "done");
 }
 
 export function getAnimations(key: AssetKey): THREE.AnimationClip[] {
-  const a = cache.get(key);
-  if (!a) throw new Error(`Asset not loaded: ${key}`);
+  const a = cache.get(key as string);
+  if (!a) throw new Error(`Asset not loaded: ${String(key)}`);
   return a.animations;
 }
 
@@ -213,11 +390,14 @@ export interface SpawnOptions {
  * so callers never have to think about the pack the mesh came from.
  */
 export function spawn(key: AssetKey, opts: SpawnOptions = {}): THREE.Group {
-  const a = cache.get(key);
-  if (!a) throw new Error(`Asset not loaded: ${key}`);
-  const inst = skeletonClone(a.scene) as THREE.Group;
+  const a = cache.get(key as string);
+  if (!a) throw new Error(`Asset not loaded: ${String(key)}`);
+  // OBJ assets (polyx_) are static meshes — a plain .clone(true) is right.
+  // GLB assets can contain skinned meshes; skeletonClone re-binds their skeletons.
+  const isObj = (key as string).startsWith("polyx_");
+  const inst = isObj ? (a.scene.clone(true) as THREE.Group) : (skeletonClone(a.scene) as THREE.Group);
   enableShadows(inst, opts.castShadow ?? false, opts.receiveShadow ?? false);
-  const s = nativeScale(key) * (opts.scale ?? 1);
+  const s = nativeScale(key as string) * (opts.scale ?? 1);
   if (s !== 1) {
     const wrapper = new THREE.Group();
     wrapper.add(inst);
@@ -225,6 +405,20 @@ export function spawn(key: AssetKey, opts: SpawnOptions = {}): THREE.Group {
     return wrapper;
   }
   return inst;
+}
+
+/**
+ * True if this asset was loaded from an OBJ file (belongs to the polyx_
+ * family). Kept as a helper for the builder so it can safely pick from
+ * random pools that mix OBJ and GLB entries.
+ */
+export function isPolyxKey(key: string): boolean {
+  return key.startsWith("polyx_");
+}
+
+/** Access the shared atlas material — useful for custom procedural meshes. */
+export function getAtlasMaterial(): THREE.MeshLambertMaterial | null {
+  return atlasMaterial;
 }
 
 export function findNode(root: THREE.Object3D, contains: string): THREE.Object3D | null {
@@ -235,3 +429,8 @@ export function findNode(root: THREE.Object3D, contains: string): THREE.Object3D
   });
   return found;
 }
+
+/** Expose the list of every polyx_ key so systems can build random pools. */
+export const POLYX_KEYS: readonly `polyx_${string}`[] = MANIFEST_POLYGON_OBJ_LIST.map(
+  (n) => `polyx_${n}` as `polyx_${typeof n}`,
+);

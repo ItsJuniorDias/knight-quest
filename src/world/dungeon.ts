@@ -1,16 +1,17 @@
 // ---------------------------------------------------------------------------
 // THE DUNGEON — pure data, no three.js. Testable in plain node.
 //
-// v3 layout: 17 rooms across 3 biomes (village + forest + dungeon) on a
-// 15x13 tile grid. Compared to v2 this version:
-//   • lays out the village as a rich hub with 8 named NPCs (blacksmith,
-//     tavern keeper, elder, priestess, merchants, farmer, child) so the
-//     first minutes of the game are a busy overworld, not an empty park;
-//   • sprinkles hermit / villager NPCs across the surrounding forest rooms;
-//   • fills every dungeon room with a "ghost of ___" NPC — flavor for the
-//     story director and one-shot narrative beats;
-//   • roughly triples the enemy density in the dungeon (Zelda-ish waves of
-//     3-6 per room, mixed kinds, with rogues + mages guarding key rooms).
+// v4 layout: 15 rooms across 3 biomes (village + forest + dungeon) on a
+// 15x13 tile grid. Compared to v3 the maps are now DENSELY composed with
+// the full Synty POLYGON Adventure Pack:
+//   • the village is a living market: carts, laundry lines, lanterns,
+//     ground mounds, stumps, log piles, extra rocks and bush layering
+//     around every house, plus the 8 named NPCs of v3.
+//   • the forests get mushroom clusters, tree stumps and fallen logs,
+//     variety in trees (birch/pine/dead), plants and reeds.
+//   • the dungeon gets stalagmites, dropped books, fallen weapons, ice
+//     crystals, and potion scatters flavored per room theme (mage rooms
+//     get books+potions, treasury gets weapons+ice, throne gets stalagmites).
 //
 // Legend (shared):
 //   W wall            . floor           D door cell (must sit on the edge,
@@ -18,16 +19,24 @@
 //   1 minion spawn    2 rogue spawn     3 mage spawn      Z boss spawn
 //   b barrel small    B barrel large    x crates          o box
 //   c chest (coins)   K gold chest (BOSS KEY)             h chest (heart)
-//   s spike trap      p pillar          t torch (unused; auto-mount)
-//   S stairs decor
+//   s spike trap      p pillar          S stairs decor
 //
 // Village legend extras (biome=village|forest):
 //   H house      U hut         L well       T tree       F fence
 //   f flowers    g bushes/tall grass        R rock       O log
-//   M market stall     C campfire   ~ stream water        = bridge post
+//   M hill (solid)     C campfire   ~ stream water        = bridge post
 //   r roadsign         P player start   , dirt road   . grass floor
 //
-// NPC chars (added v3 — same for village/forest/dungeon):
+// v4 decorative chars (walkable, both biomes unless noted):
+//   l lantern post    w washing line    $ cart (solid)     m ground mound
+//   + tree stump      - fallen tree log  * mushroom cluster
+//
+// v4 dungeon flavor chars (walkable):
+//   A stalagmite cluster    % books on the ground
+//   X fallen weapon         i ice crystal
+//   ? potions scatter       & book + potions (alchemist workspace)
+//
+// NPC chars (v3):
 //   N villager   E elder      Q merchant   J guard      Y hermit
 //   G ghost      k king-echo (Throne-room special)
 //
@@ -55,8 +64,6 @@ export interface RoomDef {
 }
 
 // Every map is ROOM_W (15) chars wide and ROOM_H (13) chars tall.
-// Doors sit exactly in the middle of each edge (tile 7 horizontally,
-// tile 6 vertically).
 
 export const ROOMS: RoomDef[] = [
   // ============================================================
@@ -71,17 +78,17 @@ export const ROOMS: RoomDef[] = [
     startVisible: false,
     map: [
       "TTTTTTTDTTTTTTT",
-      "T.gggT.......TT",
-      "Tg..fgg.f.gg.TT",
-      "T.gggT..fggg.TT",
-      "T.f...gT......T",
+      "T.gggT.+*....TT",
+      "Tg.fgg.f.gg-.TT",
+      "T.gggT.mfggg.TT",
+      "T.f.**gT.....RT",
       "Tgg.g.fY..gg..T",
       "T.f.gg.g.g.f..T",
-      "T..g.f..g.f.g.T",
-      "Tg..gg.gg..gg.T",
-      "T.fg.f..f.gg..T",
-      "TT..gg.g..f..TT",
-      "TT.f..gg.gg..TT",
+      "T.-g.f..g.f.g.T",
+      "Tg..gg.gg.+gg.T",
+      "T.fg.f..f.gg.mT",
+      "TT..gg.g.*f..TT",
+      "TT.f.-gg.gg..TT",
       "TTTTTTTTTTTTTTT",
     ],
     doors: [{ dir: "n", kind: "open" }],
@@ -100,16 +107,16 @@ export const ROOMS: RoomDef[] = [
     map: [
       "TTTTTTTTTTTTTTT",
       "T.fgg.f.gg.fg.T",
-      "Tg.f.gg.f..g.gT",
+      "Tg.f.gg.f.+g.gT",
       "T.gg.f.gg.f.g.T",
-      "T.f..ggN.g.f.gT",
+      "T.f.-ggN.g.f.gT",
       "Tgg.f.gg.f.gg.T",
-      "T.g..g.f.gg.f.D",
+      "T.g..g*f.gg.f.D",
       "Tf.gg.f.gg.g.gT",
       "T.g.f.gg.gN.g.T",
-      "Tg.gg.f..gg.g.T",
+      "Tg.gg.f.mgg.g.T",
       "T.f.gg.gg..f.gT",
-      "Tg..f..g.gg.f.T",
+      "Tg..f..g.gg-f.T",
       "TTTTTTTTTTTTTTT",
     ],
     doors: [{ dir: "e", kind: "open" }],
@@ -121,27 +128,27 @@ export const ROOMS: RoomDef[] = [
     name: "Willowvale Village",
     biome: "village",
     startVisible: true,
-    // v3 village layout — 8 NPCs total, arranged so the elder is dead
-    // center and the merchants flank the east/west roads.
-    //   J = blacksmith at west edge         N = tavern keeper east
-    //   Q = west merchant     Q = east fruit-seller
-    //   E = Elder Alden (center-south of the campfire)
-    //   N = child running near the road
-    //   N = priestess by the well
-    //   N = farmer at the SE corner
+    // v4 village — LIVING MARKET.
+    //   Row 1: hanging cloth between houses (implicit — decor at house sides)
+    //   Row 2: J blacksmith (x=2), stall lanterns (l), N tavern (x=11)
+    //   Row 4: campfire C at 6, extra market items around
+    //   Row 5: Q merchants flanking, lantern posts on the road
+    //   Row 6: elder E at 8, P player start at 6
+    //   Row 8: L well + N priestess at 9
+    //   Row 10-11: farm huts, cart $, washing lines w
     map: [
       "TTTTTTTDTTTTTTT",
       "T.fg.H.,.H.gg.T",
-      "T.J.f..,...N..T",
+      "T.Jlf.w,...N.wT",
       "T.gg.,,,,,.gg.T",
-      "T.f.,,C,,,N.f.T",
+      "Tmf.,,C,,,Nmf.T",
       "T.Q.,,,,,,,.Q.T",
       "D,,,,,P,E,,,,,D",
-      "T.f.,,,,,,,.f.T",
-      "T.gg.,,L,N,.g.T",
-      "T.f...,,,..fggT",
+      "T.f.,,,,,,,.fmT",
+      "T.gg.,,L,N,.gwT",
+      "T.f.$.,,,..fggT",
       "Tg.H..,,..H.f.T",
-      "T.fg.U.,.gg.NgT",
+      "T.fgwU.,.gg.NgT",
       "TTTTTTTDTTTTTTT",
     ],
     doors: [
@@ -161,16 +168,16 @@ export const ROOMS: RoomDef[] = [
     map: [
       "TTTTTTTTTTTTTTT",
       "T.gg.f.g.fg.g.T",
-      "Tf..gg.f..g.f.T",
+      "Tf..gg.f.-g.f.T",
       "T.gg.f.gg.fN.gT",
-      "T.f...gg.f.gg.T",
+      "T.f.m.gg.f.gg.T",
       "Tgg.f.g..gg.f.T",
       "D.g..gg.f..g.gT",
-      "Tf.gg.f.gg.f..T",
+      "Tf.gg.f.gg.f-.T",
       "T.gN.f..gg.g.gT",
       "Tg.gg.gg..f.f.T",
-      "T.f.gg.g.gg.g.T",
-      "Tg..f..gg..f..T",
+      "T.f.gg.g.gg+g.T",
+      "Tg..f*.gg.mf..T",
       "TTTTTTTTTTTTTTT",
     ],
     doors: [{ dir: "w", kind: "open" }],
@@ -190,16 +197,16 @@ export const ROOMS: RoomDef[] = [
     map: [
       "WWWWWWWWWWWWWWW",
       "W..b.......b..W",
-      "W..1........1.W",
+      "W..1.X.....X1.W",
       "W.............W",
-      "W....x.....x..W",
+      "W.A..x.....x.AW",
       "W......G......W",
       "W..o1......c1.D",
       "W.............W",
-      "W..b...1...b..W",
-      "W..1.......1..W",
+      "W..bA......bA.W",
+      "W..1..X..X.1..W",
       "W....S.....S..W",
-      "W.............W",
+      "W.......A.....W",
       "WWWWWWWWWWWWWWW",
     ],
     doors: [{ dir: "e", kind: "open" }],
@@ -215,15 +222,15 @@ export const ROOMS: RoomDef[] = [
     map: [
       "WWWWWWWDWWWWWWW",
       "W.............W",
-      "W..b.......b..W",
+      "W..b...X...b..W",
       "W..1........1.W",
-      "W.............W",
+      "W...A......A..W",
       "W......P......W",
-      "D.............D",
+      "D....X.....X..D",
       "W......1......W",
       "W..1........1.W",
       "W..b...S...b..W",
-      "W.............W",
+      "W...A......A..W",
       "W.............W",
       "WWWWWWWDWWWWWWW",
     ],
@@ -245,16 +252,16 @@ export const ROOMS: RoomDef[] = [
     map: [
       "WWWWWWWDWWWWWWW",
       "W..x.......x..W",
-      "W..2........2.W",
+      "W..2.X.....X2.W",
       "W.......G.....W",
       "W..2.......2..W",
-      "W......c......W",
+      "W....X.c.X....W",
       "D.............W",
-      "W..2.......2..W",
+      "W..2..X.X..2..W",
       "W..o.......o..W",
       "W..1.......1..W",
-      "W..b.......b..W",
-      "W.............W",
+      "W..b.X.....X.bW",
+      "W.....X.X.....W",
       "WWWWWWWWWWWWWWW",
     ],
     doors: [
@@ -276,17 +283,17 @@ export const ROOMS: RoomDef[] = [
     startVisible: false,
     map: [
       "WWWWWWWWWWWWWWW",
-      "W..x.......x..W",
+      "W..x...A...x..W",
       "W..1........1.W",
       "W..b.......b..W",
-      "W.............W",
+      "W..A.......A..W",
       "W......h......W",
       "W......G......D",
       "W..1.......1..W",
-      "W..b.......b..W",
-      "W.............W",
+      "W..b.A...A.b..W",
+      "W...X......X..W",
       "W..o...1...o..W",
-      "W.............W",
+      "W......A......W",
       "WWWWWWWWWWWWWWW",
     ],
     doors: [{ dir: "e", kind: "open" }],
@@ -299,19 +306,20 @@ export const ROOMS: RoomDef[] = [
     biome: "dungeon",
     banner: "blue",
     startVisible: false,
+    // The armory — LOADED with dropped weapons.
     map: [
       "WWWWWWWDWWWWWWW",
       "W..x...x...x..W",
-      "W.2.........2.W",
-      "W.............W",
-      "W.2.........2.W",
-      "W..b...c...b..W",
+      "W.2.X.....X.2.W",
+      "W...X.....X...W",
+      "W.2....X....2.W",
+      "W..b.X.c.X.b..W",
       "D......G......D",
-      "W..o.......o..W",
-      "W.2....s....2.W",
-      "W.............W",
-      "W.....1.1.....W",
-      "W..x.......x..W",
+      "W..o.X...X.o..W",
+      "W.2...Xs.X..2.W",
+      "W...X..X..X...W",
+      "W..X..1.1..X..W",
+      "W..x.X...X.x..W",
       "WWWWWWWWWWWWWWW",
     ],
     doors: [
@@ -331,16 +339,16 @@ export const ROOMS: RoomDef[] = [
     map: [
       "WWWWWWWDWWWWWWW",
       "W.p.........p.W",
-      "W...1.....1...W",
+      "W...1.A...A.1.W",
       "W.............W",
       "W....2.....2..W",
-      "W......1......W",
+      "W..A...1...A..W",
       "D.............D",
-      "W......1......W",
+      "W..A...1...A..W",
       "W....2.....2..W",
-      "W...1.....1...W",
+      "W...1.A...A.1.W",
       "W.............W",
-      "W.p.........p.W",
+      "W.p...A...A.p.W",
       "WWWWWWWDWWWWWWW",
     ],
     doors: [
@@ -358,19 +366,20 @@ export const ROOMS: RoomDef[] = [
     biome: "dungeon",
     banner: "red",
     startVisible: false,
+    // Mage hall — books and potions everywhere.
     map: [
       "WWWWWWWDWWWWWWW",
       "W..s.......s..W",
-      "W...3.....3...W",
-      "W.............W",
+      "W...3.%...%.3.W",
+      "W....?.....?..W",
       "W...s..G..s...W",
-      "W......s......W",
+      "W.....&s&.....W",
       "D......3......W",
-      "W......s......W",
-      "W...s.....s...W",
-      "W...3.....3...W",
-      "W.............W",
-      "W..s...c...s..W",
+      "W.....&s&.....W",
+      "W...s..%..s...W",
+      "W...3.?...?.3.W",
+      "W......&......W",
+      "W..s.%.c.%.s..W",
       "WWWWWWWDWWWWWWW",
     ],
     doors: [
@@ -391,19 +400,20 @@ export const ROOMS: RoomDef[] = [
     biome: "dungeon",
     banner: "blue",
     startVisible: false,
+    // Treasury — piled coins (barrels), fallen weapons of dead guards.
     map: [
       "WWWWWWWWWWWWWWW",
-      "W..b...G...b..W",
-      "W.............W",
+      "W..b.i.G.i.b..W",
+      "W.X.........X.W",
       "W.....K.......W",
-      "W.............W",
+      "W..X.......X..W",
       "W..2.......2..W",
-      "W......3......D",
+      "W...i..3..i...D",
       "W..2.......2..W",
-      "W..2.......2..W",
+      "W..2.X...X.2..W",
       "W..h.......c..W",
-      "W.............W",
-      "W..B.......B..W",
+      "W..X.......X..W",
+      "W..B..i.i..B..W",
       "WWWWWWWDWWWWWWW",
     ],
     doors: [
@@ -422,15 +432,15 @@ export const ROOMS: RoomDef[] = [
     map: [
       "WWWWWWWDWWWWWWW",
       "W.p...s...s.p.W",
-      "W..2.......2..W",
-      "W...1.....1...W",
+      "W..2.X...X.2..W",
+      "W...1.A.A.1...W",
       "W......3......W",
-      "W......s......W",
+      "W.....Xs.X....W",
       "D......3......D",
-      "W......s......W",
+      "W.....X.sX....W",
       "W......3......W",
-      "W...1.....1...W",
-      "W..2.......2..W",
+      "W...1.A.A.1...W",
+      "W..2.X...X.2..W",
       "W.p...s...s.p.W",
       "WWWWWWWDWWWWWWW",
     ],
@@ -449,19 +459,20 @@ export const ROOMS: RoomDef[] = [
     biome: "dungeon",
     banner: "red",
     startVisible: false,
+    // Sorcerer's den — ice crystals, potion tables, books stacked.
     map: [
       "WWWWWWWWWWWWWWW",
-      "W..s...G...s..W",
+      "W..s.i.G.i.s..W",
       "W...3.....3...W",
-      "W.............W",
+      "W....?.&.?....W",
       "W......h......W",
-      "W......c......W",
+      "W...i..c..i...W",
       "D......s......W",
-      "W...3.....3...W",
+      "W...3.&.&.3...W",
       "W......3......W",
-      "W...s.....s...W",
-      "W..3.......3..W",
-      "W..s.......s..W",
+      "W...s.?.?.s...W",
+      "W..3.i...i.3..W",
+      "W..s.%...%.s..W",
       "WWWWWWWDWWWWWWW",
     ],
     doors: [
@@ -481,18 +492,20 @@ export const ROOMS: RoomDef[] = [
     biome: "dungeon",
     banner: "red",
     startVisible: false,
+    // Throne room — pillars, stalagmites flanking a central aisle,
+    // the boss dead center, king echo ghost by the throne base.
     map: [
       "WWWWWWWWWWWWWWW",
       "W.p.........p.W",
+      "W.A.........A.W",
       "W.............W",
-      "W.............W",
-      "W.............W",
+      "W..A.......A..W",
       "W......Z......W",
       "W.............W",
+      "W..A.......A..W",
+      "W.p....A....p.W",
       "W.............W",
-      "W.p.........p.W",
-      "W.............W",
-      "W......k......W",
+      "W.A....k....A.W",
       "W.............W",
       "WWWWWWWDWWWWWWW",
     ],
@@ -554,7 +567,7 @@ export const ENEMY_CHARS: Record<string, EnemyKind> = {
   "3": "mage",
 };
 
-// v3: NPC characters. The special "k" (king echo) is a ghost with a
+// v4: NPC characters. The special "k" (king echo) is a ghost with a
 // throne-room-only dialog, but the builder treats it as a "ghost" kind.
 export const NPC_CHARS: Record<string, NpcKind> = {
   N: "villager",
@@ -574,9 +587,10 @@ export function isSolidChar(ch: string): boolean {
     ch === "H" || // house
     ch === "U" || // hut
     ch === "L" || // well
-    ch === "M" || // market stall
+    ch === "M" || // market stall / hill
     ch === "F" || // fence
     ch === "R" || // rock
-    ch === "="    // bridge post
+    ch === "=" || // bridge post
+    ch === "$"    // v4: cart (solid)
   );
 }

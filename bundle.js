@@ -18132,6 +18132,91 @@
       return this;
     }
   };
+  var MeshPhongMaterial = class extends Material {
+    /**
+     * Constructs a new mesh phong material.
+     *
+     * @param {Object} [parameters] - An object with one or more properties
+     * defining the material's appearance. Any property of the material
+     * (including any property from inherited materials) can be passed
+     * in here. Color values can be passed any type of value accepted
+     * by {@link Color#set}.
+     */
+    constructor(parameters) {
+      super();
+      this.isMeshPhongMaterial = true;
+      this.type = "MeshPhongMaterial";
+      this.color = new Color(16777215);
+      this.specular = new Color(1118481);
+      this.shininess = 30;
+      this.map = null;
+      this.lightMap = null;
+      this.lightMapIntensity = 1;
+      this.aoMap = null;
+      this.aoMapIntensity = 1;
+      this.emissive = new Color(0);
+      this.emissiveIntensity = 1;
+      this.emissiveMap = null;
+      this.bumpMap = null;
+      this.bumpScale = 1;
+      this.normalMap = null;
+      this.normalMapType = TangentSpaceNormalMap;
+      this.normalScale = new Vector2(1, 1);
+      this.displacementMap = null;
+      this.displacementScale = 1;
+      this.displacementBias = 0;
+      this.specularMap = null;
+      this.alphaMap = null;
+      this.envMap = null;
+      this.envMapRotation = new Euler();
+      this.combine = MultiplyOperation;
+      this.reflectivity = 1;
+      this.refractionRatio = 0.98;
+      this.wireframe = false;
+      this.wireframeLinewidth = 1;
+      this.wireframeLinecap = "round";
+      this.wireframeLinejoin = "round";
+      this.flatShading = false;
+      this.fog = true;
+      this.setValues(parameters);
+    }
+    copy(source) {
+      super.copy(source);
+      this.color.copy(source.color);
+      this.specular.copy(source.specular);
+      this.shininess = source.shininess;
+      this.map = source.map;
+      this.lightMap = source.lightMap;
+      this.lightMapIntensity = source.lightMapIntensity;
+      this.aoMap = source.aoMap;
+      this.aoMapIntensity = source.aoMapIntensity;
+      this.emissive.copy(source.emissive);
+      this.emissiveMap = source.emissiveMap;
+      this.emissiveIntensity = source.emissiveIntensity;
+      this.bumpMap = source.bumpMap;
+      this.bumpScale = source.bumpScale;
+      this.normalMap = source.normalMap;
+      this.normalMapType = source.normalMapType;
+      this.normalScale.copy(source.normalScale);
+      this.displacementMap = source.displacementMap;
+      this.displacementScale = source.displacementScale;
+      this.displacementBias = source.displacementBias;
+      this.specularMap = source.specularMap;
+      this.alphaMap = source.alphaMap;
+      this.envMap = source.envMap;
+      this.envMapRotation.copy(source.envMapRotation);
+      this.combine = source.combine;
+      this.reflectivity = source.reflectivity;
+      this.refractionRatio = source.refractionRatio;
+      this.wireframe = source.wireframe;
+      this.wireframeLinewidth = source.wireframeLinewidth;
+      this.wireframeLinecap = source.wireframeLinecap;
+      this.wireframeLinejoin = source.wireframeLinejoin;
+      this.flatShading = source.flatShading;
+      this.fog = source.fog;
+      return this;
+    }
+  };
   var MeshLambertMaterial = class extends Material {
     /**
      * Constructs a new mesh lambert material.
@@ -36669,6 +36754,524 @@ void main() {
     });
   }
 
+  // node_modules/three/examples/jsm/loaders/OBJLoader.js
+  var _object_pattern = /^[og]\s*(.+)?/;
+  var _material_library_pattern = /^mtllib /;
+  var _material_use_pattern = /^usemtl /;
+  var _map_use_pattern = /^usemap /;
+  var _face_vertex_data_separator_pattern = /\s+/;
+  var _vA2 = new Vector3();
+  var _vB2 = new Vector3();
+  var _vC2 = new Vector3();
+  var _ab = new Vector3();
+  var _cb = new Vector3();
+  var _color2 = new Color();
+  function ParserState() {
+    const state = {
+      objects: [],
+      object: {},
+      vertices: [],
+      normals: [],
+      colors: [],
+      uvs: [],
+      materials: {},
+      materialLibraries: [],
+      startObject: function(name, fromDeclaration) {
+        if (this.object && this.object.fromDeclaration === false) {
+          this.object.name = name;
+          this.object.fromDeclaration = fromDeclaration !== false;
+          return;
+        }
+        const previousMaterial = this.object && typeof this.object.currentMaterial === "function" ? this.object.currentMaterial() : void 0;
+        if (this.object && typeof this.object._finalize === "function") {
+          this.object._finalize(true);
+        }
+        this.object = {
+          name: name || "",
+          fromDeclaration: fromDeclaration !== false,
+          geometry: {
+            vertices: [],
+            normals: [],
+            colors: [],
+            uvs: [],
+            hasUVIndices: false
+          },
+          materials: [],
+          smooth: true,
+          startMaterial: function(name2, libraries) {
+            const previous = this._finalize(false);
+            if (previous && (previous.inherited || previous.groupCount <= 0)) {
+              this.materials.splice(previous.index, 1);
+            }
+            const material = {
+              index: this.materials.length,
+              name: name2 || "",
+              mtllib: Array.isArray(libraries) && libraries.length > 0 ? libraries[libraries.length - 1] : "",
+              smooth: previous !== void 0 ? previous.smooth : this.smooth,
+              groupStart: previous !== void 0 ? previous.groupEnd : 0,
+              groupEnd: -1,
+              groupCount: -1,
+              inherited: false,
+              clone: function(index) {
+                const cloned = {
+                  index: typeof index === "number" ? index : this.index,
+                  name: this.name,
+                  mtllib: this.mtllib,
+                  smooth: this.smooth,
+                  groupStart: 0,
+                  groupEnd: -1,
+                  groupCount: -1,
+                  inherited: false
+                };
+                cloned.clone = this.clone.bind(cloned);
+                return cloned;
+              }
+            };
+            this.materials.push(material);
+            return material;
+          },
+          currentMaterial: function() {
+            if (this.materials.length > 0) {
+              return this.materials[this.materials.length - 1];
+            }
+            return void 0;
+          },
+          _finalize: function(end) {
+            const lastMultiMaterial = this.currentMaterial();
+            if (lastMultiMaterial && lastMultiMaterial.groupEnd === -1) {
+              lastMultiMaterial.groupEnd = this.geometry.vertices.length / 3;
+              lastMultiMaterial.groupCount = lastMultiMaterial.groupEnd - lastMultiMaterial.groupStart;
+              lastMultiMaterial.inherited = false;
+            }
+            if (end && this.materials.length > 1) {
+              for (let mi = this.materials.length - 1; mi >= 0; mi--) {
+                if (this.materials[mi].groupCount <= 0) {
+                  this.materials.splice(mi, 1);
+                }
+              }
+            }
+            if (end && this.materials.length === 0) {
+              this.materials.push({
+                name: "",
+                smooth: this.smooth
+              });
+            }
+            return lastMultiMaterial;
+          }
+        };
+        if (previousMaterial && previousMaterial.name && typeof previousMaterial.clone === "function") {
+          const declared = previousMaterial.clone(0);
+          declared.inherited = true;
+          this.object.materials.push(declared);
+        }
+        this.objects.push(this.object);
+      },
+      finalize: function() {
+        if (this.object && typeof this.object._finalize === "function") {
+          this.object._finalize(true);
+        }
+      },
+      parseVertexIndex: function(value, len) {
+        const index = parseInt(value, 10);
+        return (index >= 0 ? index - 1 : index + len / 3) * 3;
+      },
+      parseNormalIndex: function(value, len) {
+        const index = parseInt(value, 10);
+        return (index >= 0 ? index - 1 : index + len / 3) * 3;
+      },
+      parseUVIndex: function(value, len) {
+        const index = parseInt(value, 10);
+        return (index >= 0 ? index - 1 : index + len / 2) * 2;
+      },
+      addVertex: function(a, b, c) {
+        const src = this.vertices;
+        const dst = this.object.geometry.vertices;
+        dst.push(src[a + 0], src[a + 1], src[a + 2]);
+        dst.push(src[b + 0], src[b + 1], src[b + 2]);
+        dst.push(src[c + 0], src[c + 1], src[c + 2]);
+      },
+      addVertexPoint: function(a) {
+        const src = this.vertices;
+        const dst = this.object.geometry.vertices;
+        dst.push(src[a + 0], src[a + 1], src[a + 2]);
+      },
+      addVertexLine: function(a) {
+        const src = this.vertices;
+        const dst = this.object.geometry.vertices;
+        dst.push(src[a + 0], src[a + 1], src[a + 2]);
+      },
+      addNormal: function(a, b, c) {
+        const src = this.normals;
+        const dst = this.object.geometry.normals;
+        dst.push(src[a + 0], src[a + 1], src[a + 2]);
+        dst.push(src[b + 0], src[b + 1], src[b + 2]);
+        dst.push(src[c + 0], src[c + 1], src[c + 2]);
+      },
+      addFaceNormal: function(a, b, c) {
+        const src = this.vertices;
+        const dst = this.object.geometry.normals;
+        _vA2.fromArray(src, a);
+        _vB2.fromArray(src, b);
+        _vC2.fromArray(src, c);
+        _cb.subVectors(_vC2, _vB2);
+        _ab.subVectors(_vA2, _vB2);
+        _cb.cross(_ab);
+        _cb.normalize();
+        dst.push(_cb.x, _cb.y, _cb.z);
+        dst.push(_cb.x, _cb.y, _cb.z);
+        dst.push(_cb.x, _cb.y, _cb.z);
+      },
+      addColor: function(a, b, c) {
+        const src = this.colors;
+        const dst = this.object.geometry.colors;
+        if (src[a] !== void 0) dst.push(src[a + 0], src[a + 1], src[a + 2]);
+        if (src[b] !== void 0) dst.push(src[b + 0], src[b + 1], src[b + 2]);
+        if (src[c] !== void 0) dst.push(src[c + 0], src[c + 1], src[c + 2]);
+      },
+      addUV: function(a, b, c) {
+        const src = this.uvs;
+        const dst = this.object.geometry.uvs;
+        dst.push(src[a + 0], src[a + 1]);
+        dst.push(src[b + 0], src[b + 1]);
+        dst.push(src[c + 0], src[c + 1]);
+      },
+      addDefaultUV: function() {
+        const dst = this.object.geometry.uvs;
+        dst.push(0, 0);
+        dst.push(0, 0);
+        dst.push(0, 0);
+      },
+      addUVLine: function(a) {
+        const src = this.uvs;
+        const dst = this.object.geometry.uvs;
+        dst.push(src[a + 0], src[a + 1]);
+      },
+      addFace: function(a, b, c, ua, ub, uc, na, nb, nc) {
+        const vLen = this.vertices.length;
+        let ia = this.parseVertexIndex(a, vLen);
+        let ib = this.parseVertexIndex(b, vLen);
+        let ic = this.parseVertexIndex(c, vLen);
+        this.addVertex(ia, ib, ic);
+        this.addColor(ia, ib, ic);
+        if (na !== void 0 && na !== "") {
+          const nLen = this.normals.length;
+          ia = this.parseNormalIndex(na, nLen);
+          ib = this.parseNormalIndex(nb, nLen);
+          ic = this.parseNormalIndex(nc, nLen);
+          this.addNormal(ia, ib, ic);
+        } else {
+          this.addFaceNormal(ia, ib, ic);
+        }
+        if (ua !== void 0 && ua !== "") {
+          const uvLen = this.uvs.length;
+          ia = this.parseUVIndex(ua, uvLen);
+          ib = this.parseUVIndex(ub, uvLen);
+          ic = this.parseUVIndex(uc, uvLen);
+          this.addUV(ia, ib, ic);
+          this.object.geometry.hasUVIndices = true;
+        } else {
+          this.addDefaultUV();
+        }
+      },
+      addPointGeometry: function(vertices) {
+        this.object.geometry.type = "Points";
+        const vLen = this.vertices.length;
+        for (let vi = 0, l = vertices.length; vi < l; vi++) {
+          const index = this.parseVertexIndex(vertices[vi], vLen);
+          this.addVertexPoint(index);
+          this.addColor(index);
+        }
+      },
+      addLineGeometry: function(vertices, uvs) {
+        this.object.geometry.type = "Line";
+        const vLen = this.vertices.length;
+        const uvLen = this.uvs.length;
+        for (let vi = 0, l = vertices.length; vi < l; vi++) {
+          this.addVertexLine(this.parseVertexIndex(vertices[vi], vLen));
+        }
+        for (let uvi = 0, l = uvs.length; uvi < l; uvi++) {
+          this.addUVLine(this.parseUVIndex(uvs[uvi], uvLen));
+        }
+      }
+    };
+    state.startObject("", false);
+    return state;
+  }
+  var OBJLoader = class extends Loader {
+    /**
+     * Constructs a new OBJ loader.
+     *
+     * @param {LoadingManager} [manager] - The loading manager.
+     */
+    constructor(manager) {
+      super(manager);
+      this.materials = null;
+    }
+    /**
+     * Starts loading from the given URL and passes the loaded OBJ asset
+     * to the `onLoad()` callback.
+     *
+     * @param {string} url - The path/URL of the file to be loaded. This can also be a data URI.
+     * @param {function(Group)} onLoad - Executed when the loading process has been finished.
+     * @param {onProgressCallback} onProgress - Executed while the loading is in progress.
+     * @param {onErrorCallback} onError - Executed when errors occur.
+     */
+    load(url, onLoad, onProgress, onError) {
+      const scope = this;
+      const loader = new FileLoader(this.manager);
+      loader.setPath(this.path);
+      loader.setRequestHeader(this.requestHeader);
+      loader.setWithCredentials(this.withCredentials);
+      loader.load(url, function(text) {
+        try {
+          onLoad(scope.parse(text));
+        } catch (e) {
+          if (onError) {
+            onError(e);
+          } else {
+            console.error(e);
+          }
+          scope.manager.itemError(url);
+        }
+      }, onProgress, onError);
+    }
+    /**
+     * Sets the material creator for this OBJ. This object is loaded via {@link MTLLoader}.
+     *
+     * @param {MaterialCreator} materials - An object that creates the materials for this OBJ.
+     * @return {OBJLoader} A reference to this loader.
+     */
+    setMaterials(materials) {
+      this.materials = materials;
+      return this;
+    }
+    /**
+     * Parses the given OBJ data and returns the resulting group.
+     *
+     * @param {string} text - The raw OBJ data as a string.
+     * @return {Group} The parsed OBJ.
+     */
+    parse(text) {
+      const state = new ParserState();
+      if (text.indexOf("\r\n") !== -1) {
+        text = text.replace(/\r\n/g, "\n");
+      }
+      if (text.indexOf("\\\n") !== -1) {
+        text = text.replace(/\\\n/g, "");
+      }
+      const lines = text.split("\n");
+      let result = [];
+      for (let i = 0, l = lines.length; i < l; i++) {
+        const line = lines[i].trimStart();
+        if (line.length === 0) continue;
+        const lineFirstChar = line.charAt(0);
+        if (lineFirstChar === "#") continue;
+        if (lineFirstChar === "v") {
+          const data = line.split(_face_vertex_data_separator_pattern);
+          switch (data[0]) {
+            case "v":
+              state.vertices.push(
+                parseFloat(data[1]),
+                parseFloat(data[2]),
+                parseFloat(data[3])
+              );
+              if (data.length >= 7) {
+                _color2.setRGB(
+                  parseFloat(data[4]),
+                  parseFloat(data[5]),
+                  parseFloat(data[6]),
+                  SRGBColorSpace
+                );
+                state.colors.push(_color2.r, _color2.g, _color2.b);
+              } else {
+                state.colors.push(void 0, void 0, void 0);
+              }
+              break;
+            case "vn":
+              state.normals.push(
+                parseFloat(data[1]),
+                parseFloat(data[2]),
+                parseFloat(data[3])
+              );
+              break;
+            case "vt":
+              state.uvs.push(
+                parseFloat(data[1]),
+                parseFloat(data[2])
+              );
+              break;
+          }
+        } else if (lineFirstChar === "f") {
+          const lineData = line.slice(1).trim();
+          const vertexData = lineData.split(_face_vertex_data_separator_pattern);
+          const faceVertices = [];
+          for (let j = 0, jl = vertexData.length; j < jl; j++) {
+            const vertex2 = vertexData[j];
+            if (vertex2.length > 0) {
+              const vertexParts = vertex2.split("/");
+              faceVertices.push(vertexParts);
+            }
+          }
+          const v1 = faceVertices[0];
+          for (let j = 1, jl = faceVertices.length - 1; j < jl; j++) {
+            const v2 = faceVertices[j];
+            const v3 = faceVertices[j + 1];
+            state.addFace(
+              v1[0],
+              v2[0],
+              v3[0],
+              v1[1],
+              v2[1],
+              v3[1],
+              v1[2],
+              v2[2],
+              v3[2]
+            );
+          }
+        } else if (lineFirstChar === "l") {
+          const lineParts = line.substring(1).trim().split(" ");
+          let lineVertices = [];
+          const lineUVs = [];
+          if (line.indexOf("/") === -1) {
+            lineVertices = lineParts;
+          } else {
+            for (let li = 0, llen = lineParts.length; li < llen; li++) {
+              const parts = lineParts[li].split("/");
+              if (parts[0] !== "") lineVertices.push(parts[0]);
+              if (parts[1] !== "") lineUVs.push(parts[1]);
+            }
+          }
+          state.addLineGeometry(lineVertices, lineUVs);
+        } else if (lineFirstChar === "p") {
+          const lineData = line.slice(1).trim();
+          const pointData = lineData.split(" ");
+          state.addPointGeometry(pointData);
+        } else if ((result = _object_pattern.exec(line)) !== null) {
+          const name = (" " + result[0].slice(1).trim()).slice(1);
+          state.startObject(name);
+        } else if (_material_use_pattern.test(line)) {
+          state.object.startMaterial(line.substring(7).trim(), state.materialLibraries);
+        } else if (_material_library_pattern.test(line)) {
+          state.materialLibraries.push(line.substring(7).trim());
+        } else if (_map_use_pattern.test(line)) {
+          console.warn('THREE.OBJLoader: Rendering identifier "usemap" not supported. Textures must be defined in MTL files.');
+        } else if (lineFirstChar === "s") {
+          result = line.split(" ");
+          if (result.length > 1) {
+            const value = result[1].trim().toLowerCase();
+            state.object.smooth = value !== "0" && value !== "off";
+          } else {
+            state.object.smooth = true;
+          }
+          const material = state.object.currentMaterial();
+          if (material) material.smooth = state.object.smooth;
+        } else {
+          if (line === "\0") continue;
+          console.warn('THREE.OBJLoader: Unexpected line: "' + line + '"');
+        }
+      }
+      state.finalize();
+      const container = new Group();
+      container.materialLibraries = [].concat(state.materialLibraries);
+      const hasPrimitives = !(state.objects.length === 1 && state.objects[0].geometry.vertices.length === 0);
+      if (hasPrimitives === true) {
+        for (let i = 0, l = state.objects.length; i < l; i++) {
+          const object = state.objects[i];
+          const geometry = object.geometry;
+          const materials = object.materials;
+          const isLine = geometry.type === "Line";
+          const isPoints = geometry.type === "Points";
+          let hasVertexColors = false;
+          if (geometry.vertices.length === 0) continue;
+          const buffergeometry = new BufferGeometry();
+          buffergeometry.setAttribute("position", new Float32BufferAttribute(geometry.vertices, 3));
+          if (geometry.normals.length > 0) {
+            buffergeometry.setAttribute("normal", new Float32BufferAttribute(geometry.normals, 3));
+          }
+          if (geometry.colors.length > 0) {
+            hasVertexColors = true;
+            buffergeometry.setAttribute("color", new Float32BufferAttribute(geometry.colors, 3));
+          }
+          if (geometry.hasUVIndices === true) {
+            buffergeometry.setAttribute("uv", new Float32BufferAttribute(geometry.uvs, 2));
+          }
+          const createdMaterials = [];
+          for (let mi = 0, miLen = materials.length; mi < miLen; mi++) {
+            const sourceMaterial = materials[mi];
+            const materialHash = sourceMaterial.name + "_" + sourceMaterial.smooth + "_" + hasVertexColors;
+            let material = state.materials[materialHash];
+            if (this.materials !== null) {
+              material = this.materials.create(sourceMaterial.name);
+              if (isLine && material && !(material instanceof LineBasicMaterial)) {
+                const materialLine = new LineBasicMaterial();
+                Material.prototype.copy.call(materialLine, material);
+                materialLine.color.copy(material.color);
+                material = materialLine;
+              } else if (isPoints && material && !(material instanceof PointsMaterial)) {
+                const materialPoints = new PointsMaterial({ size: 10, sizeAttenuation: false });
+                Material.prototype.copy.call(materialPoints, material);
+                materialPoints.color.copy(material.color);
+                materialPoints.map = material.map;
+                material = materialPoints;
+              }
+            }
+            if (material === void 0) {
+              if (isLine) {
+                material = new LineBasicMaterial();
+              } else if (isPoints) {
+                material = new PointsMaterial({ size: 1, sizeAttenuation: false });
+              } else {
+                material = new MeshPhongMaterial();
+              }
+              material.name = sourceMaterial.name;
+              material.flatShading = sourceMaterial.smooth ? false : true;
+              material.vertexColors = hasVertexColors;
+              state.materials[materialHash] = material;
+            }
+            createdMaterials.push(material);
+          }
+          let mesh;
+          if (createdMaterials.length > 1) {
+            for (let mi = 0, miLen = materials.length; mi < miLen; mi++) {
+              const sourceMaterial = materials[mi];
+              buffergeometry.addGroup(sourceMaterial.groupStart, sourceMaterial.groupCount, mi);
+            }
+            if (isLine) {
+              mesh = new LineSegments(buffergeometry, createdMaterials);
+            } else if (isPoints) {
+              mesh = new Points(buffergeometry, createdMaterials);
+            } else {
+              mesh = new Mesh(buffergeometry, createdMaterials);
+            }
+          } else {
+            if (isLine) {
+              mesh = new LineSegments(buffergeometry, createdMaterials[0]);
+            } else if (isPoints) {
+              mesh = new Points(buffergeometry, createdMaterials[0]);
+            } else {
+              mesh = new Mesh(buffergeometry, createdMaterials[0]);
+            }
+          }
+          mesh.name = object.name;
+          container.add(mesh);
+        }
+      } else {
+        if (state.vertices.length > 0) {
+          const material = new PointsMaterial({ size: 1, sizeAttenuation: false });
+          const buffergeometry = new BufferGeometry();
+          buffergeometry.setAttribute("position", new Float32BufferAttribute(state.vertices, 3));
+          if (state.colors.length > 0 && state.colors[0] !== void 0) {
+            buffergeometry.setAttribute("color", new Float32BufferAttribute(state.colors, 3));
+            material.vertexColors = true;
+          }
+          const points = new Points(buffergeometry, material);
+          container.add(points);
+        }
+      }
+      return container;
+    }
+  };
+
   // node_modules/three/examples/jsm/utils/SkeletonUtils.js
   function clone(source) {
     const sourceLookup = /* @__PURE__ */ new Map();
@@ -36736,7 +37339,7 @@ void main() {
     stairs: "assets/dungeon/stairs.glb",
     spikes: "assets/dungeon/floor_tile_big_spikes.glb"
   };
-  var MANIFEST_POLYGON = {
+  var MANIFEST_POLYGON_GLB = {
     // village buildings
     poly_house_a: "assets/polygon/house_a.glb",
     poly_house_b: "assets/polygon/house_b.glb",
@@ -36810,11 +37413,249 @@ void main() {
     poly_cloud_a: "assets/polygon/cloud_a.glb",
     poly_cloud_b: "assets/polygon/cloud_b.glb"
   };
-  var MANIFEST = { ...MANIFEST_KAYKIT, ...MANIFEST_POLYGON };
+  var MANIFEST_POLYGON_OBJ_LIST = [
+    // buildings
+    "bld_fence_01",
+    "bld_fence_02",
+    "bld_fencepost_01",
+    "bld_hut_01",
+    "bld_hutdoor_01",
+    "bld_stall_01",
+    "bld_stall_02",
+    "bld_stall_03",
+    "bld_stall_04",
+    "bld_stall_cover_01",
+    "bld_stall_cover_02",
+    "bld_stall_cover_03",
+    "bld_stall_cover_04",
+    "bld_stall_cover_05",
+    "bld_village_01",
+    "bld_village_02",
+    "bld_village_03",
+    "bld_village_04",
+    "bld_village_05",
+    "bld_village_06",
+    "bld_village_07",
+    "bld_village_hangingcloth_01",
+    "bld_village_top_01",
+    "bld_village_windowdrapes_01",
+    "bld_wall_01",
+    "bld_wall_02",
+    "bld_well_01",
+    // env — big/nature
+    "env_bridge_01",
+    "env_bush_01",
+    "env_bush_02",
+    "env_bush_03",
+    "env_bush_04",
+    "env_campfire_01",
+    "env_cloud_01",
+    "env_cloud_02",
+    "env_cloud_03",
+    "env_cloud_04",
+    "env_cloud_05",
+    "env_cloud_06",
+    "env_cloud_07",
+    "env_dirtmound_01",
+    "env_floortile_01",
+    "env_floortile_02",
+    "env_floortile_03",
+    "env_floortile_04",
+    "env_floortile_05",
+    "env_floortile_06",
+    "env_floortile_07",
+    "env_flower_01",
+    "env_flower_02",
+    "env_flower_03",
+    "env_flower_04",
+    "env_flower_05",
+    "env_flower_06",
+    "env_flower_07",
+    "env_flower_08",
+    "env_grass_01",
+    "env_grass_02",
+    "env_groundmounds_01",
+    "env_groundmounds_02",
+    "env_groundmounds_03",
+    "env_groundmounds_04",
+    "env_groundmounds_05",
+    "env_groundmounds_06",
+    "env_groundmounds_07",
+    "env_groundmounds_08",
+    "env_groundmounds_09",
+    "env_groundmounds_10",
+    "env_hedge_01",
+    "env_hill_01",
+    "env_hill_02",
+    "env_hill_03",
+    "env_hill_04",
+    "env_ice_01",
+    "env_ice_02",
+    "env_ice_03",
+    "env_lillypads_01",
+    "env_lillypads_02",
+    "env_lillypads_03",
+    "env_mushroom_01",
+    "env_pebble_01",
+    "env_pebble_02",
+    "env_pebble_03",
+    "env_pebble_04",
+    "env_pebble_05",
+    "env_pebble_06",
+    "env_pebble_07",
+    "env_plant_01",
+    "env_plant_02",
+    "env_plant_03",
+    "env_plant_04",
+    "env_plant_05",
+    "env_reeds_01",
+    "env_reeds_02",
+    "env_reeds_03",
+    "env_road_corner_01",
+    "env_road_cross_01",
+    "env_road_straight_01",
+    "env_road_straight_02",
+    "env_road_t_01",
+    "env_rock_01",
+    "env_rock_02",
+    "env_rock_03",
+    "env_rock_04",
+    "env_rock_05",
+    "env_rock_07",
+    "env_rock_08",
+    "env_rock_09",
+    "env_rock_010",
+    "env_rock_011",
+    "env_rock_012",
+    "env_rock_013",
+    "env_rock_014",
+    "env_rock_015",
+    "env_rock_016",
+    "env_stalagmite_01",
+    "env_stalagmite_02",
+    "env_stalagmite_03",
+    "env_stream_corner_01",
+    "env_stream_straight_01",
+    "env_stream_straight_02",
+    "env_tree_01",
+    "env_tree_02",
+    "env_tree_03",
+    "env_tree_04",
+    "env_tree_05",
+    "env_tree_06",
+    "env_tree_07",
+    "env_tree_08",
+    "env_tree_09",
+    "env_tree_010",
+    "env_tree_011",
+    "env_tree_012",
+    "env_tree_013",
+    "env_tree_014",
+    "env_tree_015",
+    "env_tree_016",
+    "env_treebirch_01",
+    "env_treebirch_02",
+    "env_treebirch_03",
+    "env_treedead_01",
+    "env_treedead_02",
+    "env_treelog_01",
+    "env_treepine_01",
+    "env_treepine_02",
+    "env_treepine_03",
+    "env_treepine_04",
+    "env_treestump_01",
+    // items
+    "item_canteen_01",
+    "item_fruit_01",
+    "item_fruit_02",
+    "item_fruit_03",
+    "item_gourd_01",
+    "item_lantern_01",
+    "item_lantern_02",
+    "item_potion_01",
+    "item_potion_02",
+    "item_potion_03",
+    "item_potion_04",
+    "item_potion_05",
+    "item_potion_06",
+    "item_pouch_01",
+    "item_waterskin_01",
+    "item_wine_01",
+    "item_wine_02",
+    // props
+    "prop_barrel_01",
+    "prop_barrel_02",
+    "prop_basket_01",
+    "prop_basket_02",
+    "prop_basket_03",
+    "prop_basket_04",
+    "prop_book_01",
+    "prop_book_02",
+    "prop_book_03",
+    "prop_cart_01",
+    "prop_cart_02",
+    "prop_cart_03",
+    "prop_cart_wheel_01",
+    "prop_cheese_01",
+    "prop_cheese_02",
+    "prop_cheese_03",
+    "prop_chest_01",
+    "prop_chest_lid_01",
+    "prop_crate_01",
+    "prop_crate_02",
+    "prop_loghalf_01",
+    "prop_loghalf_02",
+    "prop_logpile_01",
+    "prop_meat_01",
+    "prop_meat_02",
+    "prop_meat_03",
+    "prop_pot_01",
+    "prop_pot_02",
+    "prop_pot_03",
+    "prop_pumpkin_01",
+    "prop_pumpkin_02",
+    "prop_roadsign_01",
+    "prop_sack_01",
+    "prop_sack_02",
+    "prop_sack_03",
+    "prop_sack_04",
+    "prop_scroll_01",
+    "prop_scroll_02",
+    "prop_stall_table_01",
+    "prop_stoneblock_01",
+    "prop_washingline_01",
+    "prop_washingline_02",
+    "prop_washingline_03",
+    // weapons
+    "wep_axe_01",
+    "wep_dagger_01",
+    "wep_greataxe_01",
+    "wep_musketpistol_01",
+    "wep_pitchfork_01",
+    "wep_scythe_01",
+    "wep_sheild_01",
+    "wep_sheild_02",
+    "wep_sheild_03",
+    "wep_staff_01",
+    "wep_staff_02",
+    "wep_sword_01"
+  ];
+  var MANIFEST_POLYGON_OBJ = {};
+  for (const name of MANIFEST_POLYGON_OBJ_LIST) {
+    MANIFEST_POLYGON_OBJ[`polyx_${name}`] = `assets/polygon-obj/${name}.obj`;
+  }
+  var MANIFEST = {
+    ...MANIFEST_KAYKIT,
+    ...MANIFEST_POLYGON_GLB,
+    ...MANIFEST_POLYGON_OBJ
+  };
   function nativeScale(key) {
-    return key.startsWith("poly_") ? 0.01 : 1;
+    if (key.startsWith("poly_") || key.startsWith("polyx_")) return 0.01;
+    return 1;
   }
   var cache = /* @__PURE__ */ new Map();
+  var atlasTexture = null;
+  var atlasMaterial = null;
   function convertMaterials(root) {
     if (!RENDER.useLambert) return;
     root.traverse((obj) => {
@@ -36835,6 +37676,14 @@ void main() {
       mesh.material = Array.isArray(mesh.material) ? mesh.material.map(convert) : convert(mesh.material);
     });
   }
+  function applyAtlasMaterial(root) {
+    if (!atlasMaterial) return;
+    root.traverse((obj) => {
+      const mesh = obj;
+      if (!mesh.isMesh) return;
+      mesh.material = atlasMaterial;
+    });
+  }
   function enableShadows(root, cast, receive) {
     root.traverse((obj) => {
       const mesh = obj;
@@ -36846,28 +37695,70 @@ void main() {
       }
     });
   }
+  async function loadAtlas() {
+    return new Promise((resolve2, reject) => {
+      new TextureLoader().load(
+        "assets/polygon-obj/atlas.png",
+        (tex) => {
+          tex.colorSpace = SRGBColorSpace;
+          tex.magFilter = NearestFilter;
+          tex.minFilter = NearestMipmapLinearFilter;
+          tex.generateMipmaps = true;
+          tex.wrapS = ClampToEdgeWrapping;
+          tex.wrapT = ClampToEdgeWrapping;
+          atlasTexture = tex;
+          atlasMaterial = new MeshLambertMaterial({
+            map: tex,
+            side: DoubleSide,
+            // some pack meshes have single-sided flags flipped
+            color: 16777215
+          });
+          resolve2();
+        },
+        void 0,
+        (err) => reject(err)
+      );
+    });
+  }
   async function loadAll(onProgress) {
-    const loader = new GLTFLoader();
-    const entries = Object.entries(MANIFEST);
+    const gltfLoader = new GLTFLoader();
+    const objLoader = new OBJLoader();
+    onProgress(0, 1, "loading atlas texture");
+    await loadAtlas();
+    const gltfEntries = Object.entries({ ...MANIFEST_KAYKIT, ...MANIFEST_POLYGON_GLB });
+    const objEntries = Object.entries(MANIFEST_POLYGON_OBJ);
+    const total = gltfEntries.length + objEntries.length;
     let done = 0;
-    for (const [key, url] of entries) {
-      onProgress(done, entries.length, url.split("/").pop() ?? url);
-      const gltf = await loader.loadAsync(url);
+    for (const [key, url] of gltfEntries) {
+      onProgress(done, total, url.split("/").pop() ?? url);
+      const gltf = await gltfLoader.loadAsync(url);
       convertMaterials(gltf.scene);
       cache.set(key, { scene: gltf.scene, animations: gltf.animations });
       done++;
     }
-    onProgress(entries.length, entries.length, "done");
+    for (const [key, url] of objEntries) {
+      onProgress(done, total, url.split("/").pop() ?? url);
+      try {
+        const grp = await objLoader.loadAsync(url);
+        applyAtlasMaterial(grp);
+        cache.set(key, { scene: grp, animations: [] });
+      } catch (e) {
+        console.warn(`Failed to load ${url}:`, e);
+      }
+      done++;
+    }
+    onProgress(total, total, "done");
   }
   function getAnimations(key) {
     const a = cache.get(key);
-    if (!a) throw new Error(`Asset not loaded: ${key}`);
+    if (!a) throw new Error(`Asset not loaded: ${String(key)}`);
     return a.animations;
   }
   function spawn(key, opts = {}) {
     const a = cache.get(key);
-    if (!a) throw new Error(`Asset not loaded: ${key}`);
-    const inst = clone(a.scene);
+    if (!a) throw new Error(`Asset not loaded: ${String(key)}`);
+    const isObj = key.startsWith("polyx_");
+    const inst = isObj ? a.scene.clone(true) : clone(a.scene);
     enableShadows(inst, opts.castShadow ?? false, opts.receiveShadow ?? false);
     const s = nativeScale(key) * (opts.scale ?? 1);
     if (s !== 1) {
@@ -36886,6 +37777,9 @@ void main() {
     });
     return found;
   }
+  var POLYX_KEYS = MANIFEST_POLYGON_OBJ_LIST.map(
+    (n) => `polyx_${n}`
+  );
 
   // src/engine/anim.ts
   function buildAnimSet(root, clips) {
@@ -36946,17 +37840,17 @@ void main() {
       startVisible: false,
       map: [
         "TTTTTTTDTTTTTTT",
-        "T.gggT.......TT",
-        "Tg..fgg.f.gg.TT",
-        "T.gggT..fggg.TT",
-        "T.f...gT......T",
+        "T.gggT.+*....TT",
+        "Tg.fgg.f.gg-.TT",
+        "T.gggT.mfggg.TT",
+        "T.f.**gT.....RT",
         "Tgg.g.fY..gg..T",
         "T.f.gg.g.g.f..T",
-        "T..g.f..g.f.g.T",
-        "Tg..gg.gg..gg.T",
-        "T.fg.f..f.gg..T",
-        "TT..gg.g..f..TT",
-        "TT.f..gg.gg..TT",
+        "T.-g.f..g.f.g.T",
+        "Tg..gg.gg.+gg.T",
+        "T.fg.f..f.gg.mT",
+        "TT..gg.g.*f..TT",
+        "TT.f.-gg.gg..TT",
         "TTTTTTTTTTTTTTT"
       ],
       doors: [{ dir: "n", kind: "open" }]
@@ -36974,16 +37868,16 @@ void main() {
       map: [
         "TTTTTTTTTTTTTTT",
         "T.fgg.f.gg.fg.T",
-        "Tg.f.gg.f..g.gT",
+        "Tg.f.gg.f.+g.gT",
         "T.gg.f.gg.f.g.T",
-        "T.f..ggN.g.f.gT",
+        "T.f.-ggN.g.f.gT",
         "Tgg.f.gg.f.gg.T",
-        "T.g..g.f.gg.f.D",
+        "T.g..g*f.gg.f.D",
         "Tf.gg.f.gg.g.gT",
         "T.g.f.gg.gN.g.T",
-        "Tg.gg.f..gg.g.T",
+        "Tg.gg.f.mgg.g.T",
         "T.f.gg.gg..f.gT",
-        "Tg..f..g.gg.f.T",
+        "Tg..f..g.gg-f.T",
         "TTTTTTTTTTTTTTT"
       ],
       doors: [{ dir: "e", kind: "open" }]
@@ -36995,27 +37889,27 @@ void main() {
       name: "Willowvale Village",
       biome: "village",
       startVisible: true,
-      // v3 village layout — 8 NPCs total, arranged so the elder is dead
-      // center and the merchants flank the east/west roads.
-      //   J = blacksmith at west edge         N = tavern keeper east
-      //   Q = west merchant     Q = east fruit-seller
-      //   E = Elder Alden (center-south of the campfire)
-      //   N = child running near the road
-      //   N = priestess by the well
-      //   N = farmer at the SE corner
+      // v4 village — LIVING MARKET.
+      //   Row 1: hanging cloth between houses (implicit — decor at house sides)
+      //   Row 2: J blacksmith (x=2), stall lanterns (l), N tavern (x=11)
+      //   Row 4: campfire C at 6, extra market items around
+      //   Row 5: Q merchants flanking, lantern posts on the road
+      //   Row 6: elder E at 8, P player start at 6
+      //   Row 8: L well + N priestess at 9
+      //   Row 10-11: farm huts, cart $, washing lines w
       map: [
         "TTTTTTTDTTTTTTT",
         "T.fg.H.,.H.gg.T",
-        "T.J.f..,...N..T",
+        "T.Jlf.w,...N.wT",
         "T.gg.,,,,,.gg.T",
-        "T.f.,,C,,,N.f.T",
+        "Tmf.,,C,,,Nmf.T",
         "T.Q.,,,,,,,.Q.T",
         "D,,,,,P,E,,,,,D",
-        "T.f.,,,,,,,.f.T",
-        "T.gg.,,L,N,.g.T",
-        "T.f...,,,..fggT",
+        "T.f.,,,,,,,.fmT",
+        "T.gg.,,L,N,.gwT",
+        "T.f.$.,,,..fggT",
         "Tg.H..,,..H.f.T",
-        "T.fg.U.,.gg.NgT",
+        "T.fgwU.,.gg.NgT",
         "TTTTTTTDTTTTTTT"
       ],
       doors: [
@@ -37035,16 +37929,16 @@ void main() {
       map: [
         "TTTTTTTTTTTTTTT",
         "T.gg.f.g.fg.g.T",
-        "Tf..gg.f..g.f.T",
+        "Tf..gg.f.-g.f.T",
         "T.gg.f.gg.fN.gT",
-        "T.f...gg.f.gg.T",
+        "T.f.m.gg.f.gg.T",
         "Tgg.f.g..gg.f.T",
         "D.g..gg.f..g.gT",
-        "Tf.gg.f.gg.f..T",
+        "Tf.gg.f.gg.f-.T",
         "T.gN.f..gg.g.gT",
         "Tg.gg.gg..f.f.T",
-        "T.f.gg.g.gg.g.T",
-        "Tg..f..gg..f..T",
+        "T.f.gg.g.gg+g.T",
+        "Tg..f*.gg.mf..T",
         "TTTTTTTTTTTTTTT"
       ],
       doors: [{ dir: "w", kind: "open" }]
@@ -37063,16 +37957,16 @@ void main() {
       map: [
         "WWWWWWWWWWWWWWW",
         "W..b.......b..W",
-        "W..1........1.W",
+        "W..1.X.....X1.W",
         "W.............W",
-        "W....x.....x..W",
+        "W.A..x.....x.AW",
         "W......G......W",
         "W..o1......c1.D",
         "W.............W",
-        "W..b...1...b..W",
-        "W..1.......1..W",
+        "W..bA......bA.W",
+        "W..1..X..X.1..W",
         "W....S.....S..W",
-        "W.............W",
+        "W.......A.....W",
         "WWWWWWWWWWWWWWW"
       ],
       doors: [{ dir: "e", kind: "open" }]
@@ -37088,15 +37982,15 @@ void main() {
       map: [
         "WWWWWWWDWWWWWWW",
         "W.............W",
-        "W..b.......b..W",
+        "W..b...X...b..W",
         "W..1........1.W",
-        "W.............W",
+        "W...A......A..W",
         "W......P......W",
-        "D.............D",
+        "D....X.....X..D",
         "W......1......W",
         "W..1........1.W",
         "W..b...S...b..W",
-        "W.............W",
+        "W...A......A..W",
         "W.............W",
         "WWWWWWWDWWWWWWW"
       ],
@@ -37118,16 +38012,16 @@ void main() {
       map: [
         "WWWWWWWDWWWWWWW",
         "W..x.......x..W",
-        "W..2........2.W",
+        "W..2.X.....X2.W",
         "W.......G.....W",
         "W..2.......2..W",
-        "W......c......W",
+        "W....X.c.X....W",
         "D.............W",
-        "W..2.......2..W",
+        "W..2..X.X..2..W",
         "W..o.......o..W",
         "W..1.......1..W",
-        "W..b.......b..W",
-        "W.............W",
+        "W..b.X.....X.bW",
+        "W.....X.X.....W",
         "WWWWWWWWWWWWWWW"
       ],
       doors: [
@@ -37148,17 +38042,17 @@ void main() {
       startVisible: false,
       map: [
         "WWWWWWWWWWWWWWW",
-        "W..x.......x..W",
+        "W..x...A...x..W",
         "W..1........1.W",
         "W..b.......b..W",
-        "W.............W",
+        "W..A.......A..W",
         "W......h......W",
         "W......G......D",
         "W..1.......1..W",
-        "W..b.......b..W",
-        "W.............W",
+        "W..b.A...A.b..W",
+        "W...X......X..W",
         "W..o...1...o..W",
-        "W.............W",
+        "W......A......W",
         "WWWWWWWWWWWWWWW"
       ],
       doors: [{ dir: "e", kind: "open" }]
@@ -37171,19 +38065,20 @@ void main() {
       biome: "dungeon",
       banner: "blue",
       startVisible: false,
+      // The armory — LOADED with dropped weapons.
       map: [
         "WWWWWWWDWWWWWWW",
         "W..x...x...x..W",
-        "W.2.........2.W",
-        "W.............W",
-        "W.2.........2.W",
-        "W..b...c...b..W",
+        "W.2.X.....X.2.W",
+        "W...X.....X...W",
+        "W.2....X....2.W",
+        "W..b.X.c.X.b..W",
         "D......G......D",
-        "W..o.......o..W",
-        "W.2....s....2.W",
-        "W.............W",
-        "W.....1.1.....W",
-        "W..x.......x..W",
+        "W..o.X...X.o..W",
+        "W.2...Xs.X..2.W",
+        "W...X..X..X...W",
+        "W..X..1.1..X..W",
+        "W..x.X...X.x..W",
         "WWWWWWWWWWWWWWW"
       ],
       doors: [
@@ -37203,16 +38098,16 @@ void main() {
       map: [
         "WWWWWWWDWWWWWWW",
         "W.p.........p.W",
-        "W...1.....1...W",
+        "W...1.A...A.1.W",
         "W.............W",
         "W....2.....2..W",
-        "W......1......W",
+        "W..A...1...A..W",
         "D.............D",
-        "W......1......W",
+        "W..A...1...A..W",
         "W....2.....2..W",
-        "W...1.....1...W",
+        "W...1.A...A.1.W",
         "W.............W",
-        "W.p.........p.W",
+        "W.p...A...A.p.W",
         "WWWWWWWDWWWWWWW"
       ],
       doors: [
@@ -37230,19 +38125,20 @@ void main() {
       biome: "dungeon",
       banner: "red",
       startVisible: false,
+      // Mage hall — books and potions everywhere.
       map: [
         "WWWWWWWDWWWWWWW",
         "W..s.......s..W",
-        "W...3.....3...W",
-        "W.............W",
+        "W...3.%...%.3.W",
+        "W....?.....?..W",
         "W...s..G..s...W",
-        "W......s......W",
+        "W.....&s&.....W",
         "D......3......W",
-        "W......s......W",
-        "W...s.....s...W",
-        "W...3.....3...W",
-        "W.............W",
-        "W..s...c...s..W",
+        "W.....&s&.....W",
+        "W...s..%..s...W",
+        "W...3.?...?.3.W",
+        "W......&......W",
+        "W..s.%.c.%.s..W",
         "WWWWWWWDWWWWWWW"
       ],
       doors: [
@@ -37262,19 +38158,20 @@ void main() {
       biome: "dungeon",
       banner: "blue",
       startVisible: false,
+      // Treasury — piled coins (barrels), fallen weapons of dead guards.
       map: [
         "WWWWWWWWWWWWWWW",
-        "W..b...G...b..W",
-        "W.............W",
+        "W..b.i.G.i.b..W",
+        "W.X.........X.W",
         "W.....K.......W",
-        "W.............W",
+        "W..X.......X..W",
         "W..2.......2..W",
-        "W......3......D",
+        "W...i..3..i...D",
         "W..2.......2..W",
-        "W..2.......2..W",
+        "W..2.X...X.2..W",
         "W..h.......c..W",
-        "W.............W",
-        "W..B.......B..W",
+        "W..X.......X..W",
+        "W..B..i.i..B..W",
         "WWWWWWWDWWWWWWW"
       ],
       doors: [
@@ -37293,15 +38190,15 @@ void main() {
       map: [
         "WWWWWWWDWWWWWWW",
         "W.p...s...s.p.W",
-        "W..2.......2..W",
-        "W...1.....1...W",
+        "W..2.X...X.2..W",
+        "W...1.A.A.1...W",
         "W......3......W",
-        "W......s......W",
+        "W.....Xs.X....W",
         "D......3......D",
-        "W......s......W",
+        "W.....X.sX....W",
         "W......3......W",
-        "W...1.....1...W",
-        "W..2.......2..W",
+        "W...1.A.A.1...W",
+        "W..2.X...X.2..W",
         "W.p...s...s.p.W",
         "WWWWWWWDWWWWWWW"
       ],
@@ -37320,19 +38217,20 @@ void main() {
       biome: "dungeon",
       banner: "red",
       startVisible: false,
+      // Sorcerer's den — ice crystals, potion tables, books stacked.
       map: [
         "WWWWWWWWWWWWWWW",
-        "W..s...G...s..W",
+        "W..s.i.G.i.s..W",
         "W...3.....3...W",
-        "W.............W",
+        "W....?.&.?....W",
         "W......h......W",
-        "W......c......W",
+        "W...i..c..i...W",
         "D......s......W",
-        "W...3.....3...W",
+        "W...3.&.&.3...W",
         "W......3......W",
-        "W...s.....s...W",
-        "W..3.......3..W",
-        "W..s.......s..W",
+        "W...s.?.?.s...W",
+        "W..3.i...i.3..W",
+        "W..s.%...%.s..W",
         "WWWWWWWDWWWWWWW"
       ],
       doors: [
@@ -37351,18 +38249,20 @@ void main() {
       biome: "dungeon",
       banner: "red",
       startVisible: false,
+      // Throne room — pillars, stalagmites flanking a central aisle,
+      // the boss dead center, king echo ghost by the throne base.
       map: [
         "WWWWWWWWWWWWWWW",
         "W.p.........p.W",
+        "W.A.........A.W",
         "W.............W",
-        "W.............W",
-        "W.............W",
+        "W..A.......A..W",
         "W......Z......W",
         "W.............W",
+        "W..A.......A..W",
+        "W.p....A....p.W",
         "W.............W",
-        "W.p.........p.W",
-        "W.............W",
-        "W......k......W",
+        "W.A....k....A.W",
         "W.............W",
         "WWWWWWWDWWWWWWW"
       ],
@@ -39688,7 +40588,15 @@ void main() {
     "poly_house_b",
     "poly_house_c",
     "poly_house_d",
-    "poly_house_e"
+    "poly_house_e",
+    // v4 additions — SM_Bld_Village_01..05 are ~4×3×4m each (single houses).
+    // 06 and 07 are excluded on purpose: 06 is a multi-house block and 07 is
+    // a 9m-tall tower; both dwarf every other building and cover the camera.
+    "polyx_bld_village_01",
+    "polyx_bld_village_02",
+    "polyx_bld_village_03",
+    "polyx_bld_village_04",
+    "polyx_bld_village_05"
   ];
   var TREE_KEYS = [
     "poly_tree_a",
@@ -39696,11 +40604,220 @@ void main() {
     "poly_tree_c",
     "poly_pine_a",
     "poly_pine_b",
-    "poly_tree_birch"
+    "poly_tree_birch",
+    // v4 additions — 13 more tree variants + more birches + more pines
+    "polyx_env_tree_01",
+    "polyx_env_tree_02",
+    "polyx_env_tree_03",
+    "polyx_env_tree_04",
+    "polyx_env_tree_05",
+    "polyx_env_tree_06",
+    "polyx_env_tree_07",
+    "polyx_env_tree_08",
+    "polyx_env_tree_09",
+    "polyx_env_tree_010",
+    "polyx_env_tree_011",
+    "polyx_env_tree_012",
+    "polyx_env_tree_013",
+    "polyx_env_tree_014",
+    "polyx_env_tree_015",
+    "polyx_env_tree_016",
+    "polyx_env_treebirch_01",
+    "polyx_env_treebirch_02",
+    "polyx_env_treebirch_03",
+    "polyx_env_treepine_01",
+    "polyx_env_treepine_02",
+    "polyx_env_treepine_03",
+    "polyx_env_treepine_04"
   ];
-  var BUSH_KEYS = ["poly_bush_a", "poly_bush_b", "poly_bush_c", "poly_bush_d"];
-  var GRASS_DECOR = ["poly_grass_a", "poly_grass_b", "poly_flower_a", "poly_flower_b", "poly_mushroom"];
-  var STALL_KEYS = ["poly_stall_a", "poly_stall_b"];
+  var BUSH_KEYS = [
+    "poly_bush_a",
+    "poly_bush_b",
+    "poly_bush_c",
+    "poly_bush_d",
+    "polyx_env_bush_01",
+    "polyx_env_bush_02",
+    "polyx_env_bush_03",
+    "polyx_env_bush_04"
+  ];
+  var GRASS_DECOR = [
+    "poly_grass_a",
+    "poly_grass_b",
+    "polyx_env_grass_01",
+    "polyx_env_grass_02",
+    "polyx_env_flower_01",
+    "polyx_env_flower_02",
+    "polyx_env_flower_03",
+    "polyx_env_flower_04",
+    "polyx_env_flower_05",
+    "polyx_env_flower_06",
+    "polyx_env_flower_07",
+    "polyx_env_flower_08",
+    "poly_mushroom",
+    "polyx_env_mushroom_01",
+    "polyx_env_pebble_01",
+    "polyx_env_pebble_02",
+    "polyx_env_pebble_03",
+    "polyx_env_pebble_04",
+    "polyx_env_pebble_05"
+  ];
+  var ROCK_KEYS = [
+    "poly_rock_a",
+    "poly_rock_b",
+    "poly_rock_flat",
+    "polyx_env_rock_01",
+    "polyx_env_rock_02",
+    "polyx_env_rock_03",
+    "polyx_env_rock_04",
+    "polyx_env_rock_05",
+    "polyx_env_rock_07",
+    "polyx_env_rock_08",
+    "polyx_env_rock_09",
+    "polyx_env_rock_010",
+    "polyx_env_rock_011",
+    "polyx_env_rock_012",
+    "polyx_env_rock_013",
+    "polyx_env_rock_014",
+    "polyx_env_rock_015",
+    "polyx_env_rock_016"
+  ];
+  var PLANT_KEYS = [
+    "polyx_env_plant_01",
+    "polyx_env_plant_02",
+    "polyx_env_plant_03",
+    "polyx_env_plant_04",
+    "polyx_env_plant_05"
+  ];
+  var REED_KEYS = [
+    "polyx_env_reeds_01",
+    "polyx_env_reeds_02",
+    "polyx_env_reeds_03"
+  ];
+  var GROUND_MOUND_KEYS = [
+    "polyx_env_groundmounds_01",
+    "polyx_env_groundmounds_02",
+    "polyx_env_groundmounds_03",
+    "polyx_env_groundmounds_04",
+    "polyx_env_groundmounds_05",
+    "polyx_env_groundmounds_06",
+    "polyx_env_groundmounds_07",
+    "polyx_env_groundmounds_08",
+    "polyx_env_groundmounds_09",
+    "polyx_env_groundmounds_10"
+  ];
+  var HILL_KEYS = [
+    "polyx_env_hill_01",
+    "polyx_env_hill_02",
+    "polyx_env_hill_03",
+    "polyx_env_hill_04"
+  ];
+  var STALL_KEYS = [
+    "poly_stall_a",
+    "poly_stall_b",
+    "polyx_bld_stall_01",
+    "polyx_bld_stall_02",
+    "polyx_bld_stall_03",
+    "polyx_bld_stall_04"
+  ];
+  var STALL_COVER_KEYS = [
+    "polyx_bld_stall_cover_01",
+    "polyx_bld_stall_cover_02",
+    "polyx_bld_stall_cover_03",
+    "polyx_bld_stall_cover_04",
+    "polyx_bld_stall_cover_05"
+  ];
+  var MARKET_ITEM_KEYS = [
+    "poly_pumpkin",
+    "polyx_prop_pumpkin_02",
+    "polyx_prop_cheese_01",
+    "polyx_prop_cheese_02",
+    "polyx_prop_cheese_03",
+    "polyx_prop_meat_01",
+    "polyx_prop_meat_02",
+    "polyx_prop_meat_03",
+    "polyx_item_fruit_01",
+    "polyx_item_fruit_02",
+    "polyx_item_fruit_03",
+    "polyx_item_gourd_01",
+    "polyx_prop_basket_01",
+    "polyx_prop_basket_02",
+    "polyx_prop_basket_03",
+    "polyx_prop_basket_04",
+    "polyx_prop_pot_01",
+    "polyx_prop_pot_02",
+    "polyx_prop_pot_03",
+    "polyx_prop_sack_01",
+    "polyx_prop_sack_02",
+    "polyx_prop_sack_03",
+    "polyx_prop_sack_04"
+  ];
+  var BOOK_KEYS = [
+    "polyx_prop_book_01",
+    "polyx_prop_book_02",
+    "polyx_prop_book_03"
+  ];
+  var POTION_KEYS = [
+    "poly_potion_a",
+    "polyx_item_potion_01",
+    "polyx_item_potion_02",
+    "polyx_item_potion_03",
+    "polyx_item_potion_04",
+    "polyx_item_potion_05",
+    "polyx_item_potion_06",
+    "polyx_item_wine_01",
+    "polyx_item_wine_02",
+    "polyx_item_canteen_01",
+    "polyx_item_waterskin_01"
+  ];
+  var CART_KEYS = [
+    "poly_cart",
+    "polyx_prop_cart_01",
+    "polyx_prop_cart_02",
+    "polyx_prop_cart_03"
+  ];
+  var CLOUD_KEYS = [
+    "poly_cloud_a",
+    "poly_cloud_b",
+    // v4 additions — clouds 01/02/05/07 excluded (too wide, cover the camera);
+    // 03/04/06 are 5-5.5m wide, comparable to the original poly_cloud_a/b.
+    "polyx_env_cloud_03",
+    "polyx_env_cloud_04",
+    "polyx_env_cloud_06"
+  ];
+  var STALAGMITE_KEYS = [
+    "polyx_env_stalagmite_01",
+    "polyx_env_stalagmite_02",
+    "polyx_env_stalagmite_03"
+  ];
+  var ICE_KEYS = [
+    "polyx_env_ice_01",
+    "polyx_env_ice_02",
+    "polyx_env_ice_03"
+  ];
+  var WASHINGLINE_KEYS = [
+    "poly_washingline",
+    "polyx_prop_washingline_01",
+    "polyx_prop_washingline_02",
+    "polyx_prop_washingline_03"
+  ];
+  var LANTERN_KEYS = [
+    "poly_lantern",
+    "polyx_item_lantern_01",
+    "polyx_item_lantern_02"
+  ];
+  var WEAPON_KEYS = [
+    "polyx_wep_sword_01",
+    "polyx_wep_axe_01",
+    "polyx_wep_greataxe_01",
+    "polyx_wep_dagger_01",
+    "polyx_wep_scythe_01",
+    "polyx_wep_pitchfork_01",
+    "polyx_wep_staff_01",
+    "polyx_wep_staff_02",
+    "polyx_wep_sheild_01",
+    "polyx_wep_sheild_02",
+    "polyx_wep_sheild_03"
+  ];
   function pickBy(arr, seed) {
     return arr[Math.floor(hash(seed) * arr.length) % arr.length];
   }
@@ -39743,7 +40860,7 @@ void main() {
     }
     group.add(floor);
     if (!dirt) {
-      const n = 1 + Math.floor(hash(tx, tz, def.gx, 5) * 5);
+      const n = 2 + Math.floor(hash(tx, tz, def.gx, 5) * 5);
       for (let i = 0; i < n; i++) {
         const decor = spawn(pickBy(GRASS_DECOR, tx * 31 + tz * 7 + i));
         decor.position.set(
@@ -39752,8 +40869,38 @@ void main() {
           c.z + (hash(tx, tz, i, 21) - 0.5) * 3
         );
         decor.rotation.y = hash(tx, tz, i, 22) * Math.PI * 2;
-        decor.scale.multiplyScalar(1.3 + hash(tx, tz, i, 23) * 0.7);
+        decor.scale.multiplyScalar(1.1 + hash(tx, tz, i, 23) * 0.7);
         group.add(decor);
+      }
+      if (hash(tx, tz, def.gx, 30) < 0.15) {
+        const plant = spawn(pickBy([...PLANT_KEYS, ...REED_KEYS], tx * 7 + tz));
+        plant.position.set(
+          c.x + (hash(tx, tz, def.gx, 31) - 0.5) * 2.4,
+          0,
+          c.z + (hash(tx, tz, def.gx, 32) - 0.5) * 2.4
+        );
+        plant.rotation.y = hash(tx, tz, def.gx, 33) * Math.PI * 2;
+        plant.scale.multiplyScalar(1.2 + hash(tx, tz, def.gx, 34) * 0.4);
+        group.add(plant);
+      }
+    } else {
+      if (hash(tx, tz, def.gx, 40) < 0.25) {
+        const p = spawn(pickBy([
+          "polyx_env_pebble_01",
+          "polyx_env_pebble_02",
+          "polyx_env_pebble_03",
+          "polyx_env_pebble_04",
+          "polyx_env_pebble_05",
+          "polyx_env_pebble_06"
+        ], tx * 5 + tz * 3));
+        p.position.set(
+          c.x + (hash(tx, tz, def.gx, 41) - 0.5) * 2.6,
+          0.02,
+          c.z + (hash(tx, tz, def.gx, 42) - 0.5) * 2.6
+        );
+        p.rotation.y = hash(tx, tz, def.gx, 43) * Math.PI * 2;
+        p.scale.multiplyScalar(1 + hash(tx, tz, def.gx, 44) * 0.5);
+        group.add(p);
       }
     }
   }
@@ -39775,6 +40922,13 @@ void main() {
     t.rotation.y = hash(seed, 3) * Math.PI * 2;
     t.scale.multiplyScalar(0.9 + hash(seed, 4) * 0.4);
     group.add(t);
+    if (hash(seed, 15) < 0.3) {
+      const under = spawn(pickBy(BUSH_KEYS, seed + 20));
+      under.position.set(t.position.x + (hash(seed, 16) - 0.5) * 1.6, 0, t.position.z + (hash(seed, 17) - 0.5) * 1.6);
+      under.rotation.y = hash(seed, 18) * Math.PI * 2;
+      under.scale.multiplyScalar(0.7 + hash(seed, 19) * 0.4);
+      group.add(under);
+    }
   }
   function addBush(group, x, z, seed) {
     const b = spawn(pickBy(BUSH_KEYS, seed));
@@ -39787,8 +40941,32 @@ void main() {
     const key = pickBy(HOUSE_KEYS, seed);
     const h = spawn(key, { castShadow: true, receiveShadow: true });
     h.position.copy(c);
-    h.rotation.y = Math.floor(hash(seed, 2) * 4) * (Math.PI / 2);
+    const rot = Math.floor(hash(seed, 2) * 4) * (Math.PI / 2);
+    h.rotation.y = rot;
     group.add(h);
+    const dec = Math.floor(hash(seed, 8) * 3);
+    for (let i = 0; i < dec; i++) {
+      const ang = hash(seed, i, 21) * Math.PI * 2;
+      const r = 1.6 + hash(seed, i, 22) * 0.4;
+      const item = spawn(pickBy([
+        "polyx_prop_sack_01",
+        "polyx_prop_sack_02",
+        "polyx_prop_basket_02",
+        "polyx_prop_basket_04",
+        "polyx_prop_pot_02",
+        "polyx_prop_barrel_01"
+      ], seed * 3 + i));
+      item.position.set(c.x + Math.cos(ang) * r, 0, c.z + Math.sin(ang) * r);
+      item.rotation.y = hash(seed, i, 23) * Math.PI * 2;
+      group.add(item);
+    }
+    if (hash(seed, 9) < 0.4) {
+      const line = spawn(pickBy(WASHINGLINE_KEYS, seed + 10));
+      const ang = Math.PI * 0.5 * Math.floor(hash(seed, 11) * 4);
+      line.position.set(c.x + Math.cos(ang) * 1.8, 0, c.z + Math.sin(ang) * 1.8);
+      line.rotation.y = hash(seed, 12) * Math.PI * 2;
+      group.add(line);
+    }
   }
   function addCampfire(group, roomKey, c) {
     const fire = spawn("poly_campfire", { castShadow: false, receiveShadow: false });
@@ -39809,11 +40987,29 @@ void main() {
   function addMarketStall(group, c, seed) {
     const stall = spawn(pickBy(STALL_KEYS, seed), { castShadow: true, receiveShadow: true });
     stall.position.copy(c);
-    stall.rotation.y = hash(seed, 3) < 0.5 ? Math.PI / 2 : -Math.PI / 2;
+    const rot = hash(seed, 3) < 0.5 ? Math.PI / 2 : -Math.PI / 2;
+    stall.rotation.y = rot;
     group.add(stall);
-    const prop = spawn(hash(seed, 4) < 0.5 ? "poly_pumpkin" : "poly_basket_a");
-    prop.position.set(c.x, 0.7, c.z);
-    group.add(prop);
+    const cover = spawn(pickBy(STALL_COVER_KEYS, seed + 1), { castShadow: true, receiveShadow: false });
+    cover.position.set(c.x, 0, c.z);
+    cover.rotation.y = rot;
+    group.add(cover);
+    const nItems = 3 + Math.floor(hash(seed, 5) * 3);
+    for (let i = 0; i < nItems; i++) {
+      const item = spawn(pickBy(MARKET_ITEM_KEYS, seed * 13 + i * 7));
+      item.position.set(
+        c.x + (hash(seed, i, 10) - 0.5) * 1.6,
+        0.7 + hash(seed, i, 11) * 0.15,
+        c.z + (hash(seed, i, 12) - 0.5) * 1.6
+      );
+      item.rotation.y = hash(seed, i, 13) * Math.PI * 2;
+      item.scale.multiplyScalar(0.9 + hash(seed, i, 14) * 0.3);
+      group.add(item);
+    }
+    const base = spawn(pickBy(["polyx_prop_sack_01", "polyx_prop_sack_02", "polyx_prop_basket_03"], seed + 2));
+    base.position.set(c.x + Math.cos(rot) * 1.4, 0, c.z + Math.sin(rot) * 1.4);
+    base.rotation.y = hash(seed, 6) * Math.PI * 2;
+    group.add(base);
   }
   function addRoadsign(group, c) {
     const r = spawn("poly_roadsign", { castShadow: true, receiveShadow: false });
@@ -39821,6 +41017,156 @@ void main() {
     r.rotation.y = Math.PI;
     r.scale.multiplyScalar(1.4);
     group.add(r);
+  }
+  function addLanternPost(group, c, seed) {
+    const stone = spawn("polyx_prop_stoneblock_01", { castShadow: false, receiveShadow: true });
+    stone.position.copy(c);
+    group.add(stone);
+    const lantern = spawn(pickBy(LANTERN_KEYS, seed));
+    lantern.position.set(c.x, 0.7, c.z);
+    lantern.scale.multiplyScalar(1.4);
+    group.add(lantern);
+    const light = new PointLight(16762995, 6, 8, 1.7);
+    light.position.set(c.x, 1.2, c.z);
+    group.add(light);
+  }
+  function addWashingLine(group, c, seed) {
+    const line = spawn(pickBy(WASHINGLINE_KEYS, seed), { castShadow: false, receiveShadow: false });
+    line.position.copy(c);
+    line.rotation.y = hash(seed, 2) * Math.PI * 2;
+    line.scale.multiplyScalar(1.1);
+    group.add(line);
+  }
+  function addCart(group, c, seed) {
+    const cart = spawn(pickBy(CART_KEYS, seed), { castShadow: true, receiveShadow: true });
+    cart.position.copy(c);
+    cart.rotation.y = hash(seed, 2) * Math.PI * 2;
+    group.add(cart);
+    const load = 1 + Math.floor(hash(seed, 3) * 2);
+    for (let i = 0; i < load; i++) {
+      const item = spawn(pickBy([
+        "polyx_prop_sack_01",
+        "polyx_prop_sack_02",
+        "polyx_prop_barrel_01",
+        "polyx_prop_basket_02",
+        "polyx_prop_pumpkin_02"
+      ], seed * 3 + i));
+      item.position.set(c.x + (hash(seed, i, 5) - 0.5) * 0.8, 0.6, c.z + (hash(seed, i, 6) - 0.5) * 0.8);
+      item.rotation.y = hash(seed, i, 7) * Math.PI * 2;
+      group.add(item);
+    }
+  }
+  function addGroundMound(group, c, seed) {
+    const m = spawn(pickBy(GROUND_MOUND_KEYS, seed), { castShadow: false, receiveShadow: true });
+    m.position.copy(c);
+    m.rotation.y = hash(seed, 2) * Math.PI * 2;
+    m.scale.multiplyScalar(0.4 + hash(seed, 3) * 0.15);
+    group.add(m);
+  }
+  function addTreeStump(group, c, seed) {
+    const s = spawn(hash(seed, 1) < 0.5 ? "poly_tree_stump" : "polyx_env_treestump_01", {
+      castShadow: true,
+      receiveShadow: true
+    });
+    s.position.copy(c);
+    s.rotation.y = hash(seed, 2) * Math.PI * 2;
+    group.add(s);
+    if (hash(seed, 3) < 0.6) {
+      const shroom = spawn(pickBy(["poly_mushroom", "polyx_env_mushroom_01"], seed));
+      shroom.position.set(c.x + (hash(seed, 4) - 0.5) * 0.6, 0.6, c.z + (hash(seed, 5) - 0.5) * 0.6);
+      shroom.scale.multiplyScalar(1.4);
+      group.add(shroom);
+    }
+  }
+  function addTreeLog(group, c, seed) {
+    const l = spawn(hash(seed, 1) < 0.5 ? "poly_tree_log" : "polyx_env_treelog_01", {
+      castShadow: true,
+      receiveShadow: true
+    });
+    l.position.copy(c);
+    l.rotation.y = hash(seed, 2) * Math.PI * 2;
+    group.add(l);
+    if (hash(seed, 3) < 0.5) {
+      const decor = spawn(pickBy(BUSH_KEYS, seed + 3));
+      decor.position.set(c.x + (hash(seed, 4) - 0.5) * 1.2, 0.4, c.z + (hash(seed, 5) - 0.5) * 1.2);
+      decor.scale.multiplyScalar(0.6);
+      group.add(decor);
+    }
+  }
+  function addMushroomCluster(group, c, seed) {
+    const n = 2 + Math.floor(hash(seed) * 4);
+    for (let i = 0; i < n; i++) {
+      const m = spawn(pickBy(["poly_mushroom", "polyx_env_mushroom_01"], seed + i));
+      m.position.set(
+        c.x + (hash(seed, i, 1) - 0.5) * 2.2,
+        0.02,
+        c.z + (hash(seed, i, 2) - 0.5) * 2.2
+      );
+      m.rotation.y = hash(seed, i, 3) * Math.PI * 2;
+      m.scale.multiplyScalar(1 + hash(seed, i, 4) * 0.8);
+      group.add(m);
+    }
+  }
+  function addHillDecor(group, c, seed) {
+    const h = spawn(pickBy(HILL_KEYS, seed), { castShadow: true, receiveShadow: true });
+    h.position.copy(c);
+    h.rotation.y = hash(seed, 2) * Math.PI * 2;
+    h.scale.multiplyScalar(0.28 + hash(seed, 3) * 0.08);
+    group.add(h);
+  }
+  function addStalagmiteCluster(group, c, seed) {
+    const n = 1 + Math.floor(hash(seed) * 3);
+    for (let i = 0; i < n; i++) {
+      const s = spawn(pickBy(STALAGMITE_KEYS, seed + i), { castShadow: true, receiveShadow: false });
+      s.position.set(
+        c.x + (hash(seed, i, 1) - 0.5) * 1.6,
+        0,
+        c.z + (hash(seed, i, 2) - 0.5) * 1.6
+      );
+      s.rotation.y = hash(seed, i, 3) * Math.PI * 2;
+      s.scale.multiplyScalar(0.9 + hash(seed, i, 4) * 0.5);
+      group.add(s);
+    }
+  }
+  function addBooksOnGround(group, c, seed) {
+    const n = 1 + Math.floor(hash(seed) * 3);
+    for (let i = 0; i < n; i++) {
+      const b = spawn(pickBy(BOOK_KEYS, seed + i), { castShadow: false, receiveShadow: false });
+      b.position.set(
+        c.x + (hash(seed, i, 1) - 0.5) * 1.6,
+        0,
+        c.z + (hash(seed, i, 2) - 0.5) * 1.6
+      );
+      b.rotation.y = hash(seed, i, 3) * Math.PI * 2;
+      b.scale.multiplyScalar(0.9 + hash(seed, i, 4) * 0.5);
+      group.add(b);
+    }
+  }
+  function addFallenWeapon(group, c, seed) {
+    const w = spawn(pickBy(WEAPON_KEYS, seed), { castShadow: false, receiveShadow: false });
+    w.position.set(c.x, 0.1, c.z);
+    w.rotation.set(-Math.PI / 2 + (hash(seed, 1) - 0.5) * 0.3, hash(seed, 2) * Math.PI * 2, 0);
+    w.scale.multiplyScalar(0.9 + hash(seed, 3) * 0.3);
+    group.add(w);
+  }
+  function addIceCluster(group, c, seed) {
+    const n = 1 + Math.floor(hash(seed) * 3);
+    for (let i = 0; i < n; i++) {
+      const ice = spawn(pickBy(ICE_KEYS, seed + i), { castShadow: false, receiveShadow: false });
+      ice.position.set(c.x + (hash(seed, i, 1) - 0.5) * 1.5, 0, c.z + (hash(seed, i, 2) - 0.5) * 1.5);
+      ice.rotation.y = hash(seed, i, 3) * Math.PI * 2;
+      ice.scale.multiplyScalar(1 + hash(seed, i, 4) * 0.4);
+      group.add(ice);
+    }
+  }
+  function addPotionsScatter(group, c, seed) {
+    const n = 2 + Math.floor(hash(seed) * 3);
+    for (let i = 0; i < n; i++) {
+      const p = spawn(pickBy(POTION_KEYS, seed + i));
+      p.position.set(c.x + (hash(seed, i, 1) - 0.5) * 1.4, 0.5, c.z + (hash(seed, i, 2) - 0.5) * 1.4);
+      p.rotation.y = hash(seed, i, 3) * Math.PI * 2;
+      group.add(p);
+    }
   }
   function buildVillageFence(def, group) {
     for (let tx = 0; tx < ROOM_W; tx++) {
@@ -39869,7 +41215,7 @@ void main() {
             break;
           case "R":
             {
-              const rock = spawn(hash(tx, tz, def.gx, 44) < 0.5 ? "poly_rock_a" : "poly_rock_b", {
+              const rock = spawn(pickBy(ROCK_KEYS, tx * 3 + tz), {
                 castShadow: true,
                 receiveShadow: true
               });
@@ -39878,6 +41224,26 @@ void main() {
               group.add(rock);
               runtime.solid[tz][tx] = true;
             }
+            break;
+          // ------- v4: decorative chars -------
+          case "l":
+            addLanternPost(group, c, tx * 7 + tz * 11);
+            break;
+          case "m":
+            addGroundMound(group, c, tx * 5 + tz * 23);
+            break;
+          case "+":
+            addTreeStump(group, c, tx * 11 + tz * 7);
+            break;
+          case "-":
+            addTreeLog(group, c, tx * 13 + tz * 17);
+            break;
+          case "*":
+            addMushroomCluster(group, c, tx * 7 + tz * 3);
+            break;
+          case "M":
+            addHillDecor(group, c, tx * 17 + tz * 19);
+            runtime.solid[tz][tx] = true;
             break;
         }
         const npcKind = NPC_CHARS[ch];
@@ -39927,7 +41293,7 @@ void main() {
             break;
           case "R":
             {
-              const rock = spawn(hash(tx, tz, def.gx, 44) < 0.5 ? "poly_rock_a" : "poly_rock_b", {
+              const rock = spawn(pickBy(ROCK_KEYS, tx * 5 + tz * 3), {
                 castShadow: true,
                 receiveShadow: true
               });
@@ -39963,6 +41329,29 @@ void main() {
           case "r":
             addRoadsign(group, c);
             runtime.solid[tz][tx] = true;
+            break;
+          // ------- v4: decorative chars using the full pack -------
+          case "l":
+            addLanternPost(group, c, tx * 7 + tz * 11);
+            break;
+          case "w":
+            addWashingLine(group, c, tx * 3 + tz * 5);
+            break;
+          case "$":
+            addCart(group, c, tx * 17 + tz * 19);
+            runtime.solid[tz][tx] = true;
+            break;
+          case "m":
+            addGroundMound(group, c, tx * 5 + tz * 23);
+            break;
+          case "+":
+            addTreeStump(group, c, tx * 11 + tz * 7);
+            break;
+          case "-":
+            addTreeLog(group, c, tx * 13 + tz * 17);
+            break;
+          case "*":
+            addMushroomCluster(group, c, tx * 7 + tz * 3);
             break;
         }
         const npcKind = NPC_CHARS[ch];
@@ -40192,6 +41581,29 @@ void main() {
                 solid[tz][tx] = true;
                 break;
               }
+              // ---------- v4 dungeon flavor chars ----------
+              case "A":
+                addStalagmiteCluster(group, c, tx * 7 + tz * 3 + def.gy);
+                break;
+              case "%":
+                addBooksOnGround(group, c, tx * 11 + tz * 5);
+                break;
+              case "X":
+                addFallenWeapon(group, c, tx * 13 + tz * 17);
+                break;
+              case "i":
+                addIceCluster(group, c, tx * 19 + tz * 23);
+                break;
+              case "*":
+                addMushroomCluster(group, c, tx * 7 + tz * 3);
+                break;
+              case "?":
+                addPotionsScatter(group, c, tx * 5 + tz * 11);
+                break;
+              case "&":
+                addBooksOnGround(group, c, tx * 3 + tz * 7);
+                addPotionsScatter(group, c, tx * 5 + tz * 3);
+                break;
             }
             const enemyKind = ENEMY_CHARS[ch];
             if (enemyKind) runtime.enemySpawns.push({ kind: enemyKind, tx, tz });
@@ -40215,14 +41627,14 @@ void main() {
         addTree(forest, cx, cz, i * 97, false);
         if (i % 3 === 0) addBush(forest, cx + 3, cz - 2, i * 11);
       }
-      for (let i = 0; i < 6; i++) {
-        const cloud = spawn(i % 2 === 0 ? "poly_cloud_a" : "poly_cloud_b");
+      for (let i = 0; i < 12; i++) {
+        const cloud = spawn(pickBy(CLOUD_KEYS, i * 13));
         cloud.position.set(
           village.origin.x + Math.random() * ROOM_W * TILE,
-          22 + Math.random() * 6,
+          38 + Math.random() * 12,
           village.origin.z + Math.random() * ROOM_H * TILE
         );
-        cloud.scale.multiplyScalar(1.4);
+        cloud.scale.multiplyScalar(0.6 + Math.random() * 0.4);
         forest.add(cloud);
       }
     }
