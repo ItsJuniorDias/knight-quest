@@ -33584,8 +33584,10 @@ void main() {
     // v7: fill-rate cap. Mobile GPUs choke at native DPR; 1.0 is enough for
     // a stylized, flat-shaded game.
     maxPixelRatio: IS_MOBILE ? 1 : 2,
-    // v7: MSAA. Expensive on tiled mobile GPUs — off.
-    antialias: !IS_MOBILE,
+    // v7.1: antialias ligado em mobile também — personagens com aliasing
+    // ficavam serrilhados demais. MSAA custa mais no mobile mas as outras
+    // otimizações (sombras off, pixelRatio 1, culling) compensam.
+    antialias: true,
     // v7: hide non-neighbouring rooms + shadow casters when the player is
     // deep in the dungeon — halves scene-graph traversal cost.
     aggressiveRoomCulling: IS_MOBILE,

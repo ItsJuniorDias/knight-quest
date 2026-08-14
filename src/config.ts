@@ -108,8 +108,8 @@ export const RENDER = {
   // for a stylized flat-shaded game. Desktop keeps the crisp 2x.
   maxPixelRatio: IS_MOBILE ? 1 : 2,
 
-  /** MSAA. Expensive on tiled mobile GPUs — off. */
-  antialias: !IS_MOBILE,
+  /** MSAA. Kept on even on mobile — the aliasing on characters was too harsh. */
+  antialias: true,
 
   /**
    * Hide non-neighbouring rooms entirely (visibility + shadow casting).
