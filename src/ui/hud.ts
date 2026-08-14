@@ -1,4 +1,5 @@
 import { PLAYER } from "../config";
+import { SPELLS } from "../systems/spells";
 import type { NpcData, PlayerData } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -32,6 +33,7 @@ export class Hud {
   private comboBadge: HTMLElement;
   private chargeBar: HTMLElement;
   private chargeFill: HTMLElement;
+  private spellBar: HTMLElement;
 
   constructor(mount: HTMLElement) {
     mount.innerHTML = `
@@ -55,6 +57,7 @@ export class Hud {
         <div id="hud-narr-speaker"></div>
         <div id="hud-narr-text"></div>
       </div>
+      <div id="hud-spells" class="hidden"></div>
     `;
     this.hearts = mount.querySelector("#hud-hearts")!;
     this.coins = mount.querySelector("#hud-coins span")!;
@@ -70,6 +73,37 @@ export class Hud {
     this.comboBadge = mount.querySelector("#hud-combo")!;
     this.chargeBar = mount.querySelector("#hud-charge")!;
     this.chargeFill = mount.querySelector("#hud-charge-fill")!;
+    this.spellBar = mount.querySelector("#hud-spells")!;
+  }
+
+  /** v8: render the row of spell icons the player has unlocked. */
+  renderSpells(player: PlayerData): void {
+    if (player.spells.length === 0) {
+      this.spellBar.classList.add("hidden");
+      this.spellBar.innerHTML = "";
+      return;
+    }
+    this.spellBar.classList.remove("hidden");
+    const parts: string[] = ['<div class="spells-hint">Q cast · Tab cycle</div>'];
+    for (let i = 0; i < player.spells.length; i++) {
+      const s = player.spells[i];
+      const def = SPELLS[s];
+      const cd = player.spellCooldowns[s] ?? 0;
+      const cdFrac = Math.min(1, cd / def.cooldown);
+      const active = i === player.activeSpell ? "active" : "";
+      const cdOverlay = cd > 0
+        ? `<div class="cd" style="height:${(cdFrac * 100).toFixed(0)}%"></div><div class="cdtext">${cd.toFixed(1)}s</div>`
+        : "";
+      const color = "#" + def.color.toString(16).padStart(6, "0");
+      parts.push(`
+        <div class="spell ${active}" title="${def.name} — ${def.desc}" style="border-color:${color};">
+          <div class="glyph">${def.glyph}</div>
+          <div class="name">${def.name}</div>
+          ${cdOverlay}
+        </div>
+      `);
+    }
+    this.spellBar.innerHTML = parts.join("");
   }
 
   render(player: PlayerData): void {

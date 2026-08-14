@@ -23,6 +23,8 @@ export function createInputState(): InputState {
     rollPressed: false,
     blockHeld: false,
     interactPressed: false,
+    spellPressed: false,
+    spellCyclePressed: false,
   };
 }
 
@@ -31,6 +33,8 @@ export function endFrame(input: InputState, dt: number): void {
   input.attackPressed = false;
   input.rollPressed = false;
   input.interactPressed = false;
+  input.spellPressed = false;
+  input.spellCyclePressed = false;
   input.attackBuffered = Math.max(0, input.attackBuffered - dt);
 }
 
@@ -68,6 +72,9 @@ export function attachKeyboard(input: InputState): () => void {
       e.preventDefault();
     }
     if (e.code === "KeyE" || e.code === "Enter") input.interactPressed = true;
+    // v8: spell system — Q casts current spell, Tab cycles to next one.
+    if (e.code === "KeyQ") { input.spellPressed = true; e.preventDefault(); }
+    if (e.code === "Tab") { input.spellCyclePressed = true; e.preventDefault(); }
   };
   const up = (e: KeyboardEvent) => keys.delete(e.code);
   const blur = () => keys.clear();

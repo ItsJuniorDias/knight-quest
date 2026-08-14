@@ -54,6 +54,10 @@ export class PickupSystem {
     else if (Math.random() < PROPS.barrelDropCoin) this.spawn("coin", pos);
   }
 
+  /** v8: convenience wrappers used by boss reward drops. */
+  spawnCoin(pos: THREE.Vector3): void { this.spawn("coin", pos, 6); }
+  spawnHeart(pos: THREE.Vector3): void { this.spawn("heart", pos, 6); }
+
   update(dt: number, player: PlayerData): void {
     for (const p of this.pickups) {
       if (p.dead) continue;

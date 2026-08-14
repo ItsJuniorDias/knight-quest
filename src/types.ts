@@ -13,7 +13,25 @@ export interface InputState {
   rollPressed: boolean;
   blockHeld: boolean;
   interactPressed: boolean;
+  /** v8: cast the currently-selected spell */
+  spellPressed: boolean;
+  /** v8: cycle to the next unlocked spell */
+  spellCyclePressed: boolean;
 }
+
+/**
+ * v8: each boss drops a unique spell. Player unlocks one per boss killed,
+ * cycles between them with Tab, and casts with Q. Each has its own cooldown.
+ */
+export type SpellKind =
+  | "bone_shockwave"  // Skeleton King — 4-way radial shockwave
+  | "summon_skeleton" // Bone Necromancer — spawns a friendly minion
+  | "iron_bulwark"    // Iron Warden — brief damage reduction shield
+  | "shadow_dash"     // Shadow Reaver — teleport-dash forward, damages on hit
+  | "ice_shard"       // Crystal Golem — icy projectile, brief slow
+  | "chain_lightning" // Storm Elemental — bolts jump to nearest enemies
+  | "fireball"        // Flame Djinn — big fire projectile with splash
+  | "void_rift";      // Void Serpent — ring of dark damage around player
 
 export type Facing = { x: number; z: number };
 
@@ -69,6 +87,14 @@ export interface PlayerData {
   chargeTime: number;
   /** v5: true if the next release should fire a heavy strike, not a light. */
   chargeReady: boolean;
+  /** v8: spells the player has unlocked by defeating bosses (in unlock order). */
+  spells: SpellKind[];
+  /** v8: index into `spells` for the spell that Q will cast next. */
+  activeSpell: number;
+  /** v8: remaining cooldown per spell, in seconds. */
+  spellCooldowns: Partial<Record<SpellKind, number>>;
+  /** v8: seconds remaining on the Iron Bulwark damage-reduction buff. */
+  bulwarkTime: number;
 }
 
 export type EnemyKind = "minion" | "rogue" | "mage";
@@ -176,8 +202,13 @@ export interface Projectile {
   radius: number;
   damage: number;
   life: number;
-  kind: "bolt" | "shockwave";
+  /** enemy-fired = "bolt" / "shockwave". v8: player spells add these. */
+  kind: "bolt" | "shockwave"
+      | "ice_shard" | "fireball" | "chain_lightning" | "void_ring"
+      | "friendly_shockwave";
   dead: boolean;
+  /** v8: true if the projectile damages ENEMIES, false if it damages the player */
+  friendly?: boolean;
 }
 
 export type PickupKind = "heart" | "coin" | "key";

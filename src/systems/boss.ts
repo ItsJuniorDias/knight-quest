@@ -15,6 +15,8 @@ import { moveCircle } from "./physics";
 import type { RoomManager } from "./rooms";
 import type { ProjectileSystem } from "./projectiles";
 import type { PropsSystem } from "./props";
+import type { PickupSystem } from "./pickups";
+import type { SpellSystem } from "./spells";
 
 // ---------------------------------------------------------------------------
 // v6: MULTI-BOSS SYSTEM
@@ -50,6 +52,10 @@ export class BossSystem {
   private events: GameEvents;
   /** Set by main.ts so summoners can spawn minions. */
   enemies: EnemySystem | null = null;
+  /** v8: injected so bosses can drop spells + loot on death. */
+  spells: SpellSystem | null = null;
+  pickups: PickupSystem | null = null;
+  player: PlayerData | null = null;
 
   constructor(scene: THREE.Scene, fx: FxSystem, events: GameEvents) {
     this.scene = scene;
@@ -232,6 +238,23 @@ export class BossSystem {
         }
         this.events.onToast(cfg.outro);
         this.events.onGameEvent(`boss:dead:${b.kind}`);
+        // v8: reward — unlock spell + drop a generous coin/heart pile so
+        // the player actually FEELS rewarded for the fight.
+        if (this.spells && this.player) {
+          this.spells.grantSpellForBoss(this.player, b.kind);
+        }
+        if (this.pickups) {
+          // 5 coins + 2 hearts around the corpse
+          for (let i = 0; i < 5; i++) {
+            const ang = (i / 5) * Math.PI * 2;
+            const p = new THREE.Vector3(
+              b.pos.x + Math.cos(ang) * 1.2, 0, b.pos.z + Math.sin(ang) * 1.2,
+            );
+            this.pickups.spawnCoin(p);
+          }
+          this.pickups.spawnHeart(b.pos.clone());
+          this.pickups.spawnHeart(new THREE.Vector3(b.pos.x + 1, 0, b.pos.z + 1));
+        }
       }
       return;
     }
@@ -1016,6 +1039,12 @@ export class BossSystem {
   // -------------------------------------------------------------------------
   // shared helpers
   // -------------------------------------------------------------------------
+  /** v8: public entry point for player spell damage on any boss. */
+  spellHit(b: BossData, dmg: number): void {
+    this.hurt(b, dmg, b.pos.clone());
+    this.events.onSwordHit("boss", b.pos);
+  }
+
   private hurt(b: BossData, dmg: number, from: THREE.Vector3): void {
     if (b.state === "dying") return;
     const cfg = BOSSES[b.kind];
@@ -1110,6 +1139,13 @@ export class BossSystem {
   /** For main.ts to hook the enemy summoner (necromancer). */
   bindEnemies(enemies: EnemySystem): void {
     this.enemies = enemies;
+  }
+
+  /** v8: main.ts wires in spell reward + pickup drop dependencies. */
+  bindRewards(spells: SpellSystem, pickups: PickupSystem, player: PlayerData): void {
+    this.spells = spells;
+    this.pickups = pickups;
+    this.player = player;
   }
 }
 

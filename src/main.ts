@@ -11,6 +11,7 @@ import { NpcSystem } from "./systems/npcs";
 import { PickupSystem } from "./systems/pickups";
 import { createPlayer, playerCheer, reviveAtStart, updatePlayer } from "./systems/player";
 import { ProjectileSystem } from "./systems/projectiles";
+import { SpellSystem } from "./systems/spells";
 import { PropsSystem } from "./systems/props";
 import { RoomManager } from "./systems/rooms";
 import { StoryDirector } from "./systems/story";
@@ -116,6 +117,7 @@ async function main(): Promise<void> {
   let pickups: PickupSystem | null = null;
   let props: PropsSystem | null = null;
   let boss: BossSystem | null = null;
+  let spells: SpellSystem | null = null;
   let fx: FxSystem | null = null;
   let npcs: NpcSystem | null = null;
   let story: StoryDirector | null = null;
@@ -214,6 +216,7 @@ async function main(): Promise<void> {
     props = new PropsSystem(fx, events);
     enemies = new EnemySystem(scene, fx, events);
     boss = new BossSystem(scene, fx, events);
+    spells = new SpellSystem(scene, fx, events);
     npcs = new NpcSystem(scene, events);
     story = new StoryDirector(events);
 
@@ -237,6 +240,7 @@ async function main(): Promise<void> {
     // Legacy single-boss fallback if a map somehow had no bossSpawns.
     if (boss.bosses.length === 0) boss.spawn(world.bossSpawn);
     boss.bindEnemies(enemies);
+    boss.bindRewards(spells, pickups, player);
 
     // pre-spawn enemies + NPCs for every room so they exist regardless of visit
     for (const [, room] of world.rooms) {
@@ -312,7 +316,7 @@ async function main(): Promise<void> {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
 
-    if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && fx && npcs && swordFx) {
+    if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && spells && fx && npcs && swordFx) {
       pollKeyboard(input, touchUi.active());
 
       // v5: shop pauses gameplay — just render, don't update world state.
@@ -328,7 +332,10 @@ async function main(): Promise<void> {
       npcs.update(dt, player, roomMgr, input);
       enemies.update(dt, player, roomMgr, projectiles, pickups);
       boss.update(dt, player, roomMgr, projectiles, props);
-      projectiles.update(dt, player, roomMgr);
+      // v8: spells (Q/Tab), then projectiles which now also handle player
+      // spell projectiles hitting enemies + bosses.
+      spells.update(dt, player, input, roomMgr, projectiles, enemies, pickups);
+      projectiles.update(dt, player, roomMgr, enemies, boss, pickups);
       pickups.update(dt, player);
       props.update(dt, player, input, roomMgr, pickups);
 
@@ -359,6 +366,7 @@ async function main(): Promise<void> {
       }
 
       hud?.render(player);
+      hud?.renderSpells(player);
       // v6: NPC prompt takes priority; only show chest/prop prompt when no
       // NPC is in interact range, so we never render two prompts at once.
       if (npcs.activeNpc) {

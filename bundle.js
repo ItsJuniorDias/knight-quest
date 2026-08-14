@@ -34834,13 +34834,17 @@ void main() {
       attackHeld: false,
       rollPressed: false,
       blockHeld: false,
-      interactPressed: false
+      interactPressed: false,
+      spellPressed: false,
+      spellCyclePressed: false
     };
   }
   function endFrame(input, dt) {
     input.attackPressed = false;
     input.rollPressed = false;
     input.interactPressed = false;
+    input.spellPressed = false;
+    input.spellCyclePressed = false;
     input.attackBuffered = Math.max(0, input.attackBuffered - dt);
   }
   function pressAttack(input) {
@@ -34872,6 +34876,14 @@ void main() {
         e.preventDefault();
       }
       if (e.code === "KeyE" || e.code === "Enter") input.interactPressed = true;
+      if (e.code === "KeyQ") {
+        input.spellPressed = true;
+        e.preventDefault();
+      }
+      if (e.code === "Tab") {
+        input.spellCyclePressed = true;
+        e.preventDefault();
+      }
     };
     const up = (e) => keys.delete(e.code);
     const blur = () => keys.clear();
@@ -39628,7 +39640,12 @@ void main() {
       // start full in whole hearts
       maxHp: PLAYER.maxHalfHearts / 2,
       chargeTime: 0,
-      chargeReady: false
+      chargeReady: false,
+      // v8: spell fields — start with no spells; each boss kill unlocks one.
+      spells: [],
+      activeSpell: 0,
+      spellCooldowns: {},
+      bulwarkTime: 0
     };
   }
   var ATTACK_CLIPS = [
@@ -39862,6 +39879,7 @@ void main() {
     }
     let dmg = halfHearts;
     if (p.upgrades?.reinforcedShield) dmg = Math.max(0, dmg - 1);
+    if (p.bulwarkTime > 0) dmg = Math.max(0, Math.floor(dmg / 2));
     if (dmg === 0) {
       p.invuln = 0.15;
       return { died: false, blocked: true };
@@ -40201,6 +40219,10 @@ void main() {
       this.procHandles = /* @__PURE__ */ new WeakMap();
       /** Set by main.ts so summoners can spawn minions. */
       this.enemies = null;
+      /** v8: injected so bosses can drop spells + loot on death. */
+      this.spells = null;
+      this.pickups = null;
+      this.player = null;
       this.scene = scene;
       this.fx = fx;
       this.events = events;
@@ -40367,6 +40389,22 @@ void main() {
           }
           this.events.onToast(cfg.outro);
           this.events.onGameEvent(`boss:dead:${b.kind}`);
+          if (this.spells && this.player) {
+            this.spells.grantSpellForBoss(this.player, b.kind);
+          }
+          if (this.pickups) {
+            for (let i = 0; i < 5; i++) {
+              const ang = i / 5 * Math.PI * 2;
+              const p = new Vector3(
+                b.pos.x + Math.cos(ang) * 1.2,
+                0,
+                b.pos.z + Math.sin(ang) * 1.2
+              );
+              this.pickups.spawnCoin(p);
+            }
+            this.pickups.spawnHeart(b.pos.clone());
+            this.pickups.spawnHeart(new Vector3(b.pos.x + 1, 0, b.pos.z + 1));
+          }
         }
         return;
       }
@@ -41190,6 +41228,11 @@ void main() {
     // -------------------------------------------------------------------------
     // shared helpers
     // -------------------------------------------------------------------------
+    /** v8: public entry point for player spell damage on any boss. */
+    spellHit(b, dmg) {
+      this.hurt(b, dmg, b.pos.clone());
+      this.events.onSwordHit("boss", b.pos);
+    }
     hurt(b, dmg, from) {
       if (b.state === "dying") return;
       const cfg = BOSSES[b.kind];
@@ -41282,6 +41325,12 @@ void main() {
     /** For main.ts to hook the enemy summoner (necromancer). */
     bindEnemies(enemies) {
       this.enemies = enemies;
+    }
+    /** v8: main.ts wires in spell reward + pickup drop dependencies. */
+    bindRewards(spells, pickups, player) {
+      this.spells = spells;
+      this.pickups = pickups;
+      this.player = player;
     }
   };
   function tintSkeleton(root, hex) {
@@ -41980,6 +42029,13 @@ void main() {
       if (Math.random() < PROPS.barrelDropHeart) this.spawn("heart", pos);
       else if (Math.random() < PROPS.barrelDropCoin) this.spawn("coin", pos);
     }
+    /** v8: convenience wrappers used by boss reward drops. */
+    spawnCoin(pos) {
+      this.spawn("coin", pos, 6);
+    }
+    spawnHeart(pos) {
+      this.spawn("heart", pos, 6);
+    }
     update(dt, player) {
       for (const p of this.pickups) {
         if (p.dead) continue;
@@ -42069,7 +42125,11 @@ void main() {
         dead: false
       });
     }
-    spawnShockwave(origin) {
+    /**
+     * v8: shockwave with optional `friendly` flag. Player spells (bone_shockwave)
+     * pass friendly=true so it damages enemies/bosses instead of the player.
+     */
+    spawnShockwave(origin, friendly = false) {
       const dirs = [
         new Vector3(1, 0, 0),
         new Vector3(-1, 0, 0),
@@ -42080,44 +42140,164 @@ void main() {
         const mesh = makeShockwaveMesh();
         mesh.position.copy(origin);
         mesh.position.y = 0.25;
+        if (friendly) {
+          mesh.material.color.setHex(16765286);
+        }
         this.scene.add(mesh);
         this.projectiles.push({
           mesh,
           pos: origin.clone(),
           vel: d.clone().multiplyScalar(BOSS.shockwaveSpeed),
           radius: BOSS.shockwaveWidth,
-          damage: BOSS.shockwaveDamage,
+          damage: friendly ? 3 : BOSS.shockwaveDamage,
           life: 1.4,
-          kind: "shockwave",
-          dead: false
+          kind: friendly ? "friendly_shockwave" : "shockwave",
+          dead: false,
+          friendly
         });
       }
     }
-    update(dt, player, roomMgr) {
+    /**
+     * v8: Player spell projectiles. Each spell picks its own visual + speed.
+     * All are marked friendly so hostile collision is skipped.
+     */
+    spawnPlayerBolt(origin, direction, kind) {
+      const spec = {
+        ice_shard: { color: 8970495, speed: 14, damage: 3, radius: 0.5, life: 2 },
+        fireball: { color: 16748608, speed: 11, damage: 4, radius: 0.7, life: 2.2 },
+        chain_lightning: { color: 10537215, speed: 20, damage: 2, radius: 0.4, life: 1 }
+      }[kind];
+      const mesh = new Mesh(
+        new SphereGeometry(spec.radius, 10, 8),
+        new MeshBasicMaterial({ color: spec.color, transparent: true, opacity: 0.9 })
+      );
+      mesh.position.copy(origin);
+      const glow = new Mesh(
+        new SphereGeometry(spec.radius * 1.5, 10, 8),
+        new MeshBasicMaterial({ color: spec.color, transparent: true, opacity: 0.3 })
+      );
+      mesh.add(glow);
+      this.scene.add(mesh);
+      this.projectiles.push({
+        mesh,
+        pos: origin.clone(),
+        vel: new Vector3(direction.x, 0, direction.z).normalize().multiplyScalar(spec.speed),
+        radius: spec.radius,
+        damage: spec.damage,
+        life: spec.life,
+        kind,
+        dead: false,
+        friendly: true
+      });
+    }
+    /**
+     * v8: Void Rift — a growing dark ring around the player. Purely cosmetic;
+     * damage is applied instantly by the SpellSystem, this just draws the ring.
+     */
+    spawnVoidRing(origin, color = 9055202) {
+      const mesh = new Mesh(
+        new TorusGeometry(0.5, 0.15, 8, 24),
+        new MeshBasicMaterial({ color, transparent: true, opacity: 0.85 })
+      );
+      mesh.rotation.x = Math.PI / 2;
+      mesh.position.set(origin.x, 0.4, origin.z);
+      this.scene.add(mesh);
+      this.projectiles.push({
+        mesh,
+        pos: origin.clone(),
+        vel: new Vector3(),
+        radius: 0.5,
+        damage: 0,
+        // damage already dealt by SpellSystem
+        life: 0.6,
+        kind: "void_ring",
+        dead: false,
+        friendly: true
+      });
+    }
+    update(dt, player, roomMgr, enemies, boss, pickups) {
       for (const p of this.projectiles) {
         if (p.dead) continue;
         p.life -= dt;
         p.pos.addScaledVector(p.vel, dt);
         p.mesh.position.copy(p.pos);
-        if (p.kind === "shockwave") {
+        if (p.kind === "shockwave" || p.kind === "friendly_shockwave") {
           p.mesh.scale.setScalar(1 + (1.4 - p.life) * 0.9);
           p.mesh.material.opacity = Math.max(0, p.life / 1.4);
+        } else if (p.kind === "void_ring") {
+          const t = 1 - p.life / 0.6;
+          p.mesh.scale.setScalar(1 + t * 8);
+          p.mesh.material.opacity = 0.85 * (1 - t);
         } else {
           p.mesh.rotation.y += dt * 12;
+          p.mesh.rotation.x += dt * 8;
         }
-        const dx = player.pos.x - p.pos.x;
-        const dz = player.pos.z - p.pos.z;
-        const min = p.radius + PLAYER.radius;
-        if (dx * dx + dz * dz < min * min) {
-          damagePlayer(player, p.damage, p.pos, this.fx, this.events);
-          this.fx.burst(new Vector3(p.pos.x, 1, p.pos.z), 11820287, 8, { speed: 3, up: 2 });
-          if (p.kind === "bolt") p.dead = true;
+        if (!p.friendly) {
+          const dx = player.pos.x - p.pos.x;
+          const dz = player.pos.z - p.pos.z;
+          const min = p.radius + PLAYER.radius;
+          if (dx * dx + dz * dz < min * min) {
+            damagePlayer(player, p.damage, p.pos, this.fx, this.events);
+            this.fx.burst(new Vector3(p.pos.x, 1, p.pos.z), 11820287, 8, { speed: 3, up: 2 });
+            if (p.kind === "bolt") p.dead = true;
+          }
+        } else if (enemies && pickups) {
+          if (p.kind !== "void_ring") {
+            for (const e of enemies.enemies) {
+              if (e.dead || e.roomKey !== roomMgr.current.key) continue;
+              const dx = e.pos.x - p.pos.x;
+              const dz = e.pos.z - p.pos.z;
+              const min = p.radius + 0.6;
+              if (dx * dx + dz * dz < min * min) {
+                enemies.hurtEnemy(e, p.damage, p.pos, pickups);
+                this.fx.burst(
+                  new Vector3(p.pos.x, 1, p.pos.z),
+                  p.mesh.material.color.getHex(),
+                  10,
+                  { speed: 4, up: 2 }
+                );
+                if (p.kind === "ice_shard" || p.kind === "chain_lightning") p.dead = true;
+                if (p.kind === "fireball") {
+                  for (const e2 of enemies.enemies) {
+                    if (e2 === e || e2.dead || e2.roomKey !== roomMgr.current.key) continue;
+                    const dd = Math.hypot(e2.pos.x - p.pos.x, e2.pos.z - p.pos.z);
+                    if (dd < 2) enemies.hurtEnemy(e2, Math.ceil(p.damage / 2), p.pos, pickups);
+                  }
+                  this.fx.burst(p.pos.clone(), 16748608, 25, { speed: 6, up: 3, life: 0.7, scale: 1.2 });
+                  p.dead = true;
+                }
+                break;
+              }
+            }
+            if (boss && !p.dead) {
+              for (const b of boss.bosses) {
+                if (b.dead || b.roomKey !== roomMgr.current.key) continue;
+                const dx = b.pos.x - p.pos.x;
+                const dz = b.pos.z - p.pos.z;
+                const min = p.radius + 1.2;
+                if (dx * dx + dz * dz < min * min) {
+                  boss.spellHit(b, p.damage);
+                  this.fx.burst(p.pos.clone(), 16765286, 10, { speed: 4, up: 2 });
+                  if (p.kind === "ice_shard" || p.kind === "chain_lightning") p.dead = true;
+                  if (p.kind === "fireball") {
+                    this.fx.burst(p.pos.clone(), 16748608, 25, { speed: 6, up: 3, life: 0.7, scale: 1.2 });
+                    p.dead = true;
+                  }
+                  break;
+                }
+              }
+            }
+          }
         }
         const room = roomMgr.current;
         const tx = Math.floor((p.pos.x - room.origin.x) / 4);
         const tz = Math.floor((p.pos.z - room.origin.z) / 4);
-        if (tx < 0 || tz < 0 || tx >= 9 || tz >= 7 || room.solid[tz]?.[tx]) {
-          if (p.kind === "bolt") p.dead = true;
+        if (tx < 0 || tz < 0 || tx >= 15 || tz >= 13 || room.solid[tz]?.[tx]) {
+          if (p.kind === "bolt" || p.kind === "ice_shard" || p.kind === "chain_lightning") p.dead = true;
+          if (p.kind === "fireball") {
+            this.fx.burst(p.pos.clone(), 16748608, 20, { speed: 5, up: 3, life: 0.6 });
+            p.dead = true;
+          }
         }
         if (p.life <= 0) p.dead = true;
       }
@@ -42131,6 +42311,299 @@ void main() {
     clearAll() {
       for (const p of this.projectiles) this.scene.remove(p.mesh);
       this.projectiles = [];
+    }
+  };
+
+  // src/systems/spells.ts
+  var SPELLS = {
+    bone_shockwave: {
+      id: "bone_shockwave",
+      name: "Bone Shockwave",
+      desc: "Radial shockwave in 4 directions. Q to cast.",
+      cooldown: 6,
+      sourceBoss: "skeleton_king",
+      glyph: "\u{1F480}",
+      color: 16765286
+    },
+    summon_skeleton: {
+      id: "summon_skeleton",
+      name: "Summon Bone Ally",
+      desc: "Summons a temporary skeleton ally.",
+      cooldown: 14,
+      sourceBoss: "bone_necromancer",
+      glyph: "\u{1F9B4}",
+      color: 11035903
+    },
+    iron_bulwark: {
+      id: "iron_bulwark",
+      name: "Iron Bulwark",
+      desc: "Halves incoming damage for 5 seconds.",
+      cooldown: 12,
+      sourceBoss: "iron_warden",
+      glyph: "\u{1F6E1}",
+      color: 13134378
+    },
+    shadow_dash: {
+      id: "shadow_dash",
+      name: "Shadow Dash",
+      desc: "Teleport-dash forward, damaging enemies you pass through.",
+      cooldown: 5,
+      sourceBoss: "shadow_reaver",
+      glyph: "\u{1F300}",
+      color: 2830448
+    },
+    ice_shard: {
+      id: "ice_shard",
+      name: "Ice Shard",
+      desc: "Freezing icy shard fired forward.",
+      cooldown: 3,
+      sourceBoss: "crystal_golem",
+      glyph: "\u2744",
+      color: 6738175
+    },
+    chain_lightning: {
+      id: "chain_lightning",
+      name: "Chain Lightning",
+      desc: "Bolt that leaps between 3 nearest enemies.",
+      cooldown: 7,
+      sourceBoss: "storm_elemental",
+      glyph: "\u26A1",
+      color: 6605055
+    },
+    fireball: {
+      id: "fireball",
+      name: "Fireball",
+      desc: "Explosive fire projectile with splash damage.",
+      cooldown: 5,
+      sourceBoss: "flame_djinn",
+      glyph: "\u{1F525}",
+      color: 16742943
+    },
+    void_rift: {
+      id: "void_rift",
+      name: "Void Rift",
+      desc: "Dark ring of energy around you, damaging every enemy in the ring.",
+      cooldown: 8,
+      sourceBoss: "void_serpent",
+      glyph: "\u{1F30C}",
+      color: 9055202
+    }
+  };
+  var BOSS_SPELL = {
+    skeleton_king: "bone_shockwave",
+    bone_necromancer: "summon_skeleton",
+    iron_warden: "iron_bulwark",
+    shadow_reaver: "shadow_dash",
+    crystal_golem: "ice_shard",
+    storm_elemental: "chain_lightning",
+    flame_djinn: "fireball",
+    void_serpent: "void_rift"
+  };
+  var SpellSystem = class {
+    constructor(scene, fx, events) {
+      this.scene = scene;
+      this.fx = fx;
+      this.events = events;
+    }
+    /** Called by BossSystem when a boss dies — unlocks the boss's spell. */
+    grantSpellForBoss(p, kind) {
+      const spell = BOSS_SPELL[kind];
+      if (p.spells.includes(spell)) return;
+      p.spells.push(spell);
+      p.activeSpell = p.spells.length - 1;
+      const def = SPELLS[spell];
+      this.events.onToast(`New spell unlocked: ${def.name}! (Q to cast, Tab to cycle)`);
+      this.fx.burst(new Vector3(p.pos.x, 1.6, p.pos.z), def.color, 30, {
+        speed: 6,
+        up: 5,
+        life: 1,
+        scale: 1.2
+      });
+      sfx.victory();
+      this.events.onHudDirty();
+    }
+    /** Per-frame update: decrement cooldowns, handle Q/Tab input. */
+    update(dt, p, input, roomMgr, projectiles, enemies, pickups) {
+      for (const k of Object.keys(p.spellCooldowns)) {
+        const cd = p.spellCooldowns[k] ?? 0;
+        if (cd > 0) p.spellCooldowns[k] = Math.max(0, cd - dt);
+      }
+      if (p.bulwarkTime > 0) p.bulwarkTime = Math.max(0, p.bulwarkTime - dt);
+      if (input.spellCyclePressed && p.spells.length > 0) {
+        p.activeSpell = (p.activeSpell + 1) % p.spells.length;
+        const def = SPELLS[p.spells[p.activeSpell]];
+        this.events.onToast(`Spell: ${def.name}`);
+      }
+      if (input.spellPressed && p.spells.length > 0) {
+        const kind = p.spells[p.activeSpell];
+        const cd = p.spellCooldowns[kind] ?? 0;
+        if (cd > 0) {
+          this.events.onToast(`${SPELLS[kind].name} on cooldown (${cd.toFixed(1)}s)`);
+        } else {
+          this.cast(p, kind, roomMgr, projectiles, enemies, pickups);
+          p.spellCooldowns[kind] = SPELLS[kind].cooldown;
+        }
+      }
+    }
+    cast(p, kind, roomMgr, projectiles, enemies, pickups) {
+      const facing = new Vector3(p.facing.x, 0, p.facing.z).normalize();
+      const origin = p.pos.clone();
+      origin.y = 1.3;
+      const cfg = SPELLS[kind];
+      switch (kind) {
+        case "bone_shockwave": {
+          projectiles.spawnShockwave(
+            p.pos.clone(),
+            true
+            /* friendly */
+          );
+          this.fx.burst(new Vector3(p.pos.x, 0.4, p.pos.z), cfg.color, 30, {
+            speed: 7,
+            up: 3,
+            life: 0.8
+          });
+          sfx.bossRoar();
+          break;
+        }
+        case "ice_shard": {
+          projectiles.spawnPlayerBolt(origin, facing, "ice_shard");
+          this.fx.burst(new Vector3(p.pos.x, 1.3, p.pos.z).addScaledVector(facing, 0.5), cfg.color, 8, {
+            speed: 4,
+            up: 1,
+            life: 0.4
+          });
+          sfx.bolt();
+          break;
+        }
+        case "fireball": {
+          projectiles.spawnPlayerBolt(origin, facing, "fireball");
+          this.fx.burst(new Vector3(p.pos.x, 1.3, p.pos.z).addScaledVector(facing, 0.5), cfg.color, 12, {
+            speed: 5,
+            up: 1,
+            life: 0.5
+          });
+          sfx.bolt();
+          break;
+        }
+        case "chain_lightning": {
+          const alive = enemies.enemies.filter((e) => !e.dead && e.roomKey === roomMgr.current.key);
+          alive.sort(
+            (a, b) => (a.pos.x - p.pos.x) ** 2 + (a.pos.z - p.pos.z) ** 2 - ((b.pos.x - p.pos.x) ** 2 + (b.pos.z - p.pos.z) ** 2)
+          );
+          const targets = alive.slice(0, 3);
+          let from = p.pos.clone();
+          from.y = 1.4;
+          for (const t of targets) {
+            const to = t.pos.clone();
+            to.y = 1.2;
+            this.drawLightning(from, to, cfg.color);
+            enemies.hurtEnemy(t, 3, p.pos, pickups);
+            from = to;
+          }
+          if (targets.length === 0) {
+            this.events.onToast("Chain Lightning \u2014 no enemies in range");
+          }
+          sfx.bolt();
+          break;
+        }
+        case "void_rift": {
+          projectiles.spawnVoidRing(p.pos.clone(), cfg.color);
+          for (const e of enemies.enemies) {
+            if (e.dead || e.roomKey !== roomMgr.current.key) continue;
+            const d = Math.hypot(e.pos.x - p.pos.x, e.pos.z - p.pos.z);
+            if (d < 4.5) enemies.hurtEnemy(e, 2, p.pos, pickups);
+          }
+          sfx.bossRoar();
+          break;
+        }
+        case "iron_bulwark": {
+          p.bulwarkTime = 5;
+          this.fx.burst(new Vector3(p.pos.x, 1.3, p.pos.z), cfg.color, 25, {
+            speed: 3,
+            up: 5,
+            life: 1.4,
+            scale: 1.3
+          });
+          this.events.onToast("Iron Bulwark \u2014 damage halved for 5s");
+          break;
+        }
+        case "shadow_dash": {
+          const dashDist = 6;
+          const target = p.pos.clone().addScaledVector(facing, dashDist);
+          const step2 = 0.5;
+          for (let d = 0; d <= dashDist; d += step2) {
+            const at = p.pos.clone().addScaledVector(facing, d);
+            for (const e of enemies.enemies) {
+              if (e.dead || e.roomKey !== roomMgr.current.key) continue;
+              const dd = Math.hypot(e.pos.x - at.x, e.pos.z - at.z);
+              if (dd < 1.2 && !e.didHitPlayer) {
+                enemies.hurtEnemy(e, 2, p.pos, pickups);
+                e.didHitPlayer = true;
+                setTimeout(() => {
+                  if (e) e.didHitPlayer = false;
+                }, 300);
+              }
+            }
+          }
+          p.pos.copy(target);
+          p.invuln = Math.max(p.invuln, 0.35);
+          this.fx.burst(new Vector3(p.pos.x, 1.2, p.pos.z), cfg.color, 30, {
+            speed: 6,
+            up: 3,
+            life: 0.6
+          });
+          sfx.roll();
+          break;
+        }
+        case "summon_skeleton": {
+          for (let i = 0; i < 4; i++) {
+            const jitter = (Math.random() - 0.5) * 0.5;
+            const ang = Math.atan2(facing.x, facing.z) + jitter;
+            const d = new Vector3(Math.sin(ang), 0, Math.cos(ang));
+            const o = p.pos.clone().addScaledVector(d, 0.5);
+            o.y = 1.4;
+            projectiles.spawnPlayerBolt(o, d, "ice_shard");
+          }
+          this.fx.burst(new Vector3(p.pos.x, 1.4, p.pos.z), cfg.color, 30, {
+            speed: 6,
+            up: 3,
+            life: 0.9
+          });
+          this.events.onToast("Bone ally answered your call!");
+          sfx.awaken();
+          break;
+        }
+      }
+    }
+    drawLightning(from, to, color) {
+      const points = [from.clone()];
+      const segs = 6;
+      for (let i = 1; i < segs; i++) {
+        const t = i / segs;
+        const mid = new Vector3().lerpVectors(from, to, t);
+        mid.x += (Math.random() - 0.5) * 0.8;
+        mid.z += (Math.random() - 0.5) * 0.8;
+        mid.y += (Math.random() - 0.2) * 0.4;
+        points.push(mid);
+      }
+      points.push(to.clone());
+      const geo = new BufferGeometry().setFromPoints(points);
+      const mat = new LineBasicMaterial({ color, transparent: true, opacity: 0.95 });
+      const line = new Line(geo, mat);
+      this.scene.add(line);
+      const start = performance.now();
+      const tick = () => {
+        const t = (performance.now() - start) / 500;
+        if (t >= 1) {
+          this.scene.remove(line);
+          geo.dispose();
+          mat.dispose();
+          return;
+        }
+        mat.opacity = 0.95 * (1 - t);
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
     }
   };
 
@@ -44166,6 +44639,7 @@ void main() {
         <div id="hud-narr-speaker"></div>
         <div id="hud-narr-text"></div>
       </div>
+      <div id="hud-spells" class="hidden"></div>
     `;
       this.hearts = mount.querySelector("#hud-hearts");
       this.coins = mount.querySelector("#hud-coins span");
@@ -44181,6 +44655,34 @@ void main() {
       this.comboBadge = mount.querySelector("#hud-combo");
       this.chargeBar = mount.querySelector("#hud-charge");
       this.chargeFill = mount.querySelector("#hud-charge-fill");
+      this.spellBar = mount.querySelector("#hud-spells");
+    }
+    /** v8: render the row of spell icons the player has unlocked. */
+    renderSpells(player) {
+      if (player.spells.length === 0) {
+        this.spellBar.classList.add("hidden");
+        this.spellBar.innerHTML = "";
+        return;
+      }
+      this.spellBar.classList.remove("hidden");
+      const parts = ['<div class="spells-hint">Q cast \xB7 Tab cycle</div>'];
+      for (let i = 0; i < player.spells.length; i++) {
+        const s = player.spells[i];
+        const def = SPELLS[s];
+        const cd = player.spellCooldowns[s] ?? 0;
+        const cdFrac = Math.min(1, cd / def.cooldown);
+        const active = i === player.activeSpell ? "active" : "";
+        const cdOverlay = cd > 0 ? `<div class="cd" style="height:${(cdFrac * 100).toFixed(0)}%"></div><div class="cdtext">${cd.toFixed(1)}s</div>` : "";
+        const color = "#" + def.color.toString(16).padStart(6, "0");
+        parts.push(`
+        <div class="spell ${active}" title="${def.name} \u2014 ${def.desc}" style="border-color:${color};">
+          <div class="glyph">${def.glyph}</div>
+          <div class="name">${def.name}</div>
+          ${cdOverlay}
+        </div>
+      `);
+      }
+      this.spellBar.innerHTML = parts.join("");
     }
     render(player) {
       const totalHearts = player.maxHp ?? PLAYER.maxHalfHearts / 2;
@@ -44727,6 +45229,8 @@ void main() {
         <button id="btn-interact" class="tb small">\u270B</button>
         <button id="btn-attack" class="tb big">\u2694</button>
         <button id="btn-roll" class="tb med">\u21B7</button>
+        <button id="btn-spell" class="tb med">\u2728</button>
+        <button id="btn-spell-cycle" class="tb">\u25B6</button>
       </div>
     `;
       this.stickBase = mount.querySelector("#touch-stick");
@@ -44735,6 +45239,8 @@ void main() {
       this.rollBtn = mount.querySelector("#btn-roll");
       this.blockBtn = mount.querySelector("#btn-block");
       this.interactBtn = mount.querySelector("#btn-interact");
+      this.spellBtn = mount.querySelector("#btn-spell");
+      this.spellCycleBtn = mount.querySelector("#btn-spell-cycle");
       this.wireStick();
       this.wireButtons();
     }
@@ -44818,6 +45324,12 @@ void main() {
       hold(this.interactBtn, () => {
         this.input.interactPressed = true;
       });
+      hold(this.spellBtn, () => {
+        this.input.spellPressed = true;
+      });
+      hold(this.spellCycleBtn, () => {
+        this.input.spellCyclePressed = true;
+      });
     }
   };
 
@@ -44882,6 +45394,7 @@ void main() {
     let pickups = null;
     let props = null;
     let boss = null;
+    let spells = null;
     let fx = null;
     let npcs = null;
     let story = null;
@@ -44963,6 +45476,7 @@ void main() {
       props = new PropsSystem(fx, events);
       enemies = new EnemySystem(scene, fx, events);
       boss = new BossSystem(scene, fx, events);
+      spells = new SpellSystem(scene, fx, events);
       npcs = new NpcSystem(scene, events);
       story = new StoryDirector(events);
       player = createPlayer(scene, world.playerStart);
@@ -44979,6 +45493,7 @@ void main() {
       }
       if (boss.bosses.length === 0) boss.spawn(world.bossSpawn);
       boss.bindEnemies(enemies);
+      boss.bindRewards(spells, pickups, player);
       for (const [, room] of world.rooms) {
         for (const s of room.enemySpawns) {
           enemies.spawnEnemy(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
@@ -45033,7 +45548,7 @@ void main() {
     function tick(now2) {
       const dt = Math.min(0.05, (now2 - last) / 1e3);
       last = now2;
-      if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && fx && npcs && swordFx) {
+      if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && spells && fx && npcs && swordFx) {
         pollKeyboard(input, touchUi.active());
         if (shop?.isOpen()) {
           endFrame(input, dt);
@@ -45045,7 +45560,8 @@ void main() {
         npcs.update(dt, player, roomMgr, input);
         enemies.update(dt, player, roomMgr, projectiles, pickups);
         boss.update(dt, player, roomMgr, projectiles, props);
-        projectiles.update(dt, player, roomMgr);
+        spells.update(dt, player, input, roomMgr, projectiles, enemies, pickups);
+        projectiles.update(dt, player, roomMgr, enemies, boss, pickups);
         pickups.update(dt, player);
         props.update(dt, player, input, roomMgr, pickups);
         if (input.interactPressed && !npcs.activeNpc) {
@@ -45068,6 +45584,7 @@ void main() {
           }
         }
         hud?.render(player);
+        hud?.renderSpells(player);
         if (npcs.activeNpc) {
           hud?.updateInteractPrompt(npcs.activeNpc);
         } else {

@@ -59,6 +59,11 @@ export function createPlayer(scene: THREE.Scene, start: THREE.Vector3): PlayerDa
     maxHp: PLAYER.maxHalfHearts / 2,
     chargeTime: 0,
     chargeReady: false,
+    // v8: spell fields — start with no spells; each boss kill unlocks one.
+    spells: [],
+    activeSpell: 0,
+    spellCooldowns: {},
+    bulwarkTime: 0,
   };
 }
 
@@ -359,6 +364,8 @@ export function damagePlayer(
   // v5: reinforced shield upgrade absorbs 1 half-heart from every hit
   let dmg = halfHearts;
   if (p.upgrades?.reinforcedShield) dmg = Math.max(0, dmg - 1);
+  // v8: Iron Bulwark spell halves incoming damage while active
+  if (p.bulwarkTime > 0) dmg = Math.max(0, Math.floor(dmg / 2));
   if (dmg === 0) {
     // fully absorbed — brief invuln so the same hit doesn't retrigger next frame
     p.invuln = 0.15;
