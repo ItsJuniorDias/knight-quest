@@ -40507,7 +40507,7 @@ void main() {
         const worldPos = new Vector3();
         c.root.getWorldPosition(worldPos);
         const d2 = (worldPos.x - player.pos.x) ** 2 + (worldPos.z - player.pos.z) ** 2;
-        if (d2 < 3.6 && input.interactPressed) {
+        if (d2 < 11.56 && input.interactPressed) {
           c.opened = true;
           sfx.chest();
           const spawnAt = worldPos.clone();
@@ -40555,6 +40555,21 @@ void main() {
       c.position.y = 1.4;
       scene.add(c);
       this.victoryCrystal = c;
+    }
+    /** v6: returns the label for the nearest interactable prop (chest) in
+     *  interact range, or null. Uses the same 3.4-unit radius (d² < 11.56)
+     *  as the interaction check above and NPC talk radius — keeps prompt
+     *  visibility and E-press action perfectly aligned. */
+    nearestInteractLabel(player, roomMgr) {
+      const room = roomMgr.current;
+      const worldPos = new Vector3();
+      for (const c of room.chests) {
+        if (c.opened) continue;
+        c.root.getWorldPosition(worldPos);
+        const d2 = (worldPos.x - player.pos.x) ** 2 + (worldPos.z - player.pos.z) ** 2;
+        if (d2 < 11.56) return c.contents === "bosskey" ? "Take Key" : "Open";
+      }
+      return null;
     }
   };
 
@@ -42496,6 +42511,18 @@ void main() {
         label.textContent = npc.kind === "ghost" ? "Listen" : npc.kind === "shopkeeper" ? "Shop" : "Talk";
       }
     }
+    /** Set the prompt text directly (chests, doors, etc). Pass null to hide.
+     *  v6: NPC prompt takes priority — call this AFTER updateInteractPrompt
+     *  each frame, and only when npc is null. */
+    setInteractPromptText(text) {
+      if (text === null) {
+        this.interactPrompt.classList.add("hidden");
+        return;
+      }
+      this.interactPrompt.classList.remove("hidden");
+      const label = this.interactPrompt.querySelector(".lbl");
+      if (label) label.textContent = text;
+    }
     /** Set the combo counter. 0 hides the badge. */
     setCombo(count) {
       if (count < 2) {
@@ -43196,7 +43223,11 @@ void main() {
           }
         }
         hud?.render(player);
-        hud?.updateInteractPrompt(npcs.activeNpc);
+        if (npcs.activeNpc) {
+          hud?.updateInteractPrompt(npcs.activeNpc);
+        } else {
+          hud?.setInteractPromptText(props?.nearestInteractLabel(player, roomMgr) ?? null);
+        }
         hud?.setChargeBar(
           Math.min(1, player.chargeTime / 0.55),
           // 0.55s = PLAYER.chargeTime

@@ -50,6 +50,13 @@ export class PropsSystem {
     }
 
     // ---- chests -----------------------------------------------------------
+    // v6 fix: interact radius was `d2 < 3.6` (d < 1.9) — impossible to
+    // satisfy because the chest tile is marked solid, so the player can only
+    // approach to TILE/2 + player.radius ≈ 2.62 world units before hitting
+    // the wall. Nobody could ever open a chest by pressing E. Bumped to the
+    // same 3.4 unit radius NPCs use (d² = 11.56) so the prompt appears when
+    // you're touching the collision box, and the interaction can actually
+    // fire from that same distance.
     for (const c of room.chests) {
       if (c.opened) {
         c.openT = Math.min(1, c.openT + dt / PROPS.chestOpenTime);
@@ -59,7 +66,7 @@ export class PropsSystem {
       const worldPos = new THREE.Vector3();
       c.root.getWorldPosition(worldPos);
       const d2 = (worldPos.x - player.pos.x) ** 2 + (worldPos.z - player.pos.z) ** 2;
-      if (d2 < 3.6 && input.interactPressed) {
+      if (d2 < 11.56 && input.interactPressed) {
         c.opened = true;
         sfx.chest();
         const spawnAt = worldPos.clone(); spawnAt.y = 0.5;
@@ -111,5 +118,21 @@ export class PropsSystem {
     c.position.y = 1.4;
     scene.add(c);
     this.victoryCrystal = c;
+  }
+
+  /** v6: returns the label for the nearest interactable prop (chest) in
+   *  interact range, or null. Uses the same 3.4-unit radius (d² < 11.56)
+   *  as the interaction check above and NPC talk radius — keeps prompt
+   *  visibility and E-press action perfectly aligned. */
+  nearestInteractLabel(player: PlayerData, roomMgr: RoomManager): string | null {
+    const room = roomMgr.current;
+    const worldPos = new THREE.Vector3();
+    for (const c of room.chests) {
+      if (c.opened) continue;
+      c.root.getWorldPosition(worldPos);
+      const d2 = (worldPos.x - player.pos.x) ** 2 + (worldPos.z - player.pos.z) ** 2;
+      if (d2 < 11.56) return c.contents === "bosskey" ? "Take Key" : "Open";
+    }
+    return null;
   }
 }

@@ -180,6 +180,19 @@ export class Hud {
     }
   }
 
+  /** Set the prompt text directly (chests, doors, etc). Pass null to hide.
+   *  v6: NPC prompt takes priority — call this AFTER updateInteractPrompt
+   *  each frame, and only when npc is null. */
+  setInteractPromptText(text: string | null): void {
+    if (text === null) {
+      this.interactPrompt.classList.add("hidden");
+      return;
+    }
+    this.interactPrompt.classList.remove("hidden");
+    const label = this.interactPrompt.querySelector<HTMLElement>(".lbl");
+    if (label) label.textContent = text;
+  }
+
   /** Set the combo counter. 0 hides the badge. */
   setCombo(count: number): void {
     if (count < 2) {

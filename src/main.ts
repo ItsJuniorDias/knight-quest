@@ -346,7 +346,13 @@ async function main(): Promise<void> {
       }
 
       hud?.render(player);
-      hud?.updateInteractPrompt(npcs.activeNpc);
+      // v6: NPC prompt takes priority; only show chest/prop prompt when no
+      // NPC is in interact range, so we never render two prompts at once.
+      if (npcs.activeNpc) {
+        hud?.updateInteractPrompt(npcs.activeNpc);
+      } else {
+        hud?.setInteractPromptText(props?.nearestInteractLabel(player, roomMgr) ?? null);
+      }
       // v5: charge attack bar fills while holding attack
       hud?.setChargeBar(
         Math.min(1, player.chargeTime / 0.55), // 0.55s = PLAYER.chargeTime
