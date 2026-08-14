@@ -40218,6 +40218,11 @@ void main() {
       this.activeNpc = bestActive;
       if (bestActive && input.interactPressed) {
         const npc = bestActive;
+        if (npc.kind === "shopkeeper" && npc.lastTalkedAt > 0) {
+          sfx.npcTalk();
+          this.events.onOpenShop();
+          return;
+        }
         const line = npc.lines[npc.lineIdx];
         this.events.onStory(line.who, line.text);
         sfx.npcTalk();
@@ -40226,9 +40231,6 @@ void main() {
         if (!this.triggeredIds.has(npc.id)) {
           this.triggeredIds.add(npc.id);
           this.events.onStoryTrigger(npc.id);
-        }
-        if (npc.kind === "shopkeeper" && npc.lineIdx === 0) {
-          this.events.onOpenShop();
         }
       }
     }
@@ -42721,7 +42723,12 @@ void main() {
         "align-items:center",
         "justify-content:center",
         "z-index:400",
-        "font-family:system-ui,-apple-system,sans-serif"
+        "font-family:system-ui,-apple-system,sans-serif",
+        // v5 fix: parent #ui has pointer-events:none, which is inherited.
+        // Without this override, Buy/Leave buttons receive no clicks and the
+        // shop feels frozen — only Esc closes it. Same pattern .screen and
+        // #touch-stick use in index.html.
+        "pointer-events:auto"
       ].join(";");
       this.overlay.innerHTML = this.buildInner();
       this.root.appendChild(this.overlay);

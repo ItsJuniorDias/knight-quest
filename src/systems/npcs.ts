@@ -580,6 +580,18 @@ export class NpcSystem {
     // interact: advance dialog on this NPC
     if (bestActive && input.interactPressed) {
       const npc = bestActive;
+
+      // v5 fix: shopkeepers open the shop on any E press AFTER the intro
+      // line has been shown at least once (lastTalkedAt > 0). The old
+      // condition `lineIdx === 0` broke for shopkeepers with a single line
+      // (like Inga) because the wrap-around fired on the very first press,
+      // opening the shop simultaneously with the intro line.
+      if (npc.kind === "shopkeeper" && npc.lastTalkedAt > 0) {
+        sfx.npcTalk();
+        this.events.onOpenShop();
+        return; // don't advance the dialog line this frame
+      }
+
       const line = npc.lines[npc.lineIdx];
       this.events.onStory(line.who, line.text);
       sfx.npcTalk(); // brief two-note blip that isn't the coin ping
@@ -589,11 +601,6 @@ export class NpcSystem {
       if (!this.triggeredIds.has(npc.id)) {
         this.triggeredIds.add(npc.id);
         this.events.onStoryTrigger(npc.id);
-      }
-      // v5: shopkeepers also open the item shop after their intro line
-      if (npc.kind === "shopkeeper" && npc.lineIdx === 0) {
-        // lineIdx wrapped back to 0 means the intro line was just shown once
-        this.events.onOpenShop();
       }
     }
   }

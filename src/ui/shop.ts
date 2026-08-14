@@ -110,6 +110,11 @@ export class Shop {
       "position:fixed", "inset:0", "background:rgba(0,0,0,0.72)",
       "display:none", "align-items:center", "justify-content:center",
       "z-index:400", "font-family:system-ui,-apple-system,sans-serif",
+      // v5 fix: parent #ui has pointer-events:none, which is inherited.
+      // Without this override, Buy/Leave buttons receive no clicks and the
+      // shop feels frozen — only Esc closes it. Same pattern .screen and
+      // #touch-stick use in index.html.
+      "pointer-events:auto",
     ].join(";");
     this.overlay.innerHTML = this.buildInner();
     this.root.appendChild(this.overlay);
