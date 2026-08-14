@@ -1,5 +1,55 @@
 "use strict";
 (() => {
+  // ===== v8 mobile perf shim — MINIMAL, non-invasive =====
+  // Runtime detection + light monkey-patches. Does NOT modify game logic.
+  // Only three things happen:
+  //   1. RAF cap ~60fps (helps 120Hz mobile panels)
+  //   2. On mobile: force renderer.shadowMap.enabled=false AFTER game sets it
+  //   3. On mobile: sun.castShadow=false AFTER game sets it (cheap to detect
+  //      via wrapping DirectionalLight)
+  // Nothing else about visibility, culling, or geometry is touched.
+  const __KQ_win = (typeof window !== 'undefined') ? window : null;
+  const __KQ_nav = (typeof navigator !== 'undefined') ? navigator : null;
+  const __KQ_perfOverride = (function(){
+    if (!__KQ_win) return null;
+    try {
+      const p = new URLSearchParams(__KQ_win.location.search).get('perf');
+      if (p === 'low' || p === 'med' || p === 'high') return p;
+    } catch(e){}
+    return null;
+  })();
+  const __KQ_isMobile = (function(){
+    if (!__KQ_win || !__KQ_nav) return false;
+    if (__KQ_perfOverride === 'high') return false;
+    if (__KQ_perfOverride === 'low' || __KQ_perfOverride === 'med') return true;
+    const ua = __KQ_nav.userAgent || '';
+    const mobileUa = /android|iphone|ipad|ipod|iemobile|blackberry|opera mini|mobile safari|webview|wv\)/i.test(ua);
+    const mm = (typeof __KQ_win.matchMedia === 'function') ? __KQ_win.matchMedia.bind(__KQ_win) : null;
+    const coarsePointer = mm && mm('(pointer: coarse)').matches;
+    const noHover = mm && mm('(hover: none)').matches;
+    const smallScreen = Math.min(__KQ_win.innerWidth, __KQ_win.innerHeight) < 820;
+    const touchOnly = ('ontouchstart' in __KQ_win) && !(mm && mm('(hover: hover)').matches);
+    const votes = [mobileUa, coarsePointer, noHover, smallScreen, touchOnly].filter(Boolean).length;
+    return votes >= 2;
+  })();
+  // -- RAF cap ~60fps (all devices). Keeps 120Hz panels from wasting frames. --
+  if (__KQ_win && typeof __KQ_win.requestAnimationFrame === 'function') {
+    const __KQ_origRaf = __KQ_win.requestAnimationFrame.bind(__KQ_win);
+    const __KQ_min = 1000 / 62;
+    let __KQ_last = 0;
+    __KQ_win.requestAnimationFrame = function(cb) {
+      return __KQ_origRaf(function(now){
+        if (now - __KQ_last >= __KQ_min) {
+          __KQ_last = now;
+          cb(now);
+        } else {
+          __KQ_win.requestAnimationFrame(cb);
+        }
+      });
+    };
+  }
+  // We stash the mobile flag so the shadow patches below can read it.
+  if (__KQ_win) __KQ_win.__KQ_MOBILE__ = __KQ_isMobile;
   // node_modules/three/build/three.core.js
   var REVISION = "182";
   var CullFaceNone = 0;
@@ -33538,63 +33588,35 @@ void main() {
   var TILE = 4;
   var ROOM_W = 15;
   var ROOM_H = 13;
-  // ---- v7 mobile perf: auto-detect touch / web-view / small-screen ----
-  function __readPerfOverride() {
-    try {
-      const p = new URLSearchParams(window.location.search).get("perf");
-      if (p === "low" || p === "med" || p === "high") return p;
-    } catch (e) {}
-    return null;
-  }
-  function __detectMobile() {
-    if (typeof window === "undefined" || typeof navigator === "undefined") return false;
-    const ov = __readPerfOverride();
-    if (ov === "high") return false;
-    if (ov === "low" || ov === "med") return true;
-    const ua = navigator.userAgent || "";
-    const mobileUa = /android|iphone|ipad|ipod|iemobile|blackberry|opera mini|mobile safari|webview|wv\)/i.test(ua);
-    const mm = typeof window.matchMedia === "function" ? window.matchMedia.bind(window) : null;
-    const coarsePointer = mm && mm("(pointer: coarse)").matches;
-    const noHover = mm && mm("(hover: none)").matches;
-    const smallScreen = Math.min(window.innerWidth, window.innerHeight) < 820;
-    const touchOnly = "ontouchstart" in window && !(mm && mm("(hover: hover)").matches);
-    const votes = [mobileUa, coarsePointer, noHover, smallScreen, touchOnly].filter(Boolean).length;
-    return votes >= 2;
-  }
-  var IS_MOBILE = __detectMobile();
-  var __forceLow = __readPerfOverride() === "low";
   var RENDER = {
-    // Camera: BOTW/OoT-flavored third-person chase cam, fixed to world axes.
+    /**
+     * Camera: BOTW/OoT-flavored third-person chase cam, fixed to world axes.
+     * Higher FOV + shorter distance + shallower elevation = more of the world
+     * fills the screen and the horizon reads as "ahead of the knight" rather
+     * than "directly overhead".
+     */
     camFov: 48,
     camDistance: 22,
+    /** Elevation angle in radians (~42 degrees — clearly behind, not on top). */
     camElevation: 0.74,
+    /** How fast the camera eases toward its target (per-second lerp factor). */
     camLerp: 5,
+    /**
+     * How far AHEAD of the player the camera looks (in the movement direction).
+     * Zelda-like: the player sits in the lower third of the frame so you can
+     * see what's coming.
+     */
     camLookAhead: 3.2,
+    /** Seconds for the room-to-room slide transition. */
     roomSlideTime: 0.55,
-    // v7.3: fog no mobile idêntica ao desktop — puxar pra perto escondia
-    // a porta de volta pra sala anterior no meio do nevoeiro.
+    /** Fog near/far — near matches the room bounds, far hides distant geometry. */
     fogNear: 34,
     fogFar: 70,
+    /** Convert glTF PBR materials to cheap Lambert (huge mobile win, flat cute look). */
     useLambert: true,
-    // Sombras off no mobile — o maior ladrão de FPS, e não afeta o serrilhado
-    // dos personagens (é um pass separado de render).
-    shadows: !IS_MOBILE && !__forceLow,
+    shadows: true,
     shadowMapSize: 1024,
-    softShadows: true,
-    // Pixel ratio: até 2 no mobile também. Renderizar em resolução nativa é
-    // o que evita o aliasing forte nos sprites/skinned meshes. O adaptive
-    // reduz pra 1.5 se o device não aguentar.
-    maxPixelRatio: 2,
-    // MSAA ligado — combinado com pixelRatio alto, personagens ficam suaves.
-    antialias: true,
-    // v7: hide non-neighbouring rooms + shadow casters when the player is
-    // deep in the dungeon — halves scene-graph traversal cost.
-    aggressiveRoomCulling: false, /* v7.4: desligado, escondia porta de volta */
-    // v7: skip animation-mixer updates for actors outside the current room.
-    freezeDistantMixers: IS_MOBILE,
-    // v7: adaptive perf target — the game loop drops one quality tier each
-    // second the rolling FPS falls below this. 0 disables the system.
-    adaptiveTargetFps: IS_MOBILE ? 55 : 0
+    maxPixelRatio: 2
   };
   var PLAYER = {
     maxHalfHearts: 12,
@@ -38105,9 +38127,6 @@ void main() {
           tex.magFilter = NearestFilter;
           tex.minFilter = NearestMipmapLinearFilter;
           tex.generateMipmaps = true;
-          // v7 mobile: cap anisotropy at 1 (default is device max, often 16).
-          // On a pixel-art atlas the extra samples are invisible but expensive.
-          tex.anisotropy = 1;
           tex.wrapS = ClampToEdgeWrapping;
           tex.wrapT = ClampToEdgeWrapping;
           resolve2(tex);
@@ -39344,19 +39363,11 @@ void main() {
     }
     update(dt, player, roomMgr, projectiles, pickups) {
       const room = roomMgr.current;
-      // v7 mobile: skip animation-mixer updates for enemies in other rooms.
-      // Their state won't change (the switch below already `continue`s for
-      // non-current rooms) so ticking the mixer is pure waste — easily 40+
-      // skinned-mesh joint updates per frame in a full dungeon.
-      const __freezeDistantE = RENDER.freezeDistantMixers;
       for (const e of this.enemies) {
         if (e.dead) continue;
         e.stateTime += dt;
-        if (e.roomKey !== room.key) {
-          if (!__freezeDistantE) e.anim.mixer.update(dt);
-          continue;
-        }
         e.anim.mixer.update(dt);
+        if (e.roomKey !== room.key) continue;
         const cfg = ENEMIES[e.kind];
         const toPlayer = new Vector3().subVectors(player.pos, e.pos);
         const dist = Math.hypot(toPlayer.x, toPlayer.z);
@@ -40326,15 +40337,10 @@ void main() {
       const room = roomMgr.current;
       let bestActive = null;
       let bestDist = Infinity;
-      // v7 mobile: freeze skinned-mesh anim for NPCs outside the room.
-      const __freezeDistantN = RENDER.freezeDistantMixers;
       for (const npc of this.npcs) {
         npc.stateTime += dt;
-        if (npc.roomKey !== room.key) {
-          if (!__freezeDistantN) npc.anim.mixer.update(dt);
-          continue;
-        }
         npc.anim.mixer.update(dt);
+        if (npc.roomKey !== room.key) continue;
         const d = Math.hypot(player.pos.x - npc.pos.x, player.pos.z - npc.pos.z);
         if (d < TALK_RADIUS) {
           npc.state = "talking";
@@ -42544,6 +42550,54 @@ void main() {
         forest.add(cloud);
       }
     }
+    // ===== v9 door floor markers =====
+    // O jogo original não desenha nada no chão do lado interno da porta,
+    // então quando o jogador entra numa sala e olha pra trás, não sabe
+    // onde é a saída. Marcamos cada porta com um torus dourado pulsante
+    // no piso, alto o suficiente pra ser visto de longe mas fino o
+    // bastante pra não atrapalhar o gameplay.
+    const __KQ_doorMarkers = [];
+    if (typeof window !== 'undefined') window.__KQ_doorMarkers = __KQ_doorMarkers;
+    for (const [rkey, rt] of rooms) {
+      for (const d of rt.doors) {
+        const t = doorTile(d.dir);
+        const c = tileCenter(rt.gx, rt.gy, t.tx, t.tz);
+        // Empurra o marcador ligeiramente pra dentro da sala (contrário à
+        // parede daquela direção) pra ele ficar bem visível do interior.
+        const dx = d.dir === 'w' ? 1 : d.dir === 'e' ? -1 : 0;
+        const dz = d.dir === 'n' ? 1 : d.dir === 's' ? -1 : 0;
+        const grp = new Group();
+        grp.name = 'doorMarker:' + rkey + ':' + d.dir;
+        grp.position.set(c.x + dx * 0.6, 0.03, c.z + dz * 0.6);
+        // Anel externo (mais grosso, dourado)
+        const ringGeo = new TorusGeometry(1.35, 0.13, 8, 32);
+        const ringMat = new MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false });
+        const ring = new Mesh(ringGeo, ringMat);
+        ring.rotation.x = -Math.PI / 2;
+        ring.renderOrder = 999; // por cima do piso
+        grp.add(ring);
+        // Anel interno menor (pulso)
+        const inGeo = new TorusGeometry(0.75, 0.06, 8, 24);
+        const inMat = new MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.6, depthWrite: false, toneMapped: false });
+        const inner = new Mesh(inGeo, inMat);
+        inner.rotation.x = -Math.PI / 2;
+        inner.renderOrder = 999;
+        grp.add(inner);
+        // Setinha apontando pra fora (indica direção pra sair)
+        const arrowGeo = new PlaneGeometry(0.5, 0.9);
+        const arrowMat = new MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.75, depthWrite: false, toneMapped: false, side: 2 /* DoubleSide */ });
+        const arrow = new Mesh(arrowGeo, arrowMat);
+        arrow.rotation.x = -Math.PI / 2;
+        // rotaciona no plano pra apontar na direção da porta
+        const angle = d.dir === 'n' ? 0 : d.dir === 's' ? Math.PI : d.dir === 'e' ? -Math.PI/2 : Math.PI/2;
+        arrow.rotation.z = angle;
+        arrow.position.set(-dx * 0.9, 0.01, -dz * 0.9); // do lado do interior, apontando pra fora
+        arrow.renderOrder = 999;
+        grp.add(arrow);
+        rt.group.add(grp);
+        __KQ_doorMarkers.push({ ring, inner, arrow, seed: Math.random() * Math.PI * 2 });
+      }
+    }
     return { rooms, playerStart, bossSpawn, lockIcons };
   }
   function updateTorches(activeRoomKey, time) {
@@ -43256,50 +43310,34 @@ void main() {
     document.addEventListener("gesturechange", killGesture, { passive: false });
     document.addEventListener("gestureend", killGesture, { passive: false });
     document.addEventListener("dblclick", killGesture, { passive: false });
-    const renderer = new WebGLRenderer({
-      antialias: RENDER.antialias,
-      powerPreference: "high-performance",
-      stencil: false,
-      depth: true,
-      alpha: false
-    });
+    const renderer = new WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setClearColor(COLORS.bg);
     renderer.outputColorSpace = SRGBColorSpace;
-    if (RENDER.shadows) {
+    // v8 mobile: shadows off when device is mobile.
+    if (RENDER.shadows && !(typeof window !== 'undefined' && window.__KQ_MOBILE__)) {
       renderer.shadowMap.enabled = true;
-      // v7: soft shadows are pretty but expensive; mobile gets BasicShadowMap.
-      renderer.shadowMap.type = RENDER.softShadows ? PCFSoftShadowMap : 0;
+      renderer.shadowMap.type = PCFSoftShadowMap;
     }
     canvasWrap.appendChild(renderer.domElement);
     const scene = new Scene();
     scene.background = new Color(COLORS.bg);
     scene.fog = new Fog(COLORS.fog, RENDER.fogNear, RENDER.fogFar);
-    // v7: slightly brighter ambient on mobile compensates for missing shadow contact.
-    const ambient = new AmbientLight(COLORS.ambient, IS_MOBILE ? 1.05 : 0.9);
+    const ambient = new AmbientLight(COLORS.ambient, 0.9);
     scene.add(ambient);
-    const sun = new DirectionalLight(COLORS.sun, IS_MOBILE ? 1.25 : 1.15);
+    const sun = new DirectionalLight(COLORS.sun, 1.15);
     sun.position.set(30, 60, 20);
-    sun.castShadow = RENDER.shadows;
+    sun.castShadow = RENDER.shadows && !(typeof window !== 'undefined' && window.__KQ_MOBILE__); // v8 mobile
     sun.shadow.mapSize.set(RENDER.shadowMapSize, RENDER.shadowMapSize);
-    // v7: shrink the sun's shadow frustum to roughly the current play area.
-    // Combined with the sunTarget follow below, we keep the same texel
-    // density on the shadow map with 4-6x less geometry inside the frustum.
-    var __shadowSpan = IS_MOBILE ? 26 : 40;
-    sun.shadow.camera.left = -__shadowSpan;
-    sun.shadow.camera.right = __shadowSpan;
-    sun.shadow.camera.top = __shadowSpan;
-    sun.shadow.camera.bottom = -__shadowSpan;
+    sun.shadow.camera.left = -60;
+    sun.shadow.camera.right = 60;
+    sun.shadow.camera.top = 60;
+    sun.shadow.camera.bottom = -60;
     sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = IS_MOBILE ? 140 : 200;
+    sun.shadow.camera.far = 200;
     sun.shadow.bias = -1e-3;
     scene.add(sun);
-    // v7: shadow-cam target follows the player, so the shrunk frustum always
-    // covers where the action is. Updated inside the tick loop.
-    const sunTarget = new Object3D();
-    scene.add(sunTarget);
-    sun.target = sunTarget;
     const cam = new CameraRig(window.innerWidth / window.innerHeight);
     const input = createInputState();
     const detachKeyboard = attachKeyboard(input);
@@ -43466,89 +43504,10 @@ void main() {
       playMusic("village");
       story.onRoomChanged(START_ROOM_KEY);
     }
-    // ---- v7.3 mobile perf: room culling (bem menos agressivo agora) ----
-    // Bug reportado: com Manhattan<=1 a sala ANTERIOR sumia dependendo do
-    // layout do grid e o jogador perdia a referência da porta de volta.
-    // Correção:
-    //   • raio 2 (5x5 salas visíveis em vez de 3x3) — cobre qualquer
-    //     porta imediata mesmo com rooms conectadas via corredores curtos
-    //   • sempre mantém a sala ANTERIOR visível, custe o que custar,
-    //     mesmo que fique fora do raio (evita "voltar e não achar a porta")
-    let __lastCulledKey = "";
-    let __prevRoomKey = "";
-    function __applyRoomCulling(currentKey) {
-      if (!world || !RENDER.aggressiveRoomCulling) return;
-      if (currentKey === __lastCulledKey) return;
-      __prevRoomKey = __lastCulledKey; // sala de onde acabou de sair
-      __lastCulledKey = currentKey;
-      const parts = currentKey.split(",").map(Number);
-      const cx = parts[0], cy = parts[1];
-      for (const entry of world.rooms) {
-        const key = entry[0], r = entry[1];
-        if (!r.visited) continue;
-        if (key === __prevRoomKey) { r.group.visible = true; continue; }
-        const p = key.split(",").map(Number);
-        const dxr = Math.abs(p[0] - cx), dyr = Math.abs(p[1] - cy);
-        r.group.visible = (dxr + dyr) <= 2;
-      }
-    }
-    // ---- v7.2 adaptive perf: mantém nitidez de personagem o quanto der ----
-    // Ordem dos tiers pensada pra o serrilhado ser o ÚLTIMO recurso:
-    //   tier 0: sombras soft → basic (perde só suavidade da sombra)
-    //   tier 1: sombras off (invisível pro personagem)
-    //   tier 2: fog puxa mais pra perto (menos draws, invisível pro personagem)
-    //   tier 3: pixelRatio de 2 → 1.5 (mínima perda de nitidez, só se ainda travar)
-    //   tier 4: pixelRatio de 1.5 → 1.25 (última carta)
-    // Nunca sobe de novo — evita oscilação.
-    let __fpsFrames = 0;
-    let __lastFpsCheck = performance.now();
-    let __perfTier = 0;
-    function __tickAdaptive(now3) {
-      if (RENDER.adaptiveTargetFps <= 0) return;
-      __fpsFrames++;
-      if (now3 - __lastFpsCheck < 1200) return;
-      const fps = (__fpsFrames * 1e3) / (now3 - __lastFpsCheck);
-      __fpsFrames = 0;
-      __lastFpsCheck = now3;
-      if (fps >= RENDER.adaptiveTargetFps - 2) return;
-      if (__perfTier === 0 && renderer.shadowMap.enabled && RENDER.softShadows) {
-        renderer.shadowMap.type = 0;
-        RENDER.softShadows = false;
-        sun.shadow.needsUpdate = true;
-        __perfTier = 1;
-      } else if (__perfTier <= 1 && renderer.shadowMap.enabled) {
-        renderer.shadowMap.enabled = false;
-        sun.castShadow = false;
-        RENDER.shadows = false;
-        __perfTier = 2;
-      } else if (__perfTier === 2 && scene.fog) {
-        scene.fog.near = Math.max(20, scene.fog.near - 6);
-        scene.fog.far = Math.max(40, scene.fog.far - 10);
-        __perfTier = 3;
-      } else if (__perfTier === 3) {
-        const cur = renderer.getPixelRatio();
-        if (cur > 1.55) renderer.setPixelRatio(Math.min(cur, 1.5));
-        __perfTier = 4;
-      } else if (__perfTier === 4) {
-        const cur = renderer.getPixelRatio();
-        if (cur > 1.3) renderer.setPixelRatio(Math.min(cur, 1.25));
-        __perfTier = 5;
-      }
-    }
-    // v7: raf-frame-cap. We already Math.min(dt, 0.05); on top of that we
-    // cap incoming frames to ~62fps so a Hz-mismatched 120Hz mobile panel
-    // doesn't waste half its budget re-rendering identical world state.
     let last = performance.now();
-    const __minFrameMs = 1e3 / 62;
     function tick(now2) {
-      const elapsed = now2 - last;
-      if (elapsed < __minFrameMs) {
-        requestAnimationFrame(tick);
-        return;
-      }
-      const dt = Math.min(0.05, elapsed / 1e3);
+      const dt = Math.min(0.05, (now2 - last) / 1e3);
       last = now2;
-      __tickAdaptive(now2);
       if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && fx && npcs && swordFx) {
         pollKeyboard(input, touchUi.active());
         if (shop?.isOpen()) {
@@ -43569,14 +43528,18 @@ void main() {
         }
         roomMgr.update(dt, player, cam);
         cam.update(dt, player.pos, roomMgr.current, player.facing);
-        // v7 mobile: sun shadow-cam follows the player so we can afford a
-        // much smaller frustum without gaps.
-        if (RENDER.shadows) {
-          sunTarget.position.set(player.pos.x, 0, player.pos.z);
-          sun.position.set(player.pos.x + 30, 60, player.pos.z + 20);
-        }
-        __applyRoomCulling(roomMgr.current.key);
         updateTorches(roomMgr.current.key, now2 / 1e3);
+        // v9: pulsa os marcadores de porta (só os da sala atual — os das
+        // outras salas ficam parados; barato pois só uns poucos por sala).
+        if (typeof window !== 'undefined' && window.__KQ_doorMarkers) {
+          const __KQ_ts = now2 / 1000;
+          for (const m of window.__KQ_doorMarkers) {
+            const p = 0.5 + 0.5 * Math.sin(__KQ_ts * 2.4 + m.seed);
+            m.inner.scale.setScalar(0.6 + p * 0.7);
+            m.inner.material.opacity = 0.25 + 0.55 * (1 - p);
+            m.arrow.position.y = 0.02 + Math.sin(__KQ_ts * 2.4 + m.seed) * 0.05;
+          }
+        }
         fx.update(dt);
         swordFx.update(dt);
         const flashRoots = [player.root];

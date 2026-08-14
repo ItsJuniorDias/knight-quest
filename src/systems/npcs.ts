@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { PLAYER, RENDER } from "../config";
+import { PLAYER } from "../config";
 import { buildAnimSet, play } from "../engine/anim";
 import { sfx } from "../engine/audio";
 import { getAnimations, spawn } from "../engine/loader";
@@ -483,18 +483,11 @@ export class NpcSystem {
     let bestActive: NpcData | null = null;
     let bestDist = Infinity;
 
-    // v7 mobile: freeze skinned-mesh animation for NPCs not in the room.
-    // NPCs don't leave their rooms and their state won't change while off-
-    // screen, so ticking the mixer is dozens of matrix updates for nothing.
-    const freezeDistant = RENDER.freezeDistantMixers;
     for (const npc of this.npcs) {
       npc.stateTime += dt;
-      if (npc.roomKey !== room.key) {
-        if (!freezeDistant) npc.anim.mixer.update(dt);
-        continue;
-      }
       npc.anim.mixer.update(dt);
       // NPCs only "live" (animate + wander) while their room is on-camera.
+      if (npc.roomKey !== room.key) continue;
 
       const d = Math.hypot(player.pos.x - npc.pos.x, player.pos.z - npc.pos.z);
 

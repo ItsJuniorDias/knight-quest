@@ -328,16 +328,11 @@ export function isSnowKey(key: string): boolean {
 }
 
 function enableShadows(root: THREE.Object3D, cast: boolean, receive: boolean): void {
-  // v7 mobile: if shadows are disabled at the renderer level (RENDER.shadows
-  // = false on the mobile preset) we don't need to set castShadow on every
-  // mesh. Skipping this saves a full traverse per spawn and avoids Three.js
-  // rebuilding shadow-material variants for meshes that will never cast one.
-  const shadowsOn = RENDER.shadows;
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
-    mesh.castShadow = cast && shadowsOn;
-    mesh.receiveShadow = receive && shadowsOn;
+    mesh.castShadow = cast;
+    mesh.receiveShadow = receive;
     if ((mesh as unknown as THREE.SkinnedMesh).isSkinnedMesh) {
       mesh.frustumCulled = false;
     }
@@ -353,15 +348,8 @@ async function loadAtlas(): Promise<void> {
         (tex) => {
           tex.colorSpace = THREE.SRGBColorSpace;
           tex.magFilter = THREE.NearestFilter;
-          // v7 mobile: NearestMipmapNearest is 1 sample vs Linear's 2 —
-          // barely visible on a pixel-art atlas but a real fill-rate win
-          // on integrated mobile GPUs.
-          tex.minFilter = RENDER.freezeDistantMixers
-            ? THREE.NearestMipmapNearestFilter
-            : THREE.NearestMipmapLinearFilter;
+          tex.minFilter = THREE.NearestMipmapLinearFilter;
           tex.generateMipmaps = true;
-          // v7: cap anisotropy at 1 on mobile (default is device max, often 16).
-          tex.anisotropy = 1;
           tex.wrapS = THREE.ClampToEdgeWrapping;
           tex.wrapT = THREE.ClampToEdgeWrapping;
           resolve(tex);

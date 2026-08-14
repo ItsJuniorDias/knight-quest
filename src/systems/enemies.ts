@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ENEMIES, PLAYER, RENDER } from "../config";
+import { ENEMIES, PLAYER } from "../config";
 import { buildAnimSet, clipDuration, play } from "../engine/anim";
 import { sfx } from "../engine/audio";
 import { findNode, spawn } from "../engine/loader";
@@ -118,19 +118,11 @@ export class EnemySystem {
 
   update(dt: number, player: PlayerData, roomMgr: RoomManager, projectiles: ProjectileSystem, pickups: PickupSystem): void {
     const room = roomMgr.current;
-    // v7 mobile: skip animation mixer work for enemies in other rooms entirely.
-    // Their state won't change (the state machine below already `continue`s
-    // for non-current rooms), so ticking the mixer is pure waste and easily
-    // 100+ skinned-mesh updates per frame on a full dungeon.
-    const freezeDistant = RENDER.freezeDistantMixers;
     for (const e of this.enemies) {
       if (e.dead) continue;
       e.stateTime += dt;
-      if (e.roomKey !== room.key) {
-        if (!freezeDistant) e.anim.mixer.update(dt);
-        continue; // dormant in other rooms
-      }
       e.anim.mixer.update(dt);
+      if (e.roomKey !== room.key) continue; // dormant in other rooms
 
       const cfg = ENEMIES[e.kind];
       const toPlayer = new THREE.Vector3().subVectors(player.pos, e.pos);
