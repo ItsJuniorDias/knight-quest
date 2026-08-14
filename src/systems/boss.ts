@@ -232,7 +232,11 @@ export class BossSystem {
         b.dead = true;
         this.scene.remove(b.root);
         this.events.onBossBar(null);
-        roomMgr.current.cleared = true;
+        // v11 FIX: use clearRoom() so the combat gates actually raise. The
+        // old path only set `cleared = true` — which stopped the room from
+        // relocking on re-entry but left the current portcullises down,
+        // trapping the player in every boss room after the kill.
+        roomMgr.clearRoom(roomMgr.current);
         // v6: only Malric drops the "you won the game" victory crystal.
         // Coliseum bosses are bonus fights that just open their room's gates.
         if (b.kind === "skeleton_king") {

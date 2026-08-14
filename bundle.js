@@ -40415,7 +40415,7 @@ void main() {
           b.dead = true;
           this.scene.remove(b.root);
           this.events.onBossBar(null);
-          roomMgr.current.cleared = true;
+          roomMgr.clearRoom(roomMgr.current);
           if (b.kind === "skeleton_king") {
             props.spawnVictoryCrystal(this.scene, b.pos.clone());
           }
