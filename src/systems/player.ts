@@ -149,11 +149,19 @@ export function updatePlayer(
           sfx.hitBlocked();
         }
       }
-      // Release: if charged, do heavy; if not, do the regular light attack
+      // Release: if charged, cast the active spell (v9) — or fall back to
+      // the classic heavy strike if the player hasn't unlocked any spell yet.
+      // If the spell is on cooldown, SpellSystem shows a toast and does
+      // nothing; the charge is consumed either way (that's the risk of
+      // going for a heavy).
       if (!input.attackHeld && p.chargeTime > 0) {
         if (p.chargeReady) {
-          startHeavyAttack(p);
-          events.onSwordSwing(0);
+          if (p.spells.length > 0) {
+            input.spellPressed = true;
+          } else {
+            startHeavyAttack(p);
+            events.onSwordSwing(0);
+          }
         }
         p.chargeTime = 0;
         p.chargeReady = false;

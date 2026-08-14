@@ -39713,8 +39713,12 @@ void main() {
         }
         if (!input.attackHeld && p.chargeTime > 0) {
           if (p.chargeReady) {
-            startHeavyAttack(p);
-            events.onSwordSwing(0);
+            if (p.spells.length > 0) {
+              input.spellPressed = true;
+            } else {
+              startHeavyAttack(p);
+              events.onSwordSwing(0);
+            }
           }
           p.chargeTime = 0;
           p.chargeReady = false;
@@ -44657,7 +44661,12 @@ void main() {
       this.chargeFill = mount.querySelector("#hud-charge-fill");
       this.spellBar = mount.querySelector("#hud-spells");
     }
-    /** v8: render the row of spell icons the player has unlocked. */
+    /**
+     * v9: render the row of spell icons the player has unlocked.
+     * Tap/click a spell to select it as the active one (mobile-friendly
+     * replacement for the removed cycle button). Cast is now bound to
+     * releasing a fully charged attack.
+     */
     renderSpells(player) {
       if (player.spells.length === 0) {
         this.spellBar.classList.add("hidden");
@@ -44665,7 +44674,7 @@ void main() {
         return;
       }
       this.spellBar.classList.remove("hidden");
-      const parts = ['<div class="spells-hint">Q cast \xB7 Tab cycle</div>'];
+      const parts = ['<div class="spells-hint">Hold \u2694 to charge, release to cast \xB7 tap icon to switch</div>'];
       for (let i = 0; i < player.spells.length; i++) {
         const s = player.spells[i];
         const def = SPELLS[s];
@@ -44675,14 +44684,24 @@ void main() {
         const cdOverlay = cd > 0 ? `<div class="cd" style="height:${(cdFrac * 100).toFixed(0)}%"></div><div class="cdtext">${cd.toFixed(1)}s</div>` : "";
         const color = "#" + def.color.toString(16).padStart(6, "0");
         parts.push(`
-        <div class="spell ${active}" title="${def.name} \u2014 ${def.desc}" style="border-color:${color};">
+        <button class="spell ${active}" data-idx="${i}" title="${def.name} \u2014 ${def.desc}" style="border-color:${color};">
           <div class="glyph">${def.glyph}</div>
           <div class="name">${def.name}</div>
           ${cdOverlay}
-        </div>
+        </button>
       `);
       }
       this.spellBar.innerHTML = parts.join("");
+      this.spellBar.querySelectorAll(".spell").forEach((btn) => {
+        btn.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.idx ?? "0", 10);
+          if (!isNaN(idx) && idx >= 0 && idx < player.spells.length) {
+            player.activeSpell = idx;
+          }
+        });
+      });
     }
     render(player) {
       const totalHearts = player.maxHp ?? PLAYER.maxHalfHearts / 2;
@@ -45229,8 +45248,6 @@ void main() {
         <button id="btn-interact" class="tb small">\u270B</button>
         <button id="btn-attack" class="tb big">\u2694</button>
         <button id="btn-roll" class="tb med">\u21B7</button>
-        <button id="btn-spell" class="tb med">\u2728</button>
-        <button id="btn-spell-cycle" class="tb">\u25B6</button>
       </div>
     `;
       this.stickBase = mount.querySelector("#touch-stick");
@@ -45239,8 +45256,6 @@ void main() {
       this.rollBtn = mount.querySelector("#btn-roll");
       this.blockBtn = mount.querySelector("#btn-block");
       this.interactBtn = mount.querySelector("#btn-interact");
-      this.spellBtn = mount.querySelector("#btn-spell");
-      this.spellCycleBtn = mount.querySelector("#btn-spell-cycle");
       this.wireStick();
       this.wireButtons();
     }
@@ -45308,7 +45323,16 @@ void main() {
         el.addEventListener("pointerup", release);
         el.addEventListener("pointercancel", release);
       };
-      hold(this.attackBtn, () => pressAttack(this.input));
+      hold(
+        this.attackBtn,
+        () => {
+          pressAttack(this.input);
+          this.input.attackHeld = true;
+        },
+        () => {
+          this.input.attackHeld = false;
+        }
+      );
       hold(this.rollBtn, () => {
         this.input.rollPressed = true;
       });
@@ -45323,12 +45347,6 @@ void main() {
       );
       hold(this.interactBtn, () => {
         this.input.interactPressed = true;
-      });
-      hold(this.spellBtn, () => {
-        this.input.spellPressed = true;
-      });
-      hold(this.spellCycleBtn, () => {
-        this.input.spellCyclePressed = true;
       });
     }
   };

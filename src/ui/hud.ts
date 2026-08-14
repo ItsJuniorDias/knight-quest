@@ -76,7 +76,12 @@ export class Hud {
     this.spellBar = mount.querySelector("#hud-spells")!;
   }
 
-  /** v8: render the row of spell icons the player has unlocked. */
+  /**
+   * v9: render the row of spell icons the player has unlocked.
+   * Tap/click a spell to select it as the active one (mobile-friendly
+   * replacement for the removed cycle button). Cast is now bound to
+   * releasing a fully charged attack.
+   */
   renderSpells(player: PlayerData): void {
     if (player.spells.length === 0) {
       this.spellBar.classList.add("hidden");
@@ -84,7 +89,7 @@ export class Hud {
       return;
     }
     this.spellBar.classList.remove("hidden");
-    const parts: string[] = ['<div class="spells-hint">Q cast · Tab cycle</div>'];
+    const parts: string[] = ['<div class="spells-hint">Hold ⚔ to charge, release to cast · tap icon to switch</div>'];
     for (let i = 0; i < player.spells.length; i++) {
       const s = player.spells[i];
       const def = SPELLS[s];
@@ -96,14 +101,26 @@ export class Hud {
         : "";
       const color = "#" + def.color.toString(16).padStart(6, "0");
       parts.push(`
-        <div class="spell ${active}" title="${def.name} — ${def.desc}" style="border-color:${color};">
+        <button class="spell ${active}" data-idx="${i}" title="${def.name} — ${def.desc}" style="border-color:${color};">
           <div class="glyph">${def.glyph}</div>
           <div class="name">${def.name}</div>
           ${cdOverlay}
-        </div>
+        </button>
       `);
     }
     this.spellBar.innerHTML = parts.join("");
+    // Wire tap-to-select on every icon (bar gets re-rendered every frame, so
+    // we re-attach — cheap since there are at most 8 icons).
+    this.spellBar.querySelectorAll<HTMLButtonElement>(".spell").forEach((btn) => {
+      btn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.idx ?? "0", 10);
+        if (!isNaN(idx) && idx >= 0 && idx < player.spells.length) {
+          player.activeSpell = idx;
+        }
+      });
+    });
   }
 
   render(player: PlayerData): void {

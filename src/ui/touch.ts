@@ -15,8 +15,6 @@ export class TouchUi {
   private rollBtn: HTMLElement;
   private blockBtn: HTMLElement;
   private interactBtn: HTMLElement;
-  private spellBtn: HTMLElement;
-  private spellCycleBtn: HTMLElement;
   private stickPointer: number | null = null;
   private stickOrigin = { x: 0, y: 0 };
   private touching = 0;
@@ -31,8 +29,6 @@ export class TouchUi {
         <button id="btn-interact" class="tb small">✋</button>
         <button id="btn-attack" class="tb big">⚔</button>
         <button id="btn-roll" class="tb med">↷</button>
-        <button id="btn-spell" class="tb med">✨</button>
-        <button id="btn-spell-cycle" class="tb">▶</button>
       </div>
     `;
     this.stickBase = mount.querySelector("#touch-stick")!;
@@ -41,8 +37,6 @@ export class TouchUi {
     this.rollBtn = mount.querySelector("#btn-roll")!;
     this.blockBtn = mount.querySelector("#btn-block")!;
     this.interactBtn = mount.querySelector("#btn-interact")!;
-    this.spellBtn = mount.querySelector("#btn-spell")!;
-    this.spellCycleBtn = mount.querySelector("#btn-spell-cycle")!;
 
     this.wireStick();
     this.wireButtons();
@@ -117,14 +111,16 @@ export class TouchUi {
       el.addEventListener("pointerup", release);
       el.addEventListener("pointercancel", release);
     };
-    hold(this.attackBtn, () => pressAttack(this.input));
+    // v9: attack button — press = trigger; held = start charging.
+    // Releasing a fully-charged attack now CASTS the active spell (if any)
+    // instead of only doing a heavy strike. This replaces the old ✨ button.
+    hold(this.attackBtn,
+      () => { pressAttack(this.input); this.input.attackHeld = true; },
+      () => { this.input.attackHeld = false; });
     hold(this.rollBtn, () => { this.input.rollPressed = true; });
     hold(this.blockBtn,
       () => { this.input.blockHeld = true; },
       () => { this.input.blockHeld = false; });
     hold(this.interactBtn, () => { this.input.interactPressed = true; });
-    // v8: spell buttons — ✨ casts current spell, ▶ cycles to next spell.
-    hold(this.spellBtn, () => { this.input.spellPressed = true; });
-    hold(this.spellCycleBtn, () => { this.input.spellCyclePressed = true; });
   }
 }
