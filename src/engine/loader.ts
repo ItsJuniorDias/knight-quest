@@ -1,5 +1,8 @@
 import * as THREE from "three";
-import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
+import {
+  GLTFLoader,
+  type GLTF,
+} from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { RENDER } from "../config";
@@ -146,109 +149,280 @@ const MANIFEST_POLYGON_GLB = {
 // ---------------------------------------------------------------------------
 const MANIFEST_POLYGON_OBJ_LIST = [
   // buildings
-  "bld_fence_01", "bld_fence_02", "bld_fencepost_01", "bld_hut_01", "bld_hutdoor_01",
-  "bld_stall_01", "bld_stall_02", "bld_stall_03", "bld_stall_04",
-  "bld_stall_cover_01", "bld_stall_cover_02", "bld_stall_cover_03",
-  "bld_stall_cover_04", "bld_stall_cover_05",
-  "bld_village_01", "bld_village_02", "bld_village_03", "bld_village_04",
-  "bld_village_05", "bld_village_06", "bld_village_07",
-  "bld_village_hangingcloth_01", "bld_village_top_01", "bld_village_windowdrapes_01",
-  "bld_wall_01", "bld_wall_02", "bld_well_01",
+  "bld_fence_01",
+  "bld_fence_02",
+  "bld_fencepost_01",
+  "bld_hut_01",
+  "bld_hutdoor_01",
+  "bld_stall_01",
+  "bld_stall_02",
+  "bld_stall_03",
+  "bld_stall_04",
+  "bld_stall_cover_01",
+  "bld_stall_cover_02",
+  "bld_stall_cover_03",
+  "bld_stall_cover_04",
+  "bld_stall_cover_05",
+  "bld_village_01",
+  "bld_village_02",
+  "bld_village_03",
+  "bld_village_04",
+  "bld_village_05",
+  "bld_village_06",
+  "bld_village_07",
+  "bld_village_hangingcloth_01",
+  "bld_village_top_01",
+  "bld_village_windowdrapes_01",
+  "bld_wall_01",
+  "bld_wall_02",
+  "bld_well_01",
   // env — big/nature
   "env_bridge_01",
-  "env_bush_01", "env_bush_02", "env_bush_03", "env_bush_04",
+  "env_bush_01",
+  "env_bush_02",
+  "env_bush_03",
+  "env_bush_04",
   "env_campfire_01",
-  "env_cloud_01", "env_cloud_02", "env_cloud_03", "env_cloud_04",
-  "env_cloud_05", "env_cloud_06", "env_cloud_07",
+  "env_cloud_01",
+  "env_cloud_02",
+  "env_cloud_03",
+  "env_cloud_04",
+  "env_cloud_05",
+  "env_cloud_06",
+  "env_cloud_07",
   "env_dirtmound_01",
-  "env_floortile_01", "env_floortile_02", "env_floortile_03", "env_floortile_04",
-  "env_floortile_05", "env_floortile_06", "env_floortile_07",
-  "env_flower_01", "env_flower_02", "env_flower_03", "env_flower_04",
-  "env_flower_05", "env_flower_06", "env_flower_07", "env_flower_08",
-  "env_grass_01", "env_grass_02",
-  "env_groundmounds_01", "env_groundmounds_02", "env_groundmounds_03",
-  "env_groundmounds_04", "env_groundmounds_05", "env_groundmounds_06",
-  "env_groundmounds_07", "env_groundmounds_08", "env_groundmounds_09",
+  "env_floortile_01",
+  "env_floortile_02",
+  "env_floortile_03",
+  "env_floortile_04",
+  "env_floortile_05",
+  "env_floortile_06",
+  "env_floortile_07",
+  "env_flower_01",
+  "env_flower_02",
+  "env_flower_03",
+  "env_flower_04",
+  "env_flower_05",
+  "env_flower_06",
+  "env_flower_07",
+  "env_flower_08",
+  "env_grass_01",
+  "env_grass_02",
+  "env_groundmounds_01",
+  "env_groundmounds_02",
+  "env_groundmounds_03",
+  "env_groundmounds_04",
+  "env_groundmounds_05",
+  "env_groundmounds_06",
+  "env_groundmounds_07",
+  "env_groundmounds_08",
+  "env_groundmounds_09",
   "env_groundmounds_10",
   "env_hedge_01",
-  "env_hill_01", "env_hill_02", "env_hill_03", "env_hill_04",
-  "env_ice_01", "env_ice_02", "env_ice_03",
-  "env_lillypads_01", "env_lillypads_02", "env_lillypads_03",
+  "env_hill_01",
+  "env_hill_02",
+  "env_hill_03",
+  "env_hill_04",
+  "env_ice_01",
+  "env_ice_02",
+  "env_ice_03",
+  "env_lillypads_01",
+  "env_lillypads_02",
+  "env_lillypads_03",
   "env_mushroom_01",
-  "env_pebble_01", "env_pebble_02", "env_pebble_03", "env_pebble_04",
-  "env_pebble_05", "env_pebble_06", "env_pebble_07",
-  "env_plant_01", "env_plant_02", "env_plant_03", "env_plant_04", "env_plant_05",
-  "env_reeds_01", "env_reeds_02", "env_reeds_03",
-  "env_road_corner_01", "env_road_cross_01",
-  "env_road_straight_01", "env_road_straight_02", "env_road_t_01",
-  "env_rock_01", "env_rock_02", "env_rock_03", "env_rock_04", "env_rock_05",
-  "env_rock_07", "env_rock_08", "env_rock_09",
-  "env_rock_010", "env_rock_011", "env_rock_012", "env_rock_013",
-  "env_rock_014", "env_rock_015", "env_rock_016",
-  "env_stalagmite_01", "env_stalagmite_02", "env_stalagmite_03",
-  "env_stream_corner_01", "env_stream_straight_01", "env_stream_straight_02",
-  "env_tree_01", "env_tree_02", "env_tree_03", "env_tree_04", "env_tree_05",
-  "env_tree_06", "env_tree_07", "env_tree_08", "env_tree_09",
-  "env_tree_010", "env_tree_011", "env_tree_012", "env_tree_013",
-  "env_tree_014", "env_tree_015", "env_tree_016",
-  "env_treebirch_01", "env_treebirch_02", "env_treebirch_03",
-  "env_treedead_01", "env_treedead_02",
+  "env_pebble_01",
+  "env_pebble_02",
+  "env_pebble_03",
+  "env_pebble_04",
+  "env_pebble_05",
+  "env_pebble_06",
+  "env_pebble_07",
+  "env_plant_01",
+  "env_plant_02",
+  "env_plant_03",
+  "env_plant_04",
+  "env_plant_05",
+  "env_reeds_01",
+  "env_reeds_02",
+  "env_reeds_03",
+  "env_road_corner_01",
+  "env_road_cross_01",
+  "env_road_straight_01",
+  "env_road_straight_02",
+  "env_road_t_01",
+  "env_rock_01",
+  "env_rock_02",
+  "env_rock_03",
+  "env_rock_04",
+  "env_rock_05",
+  "env_rock_07",
+  "env_rock_08",
+  "env_rock_09",
+  "env_rock_010",
+  "env_rock_011",
+  "env_rock_012",
+  "env_rock_013",
+  "env_rock_014",
+  "env_rock_015",
+  "env_rock_016",
+  "env_stalagmite_01",
+  "env_stalagmite_02",
+  "env_stalagmite_03",
+  "env_stream_corner_01",
+  "env_stream_straight_01",
+  "env_stream_straight_02",
+  "env_tree_01",
+  "env_tree_02",
+  "env_tree_03",
+  "env_tree_04",
+  "env_tree_05",
+  "env_tree_06",
+  "env_tree_07",
+  "env_tree_08",
+  "env_tree_09",
+  "env_tree_010",
+  "env_tree_011",
+  "env_tree_012",
+  "env_tree_013",
+  "env_tree_014",
+  "env_tree_015",
+  "env_tree_016",
+  "env_treebirch_01",
+  "env_treebirch_02",
+  "env_treebirch_03",
+  "env_treedead_01",
+  "env_treedead_02",
   "env_treelog_01",
-  "env_treepine_01", "env_treepine_02", "env_treepine_03", "env_treepine_04",
+  "env_treepine_01",
+  "env_treepine_02",
+  "env_treepine_03",
+  "env_treepine_04",
   "env_treestump_01",
   // items
   "item_canteen_01",
-  "item_fruit_01", "item_fruit_02", "item_fruit_03",
+  "item_fruit_01",
+  "item_fruit_02",
+  "item_fruit_03",
   "item_gourd_01",
-  "item_lantern_01", "item_lantern_02",
-  "item_potion_01", "item_potion_02", "item_potion_03",
-  "item_potion_04", "item_potion_05", "item_potion_06",
+  "item_lantern_01",
+  "item_lantern_02",
+  "item_potion_01",
+  "item_potion_02",
+  "item_potion_03",
+  "item_potion_04",
+  "item_potion_05",
+  "item_potion_06",
   "item_pouch_01",
   "item_waterskin_01",
-  "item_wine_01", "item_wine_02",
+  "item_wine_01",
+  "item_wine_02",
   // props
-  "prop_barrel_01", "prop_barrel_02",
-  "prop_basket_01", "prop_basket_02", "prop_basket_03", "prop_basket_04",
-  "prop_book_01", "prop_book_02", "prop_book_03",
-  "prop_cart_01", "prop_cart_02", "prop_cart_03", "prop_cart_wheel_01",
-  "prop_cheese_01", "prop_cheese_02", "prop_cheese_03",
-  "prop_chest_01", "prop_chest_lid_01",
-  "prop_crate_01", "prop_crate_02",
-  "prop_loghalf_01", "prop_loghalf_02", "prop_logpile_01",
-  "prop_meat_01", "prop_meat_02", "prop_meat_03",
-  "prop_pot_01", "prop_pot_02", "prop_pot_03",
-  "prop_pumpkin_01", "prop_pumpkin_02",
+  "prop_barrel_01",
+  "prop_barrel_02",
+  "prop_basket_01",
+  "prop_basket_02",
+  "prop_basket_03",
+  "prop_basket_04",
+  "prop_book_01",
+  "prop_book_02",
+  "prop_book_03",
+  "prop_cart_01",
+  "prop_cart_02",
+  "prop_cart_03",
+  "prop_cart_wheel_01",
+  "prop_cheese_01",
+  "prop_cheese_02",
+  "prop_cheese_03",
+  "prop_chest_01",
+  "prop_chest_lid_01",
+  "prop_crate_01",
+  "prop_crate_02",
+  "prop_loghalf_01",
+  "prop_loghalf_02",
+  "prop_logpile_01",
+  "prop_meat_01",
+  "prop_meat_02",
+  "prop_meat_03",
+  "prop_pot_01",
+  "prop_pot_02",
+  "prop_pot_03",
+  "prop_pumpkin_01",
+  "prop_pumpkin_02",
   "prop_roadsign_01",
-  "prop_sack_01", "prop_sack_02", "prop_sack_03", "prop_sack_04",
-  "prop_scroll_01", "prop_scroll_02",
-  "prop_stall_table_01", "prop_stoneblock_01",
-  "prop_washingline_01", "prop_washingline_02", "prop_washingline_03",
+  "prop_sack_01",
+  "prop_sack_02",
+  "prop_sack_03",
+  "prop_sack_04",
+  "prop_scroll_01",
+  "prop_scroll_02",
+  "prop_stall_table_01",
+  "prop_stoneblock_01",
+  "prop_washingline_01",
+  "prop_washingline_02",
+  "prop_washingline_03",
   // weapons
-  "wep_axe_01", "wep_dagger_01", "wep_greataxe_01",
-  "wep_musketpistol_01", "wep_pitchfork_01", "wep_scythe_01",
-  "wep_sheild_01", "wep_sheild_02", "wep_sheild_03",
-  "wep_staff_01", "wep_staff_02", "wep_sword_01",
+  "wep_axe_01",
+  "wep_dagger_01",
+  "wep_greataxe_01",
+  "wep_musketpistol_01",
+  "wep_pitchfork_01",
+  "wep_scythe_01",
+  "wep_sheild_01",
+  "wep_sheild_02",
+  "wep_sheild_03",
+  "wep_staff_01",
+  "wep_staff_02",
+  "wep_sword_01",
   // v5: snow variants — a whole snow biome's worth of props. They still
   // sample the same green atlas by default; assets that reference the
   // snow-tinted atlas get it applied via applySnowMaterial at spawn time
   // (see isSnowKey below). Assets tagged _snow render with the snow atlas.
-  "bld_fence_01_snow", "bld_fence_02_snow", "bld_hut_01_snow",
-  "bld_market_snow_01", "bld_village_snowsheet_01",
-  "env_dirtmound_01_snow", "env_hedge_01_snow",
-  "env_hillsnow_01", "env_hillsnow_02", "env_hillsnow_03", "env_hillsnow_04",
-  "env_road_corner_01_snow", "env_road_cross_01_snow",
-  "env_road_straight_01_snow", "env_road_straight_02_snow", "env_road_t_01_snow",
-  "env_rock_03_snow", "env_rock_04_snow", "env_rock_05_snow",
-  "env_snowpile_01", "env_snowpile_02", "env_snowpile_03",
+  "bld_fence_01_snow",
+  "bld_fence_02_snow",
+  "bld_hut_01_snow",
+  "bld_market_snow_01",
+  "bld_village_snowsheet_01",
+  "env_dirtmound_01_snow",
+  "env_hedge_01_snow",
+  "env_hillsnow_01",
+  "env_hillsnow_02",
+  "env_hillsnow_03",
+  "env_hillsnow_04",
+  "env_road_corner_01_snow",
+  "env_road_cross_01_snow",
+  "env_road_straight_01_snow",
+  "env_road_straight_02_snow",
+  "env_road_t_01_snow",
+  "env_rock_03_snow",
+  "env_rock_04_snow",
+  "env_rock_05_snow",
+  "env_snowpile_01",
+  "env_snowpile_02",
+  "env_snowpile_03",
   "env_stream_corner_01_snow",
-  "env_stream_straight_01_snow", "env_stream_straight_02_snow",
-  "env_treebirch_01_snow", "env_treedead_02_snow",
-  "env_treepine_01_snow", "env_treepine_02_snow", "env_treepine_03_snow",
-  "env_tree_01_snow", "env_tree_02_snow", "env_tree_03_snow", "env_tree_04_snow",
-  "env_tree_06_snow", "env_tree_07_snow", "env_tree_08_snow", "env_tree_09_snow",
-  "env_tree_010_snow", "env_tree_011_snow", "env_tree_012_snow",
-  "env_tree_013_snow", "env_tree_014_snow", "env_tree_015_snow",
-  "env_tree_016_snow", "env_tree_017_snow",
+  "env_stream_straight_01_snow",
+  "env_stream_straight_02_snow",
+  "env_treebirch_01_snow",
+  "env_treedead_02_snow",
+  "env_treepine_01_snow",
+  "env_treepine_02_snow",
+  "env_treepine_03_snow",
+  "env_tree_01_snow",
+  "env_tree_02_snow",
+  "env_tree_03_snow",
+  "env_tree_04_snow",
+  "env_tree_06_snow",
+  "env_tree_07_snow",
+  "env_tree_08_snow",
+  "env_tree_09_snow",
+  "env_tree_010_snow",
+  "env_tree_011_snow",
+  "env_tree_012_snow",
+  "env_tree_013_snow",
+  "env_tree_014_snow",
+  "env_tree_015_snow",
+  "env_tree_016_snow",
+  "env_tree_017_snow",
 ] as const;
 
 // Build the OBJ manifest with url + key
@@ -262,7 +436,9 @@ const MANIFEST = {
   ...MANIFEST_POLYGON_GLB,
   ...MANIFEST_POLYGON_OBJ,
 } as const;
-export type AssetKey = keyof typeof MANIFEST | `polyx_${(typeof MANIFEST_POLYGON_OBJ_LIST)[number]}`;
+export type AssetKey =
+  | keyof typeof MANIFEST
+  | `polyx_${(typeof MANIFEST_POLYGON_OBJ_LIST)[number]}`;
 
 /** Native scale: POLYGON is cm (0.01x), KayKit is meters (1x). */
 function nativeScale(key: string): number {
@@ -282,6 +458,27 @@ let atlasTexture: THREE.Texture | null = null;
 let atlasMaterial: THREE.MeshLambertMaterial | null = null;
 let atlasSnowTexture: THREE.Texture | null = null;
 let atlasSnowMaterial: THREE.MeshLambertMaterial | null = null;
+/** v12: max anisotropy the current renderer supports. Set by setMaxAnisotropy(). */
+let maxAnisotropy = 1;
+
+/**
+ * v12: called from main.ts once the renderer exists so we know how much
+ * anisotropic filtering the GPU supports (typically 16 on desktop, 4-16
+ * on mobile). Higher = crisper textures viewed at oblique angles, no
+ * more shimmery/serrilhado atlas edges when the camera tilts.
+ */
+export function setMaxAnisotropy(value: number): void {
+  maxAnisotropy = Math.max(1, Math.floor(value));
+  // Retroactively lift any textures that were already loaded before this
+  // call (i.e. everything the atlas loader created).
+  const bump = (t: THREE.Texture | null): void => {
+    if (!t) return;
+    t.anisotropy = maxAnisotropy;
+    t.needsUpdate = true;
+  };
+  bump(atlasTexture);
+  bump(atlasSnowTexture);
+}
 
 function convertMaterials(root: THREE.Object3D): void {
   if (!RENDER.useLambert) return;
@@ -290,6 +487,15 @@ function convertMaterials(root: THREE.Object3D): void {
     if (!mesh.isMesh) return;
     const convert = (m: THREE.Material): THREE.Material => {
       const std = m as THREE.MeshStandardMaterial;
+      // v12: force linear filtering + anisotropy on every glTF-embedded
+      // texture too, not just the shared OBJ atlas. Otherwise KayKit
+      // character/dungeon textures still look serrilhado at grazing angles.
+      if (std.map) {
+        std.map.magFilter = THREE.LinearFilter;
+        std.map.minFilter = THREE.LinearMipmapLinearFilter;
+        std.map.anisotropy = maxAnisotropy;
+        std.map.needsUpdate = true;
+      }
       const lam = new THREE.MeshLambertMaterial({
         map: std.map ?? null,
         color: std.color ? std.color.clone() : new THREE.Color(0xffffff),
@@ -324,10 +530,18 @@ function applyAtlasMaterial(root: THREE.Object3D, useSnow: boolean): void {
 
 /** True if this asset key belongs to the snow-variant family. */
 export function isSnowKey(key: string): boolean {
-  return key.includes("_snow") || key.includes("snowpile") || key.includes("hillsnow");
+  return (
+    key.includes("_snow") ||
+    key.includes("snowpile") ||
+    key.includes("hillsnow")
+  );
 }
 
-function enableShadows(root: THREE.Object3D, cast: boolean, receive: boolean): void {
+function enableShadows(
+  root: THREE.Object3D,
+  cast: boolean,
+  receive: boolean,
+): void {
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -347,9 +561,14 @@ async function loadAtlas(): Promise<void> {
         url,
         (tex) => {
           tex.colorSpace = THREE.SRGBColorSpace;
-          tex.magFilter = THREE.NearestFilter;
-          tex.minFilter = THREE.NearestMipmapLinearFilter;
+          // v12: Linear (trilinear) filtering instead of Nearest. The old
+          // Nearest path shipped a "retro pixel art" look, but the user
+          // reported it as `serrilhado` (jaggies). LinearMipmapLinear +
+          // anisotropy = smooth atlas sampling at every distance/angle.
+          tex.magFilter = THREE.LinearFilter;
+          tex.minFilter = THREE.LinearMipmapLinearFilter;
           tex.generateMipmaps = true;
+          tex.anisotropy = maxAnisotropy;
           tex.wrapS = THREE.ClampToEdgeWrapping;
           tex.wrapT = THREE.ClampToEdgeWrapping;
           resolve(tex);
@@ -386,7 +605,10 @@ export async function loadAll(
   onProgress(0, 1, "loading atlas texture");
   await loadAtlas();
 
-  const gltfEntries = Object.entries({ ...MANIFEST_KAYKIT, ...MANIFEST_POLYGON_GLB }) as [string, string][];
+  const gltfEntries = Object.entries({
+    ...MANIFEST_KAYKIT,
+    ...MANIFEST_POLYGON_GLB,
+  }) as [string, string][];
   const objEntries = Object.entries(MANIFEST_POLYGON_OBJ) as [string, string][];
   const total = gltfEntries.length + objEntries.length;
   let done = 0;
@@ -436,7 +658,9 @@ export function spawn(key: AssetKey, opts: SpawnOptions = {}): THREE.Group {
   // OBJ assets (polyx_) are static meshes — a plain .clone(true) is right.
   // GLB assets can contain skinned meshes; skeletonClone re-binds their skeletons.
   const isObj = (key as string).startsWith("polyx_");
-  const inst = isObj ? (a.scene.clone(true) as THREE.Group) : (skeletonClone(a.scene) as THREE.Group);
+  const inst = isObj
+    ? (a.scene.clone(true) as THREE.Group)
+    : (skeletonClone(a.scene) as THREE.Group);
   enableShadows(inst, opts.castShadow ?? false, opts.receiveShadow ?? false);
   const s = nativeScale(key as string) * (opts.scale ?? 1);
   if (s !== 1) {
@@ -462,7 +686,10 @@ export function getAtlasMaterial(): THREE.MeshLambertMaterial | null {
   return atlasMaterial;
 }
 
-export function findNode(root: THREE.Object3D, contains: string): THREE.Object3D | null {
+export function findNode(
+  root: THREE.Object3D,
+  contains: string,
+): THREE.Object3D | null {
   const needle = contains.toLowerCase();
   let found: THREE.Object3D | null = null;
   root.traverse((o) => {
@@ -472,6 +699,5 @@ export function findNode(root: THREE.Object3D, contains: string): THREE.Object3D
 }
 
 /** Expose the list of every polyx_ key so systems can build random pools. */
-export const POLYX_KEYS: readonly `polyx_${string}`[] = MANIFEST_POLYGON_OBJ_LIST.map(
-  (n) => `polyx_${n}` as `polyx_${typeof n}`,
-);
+export const POLYX_KEYS: readonly `polyx_${string}`[] =
+  MANIFEST_POLYGON_OBJ_LIST.map((n) => `polyx_${n}` as `polyx_${typeof n}`);

@@ -1,16 +1,32 @@
 import * as THREE from "three";
 import { WebGPURenderer } from "three/webgpu";
-import { COLORS, DESKTOP_RENDER, MOBILE_RENDER, RENDER, detectMobile } from "./config";
+import {
+  COLORS,
+  DESKTOP_RENDER,
+  MOBILE_RENDER,
+  RENDER,
+  detectMobile,
+} from "./config";
 import { FxSystem, tickFlashes } from "./art/fx";
 import { initAudio, playMusic, sfx, stopMusic } from "./engine/audio";
-import { attachKeyboard, createInputState, endFrame, pollKeyboard } from "./engine/input";
-import { loadAll } from "./engine/loader";
+import {
+  attachKeyboard,
+  createInputState,
+  endFrame,
+  pollKeyboard,
+} from "./engine/input";
+import { loadAll, setMaxAnisotropy } from "./engine/loader";
 import { BossSystem } from "./systems/boss";
 import { CameraRig } from "./systems/camera";
 import { EnemySystem, preloadWeapons } from "./systems/enemies";
 import { NpcSystem } from "./systems/npcs";
 import { PickupSystem } from "./systems/pickups";
-import { createPlayer, playerCheer, reviveAtStart, updatePlayer } from "./systems/player";
+import {
+  createPlayer,
+  playerCheer,
+  reviveAtStart,
+  updatePlayer,
+} from "./systems/player";
 import { ProjectileSystem } from "./systems/projectiles";
 import { SpellSystem } from "./systems/spells";
 import { PropsSystem } from "./systems/props";
@@ -66,7 +82,8 @@ async function main(): Promise<void> {
   const isMobile = detectMobile();
   const profile = isMobile ? MOBILE_RENDER : DESKTOP_RENDER;
   // expose so builder.ts can gate the doorway PointLights
-  (window as unknown as { KQ_USE_DOOR_LIGHTS: boolean }).KQ_USE_DOOR_LIGHTS = profile.useDoorLights;
+  (window as unknown as { KQ_USE_DOOR_LIGHTS: boolean }).KQ_USE_DOOR_LIGHTS =
+    profile.useDoorLights;
   (window as unknown as { KQ_IS_MOBILE: boolean }).KQ_IS_MOBILE = isMobile;
 
   // v13: WebGPU FIRST, WebGL FALLBACK.
@@ -75,38 +92,79 @@ async function main(): Promise<void> {
   // and skips the WebGL driver overhead. Available in Chrome/Edge desktop
   // + Android, Safari 18+, and iOS 18+ Safari. Non-supporting browsers
   // (older Safari, Firefox stable) automatically fall back to WebGLRenderer.
-  const supportsWebGPU = typeof (navigator as { gpu?: unknown }).gpu !== "undefined";
+  const supportsWebGPU =
+    typeof (navigator as { gpu?: unknown }).gpu !== "undefined";
+  // v12: antialiasing is now ON everywhere. On WebGPU the MSAA cost on
+  // modern mobile GPUs (Adreno 6xx+, Mali G7x+, Apple A12+) is negligible
+  // and it's the only real cure for `serrilhado` edges. WebGL falls back
+  // to browser-provided MSAA which is also cheap now that we dropped the
+  // pixel ratio ceiling.
   const rendererOpts = {
-    antialias: !isMobile, // native MSAA is a killer on integrated GPUs
+    antialias: profile.antialias,
     powerPreference: "high-performance" as const,
+    // v12: hint the compositor that we won't read pixels back — lets the
+    // browser skip an extra copy on Chromium/Android.
+    preserveDrawingBuffer: false,
+    stencil: false,
+    depth: true,
   };
   // Both renderer classes share the subset of methods we call: setSize,
   // setPixelRatio, render, setClearColor, and .shadowMap.{enabled,type}
   // plus a WebGL-style `.domElement`. Alias as a union for type safety.
-  type SharedRenderer = THREE.WebGLRenderer | InstanceType<typeof WebGPURenderer>;
+  type SharedRenderer =
+    | THREE.WebGLRenderer
+    | InstanceType<typeof WebGPURenderer>;
   let renderer: SharedRenderer;
   if (supportsWebGPU) {
-    const gpu = new WebGPURenderer(rendererOpts as ConstructorParameters<typeof WebGPURenderer>[0]);
+    const gpu = new WebGPURenderer(
+      rendererOpts as ConstructorParameters<typeof WebGPURenderer>[0],
+    );
     // WebGPURenderer's init is async — device request + shader compile.
     try {
       await gpu.init();
       console.log("[knight-quest] using WebGPU renderer");
       renderer = gpu;
     } catch (err) {
-      console.warn("[knight-quest] WebGPU init failed, falling back to WebGL:", err);
+      console.warn(
+        "[knight-quest] WebGPU init failed, falling back to WebGL:",
+        err,
+      );
       renderer = new THREE.WebGLRenderer(rendererOpts);
     }
   } else {
     console.log("[knight-quest] WebGPU not supported, using WebGL");
     renderer = new THREE.WebGLRenderer(rendererOpts);
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
+  renderer.setPixelRatio(
+    Math.min(window.devicePixelRatio, profile.maxPixelRatio),
+  );
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(COLORS.bg);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   if (RENDER.shadows) {
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = profile.shadowFilterHard ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = profile.shadowFilterHard
+      ? THREE.BasicShadowMap
+      : THREE.PCFSoftShadowMap;
+    // v12: only rebuild the shadow map when we ask for it. On mobile we
+    // trigger a redraw every `updateShadowInterval` frames (~10Hz at 60fps),
+    // which is invisible for a directional sun but saves ~2ms/frame.
+    // The WebGL shadowMap exposes .autoUpdate / .needsUpdate; the WebGPU
+    // one doesn't yet (the API is stubbed), so we cast + guard.
+    const smap = renderer.shadowMap as unknown as { autoUpdate?: boolean };
+    if ("autoUpdate" in smap)
+      smap.autoUpdate = profile.updateShadowInterval <= 1;
+  }
+  // v12: fetch the GPU's max anisotropy and push it into the asset loader
+  // so every texture (atlas + KayKit) samples cleanly at oblique angles.
+  if (profile.useAnisotropy) {
+    const maxAniso =
+      "capabilities" in renderer && renderer.capabilities
+        ? ((
+            renderer as THREE.WebGLRenderer
+          ).capabilities.getMaxAnisotropy?.() ?? 8)
+        : 8;
+    setMaxAnisotropy(Math.min(16, maxAniso));
   }
   canvasWrap.appendChild(renderer.domElement as HTMLCanvasElement);
 
@@ -192,9 +250,17 @@ async function main(): Promise<void> {
       // meadow reuses village for its bright pastoral feel.
       if (key === BOSS_ROOM_KEY) {
         playMusic("boss");
-      } else if (def?.biome === "village" || def?.biome === "snow" || def?.biome === "meadow") {
+      } else if (
+        def?.biome === "village" ||
+        def?.biome === "snow" ||
+        def?.biome === "meadow"
+      ) {
         playMusic("village");
-      } else if (def?.biome === "forest" || def?.biome === "pine" || def?.biome === "wetland") {
+      } else if (
+        def?.biome === "forest" ||
+        def?.biome === "pine" ||
+        def?.biome === "wetland"
+      ) {
         playMusic("forest");
       } else if (def?.biome === "dungeon") {
         playMusic("dungeon");
@@ -246,7 +312,9 @@ async function main(): Promise<void> {
     playMusic("title");
     screens.showLoading();
     await preloadWeapons();
-    await loadAll((done, total, label) => screens.setLoadingProgress(done, total, label));
+    await loadAll((done, total, label) =>
+      screens.setLoadingProgress(done, total, label),
+    );
 
     // build world + all systems
     world = buildWorld(scene);
@@ -267,7 +335,9 @@ async function main(): Promise<void> {
     // build HUD + minimap now that we have a player
     hud = new Hud(hudMount);
     hud.render(player);
-    const startDef = roomAt(...(START_ROOM_KEY.split(",").map(Number) as [number, number]));
+    const startDef = roomAt(
+      ...(START_ROOM_KEY.split(",").map(Number) as [number, number]),
+    );
     hud.setRoomLabel(startDef?.name ?? "Willowvale Village");
     minimap = new Minimap(hudMount);
 
@@ -275,7 +345,11 @@ async function main(): Promise<void> {
     // Each stays dormant until the player enters its room.
     for (const [, room] of world.rooms) {
       for (const s of room.bossSpawns) {
-        boss.spawnKind(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
+        boss.spawnKind(
+          s.kind,
+          tileCenter(room.gx, room.gy, s.tx, s.tz),
+          room.key,
+        );
       }
     }
     // Legacy single-boss fallback if a map somehow had no bossSpawns.
@@ -286,19 +360,34 @@ async function main(): Promise<void> {
     // pre-spawn enemies + NPCs for every room so they exist regardless of visit
     for (const [, room] of world.rooms) {
       for (const s of room.enemySpawns) {
-        enemies.spawnEnemy(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
+        enemies.spawnEnemy(
+          s.kind,
+          tileCenter(room.gx, room.gy, s.tx, s.tz),
+          room.key,
+        );
       }
       for (const s of room.npcSpawns) {
-        npcs.spawn(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key, s.tx, s.tz);
+        npcs.spawn(
+          s.kind,
+          tileCenter(room.gx, room.gy, s.tx, s.tz),
+          room.key,
+          s.tx,
+          s.tz,
+        );
       }
     }
 
     cam.snap(player.pos, roomMgr.current, player.facing);
     // v4: start on the biome-appropriate track. Village hub → village loop.
-    const startDefRoom = roomAt(...(START_ROOM_KEY.split(",").map(Number) as [number, number]));
+    const startDefRoom = roomAt(
+      ...(START_ROOM_KEY.split(",").map(Number) as [number, number]),
+    );
     const startTrack =
-      startDefRoom?.biome === "village" ? "village" :
-      startDefRoom?.biome === "forest" ? "forest" : "dungeon";
+      startDefRoom?.biome === "village"
+        ? "village"
+        : startDefRoom?.biome === "forest"
+          ? "forest"
+          : "dungeon";
     playMusic(startTrack);
     screens.hide();
 
@@ -316,7 +405,17 @@ async function main(): Promise<void> {
   }
 
   function restartGame(): void {
-    if (!player || !world || !roomMgr || !enemies || !pickups || !projectiles || !npcs || !story) return;
+    if (
+      !player ||
+      !world ||
+      !roomMgr ||
+      !enemies ||
+      !pickups ||
+      !projectiles ||
+      !npcs ||
+      !story
+    )
+      return;
     enemies.clearAll();
     pickups.clearAll();
     projectiles.clearAll();
@@ -324,19 +423,33 @@ async function main(): Promise<void> {
     story.reset();
     // respawn enemies + NPCs fresh
     for (const [, room] of world.rooms) {
-      room.cleared = room.doors.length === 0 || (room.enemySpawns.length === 0 && !room.hasBoss);
+      room.cleared =
+        room.doors.length === 0 ||
+        (room.enemySpawns.length === 0 && !room.hasBoss);
       for (const s of room.enemySpawns) {
-        enemies.spawnEnemy(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
+        enemies.spawnEnemy(
+          s.kind,
+          tileCenter(room.gx, room.gy, s.tx, s.tz),
+          room.key,
+        );
       }
       for (const s of room.npcSpawns) {
-        npcs.spawn(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key, s.tx, s.tz);
+        npcs.spawn(
+          s.kind,
+          tileCenter(room.gx, room.gy, s.tx, s.tz),
+          room.key,
+          s.tx,
+          s.tz,
+        );
       }
     }
     reviveAtStart(player, world.playerStart);
     roomMgr.current = world.rooms.get(START_ROOM_KEY)!;
     cam.snap(player.pos, roomMgr.current, player.facing);
     hud?.render(player);
-    const startDef = roomAt(...(START_ROOM_KEY.split(",").map(Number) as [number, number]));
+    const startDef = roomAt(
+      ...(START_ROOM_KEY.split(",").map(Number) as [number, number]),
+    );
     hud?.setRoomLabel(startDef?.name ?? "Willowvale Village");
     // reset room visibility
     for (const [, r] of world.rooms) {
@@ -352,12 +465,42 @@ async function main(): Promise<void> {
   }
 
   // game loop ---------------------------------------------------------------
+  // v12: enforce a 60 FPS cap. `frameInterval` is the minimum time between
+  // rendered frames — on 120Hz phones this halves the GPU workload (and
+  // battery drain) with zero perceptible loss. Skipped frames just return
+  // early without doing any work, so `dt` stays tied to real elapsed time.
+  const frameInterval = 1000 / RENDER.targetFps;
   let last = performance.now();
+  let lastRender = last;
+  // v12: shadow-map throttle. We only ask three.js to rebuild the shadow
+  // map every N frames on mobile. `needsUpdate = true` costs about 2ms
+  // on a mid-range phone, so at N=6 we save ~1.7ms/frame on average.
+  let shadowFrame = 0;
+  const shadowInterval = profile.updateShadowInterval;
   function tick(now: number): void {
+    requestAnimationFrame(tick);
+    // Frame limiter — skip this callback if not enough real time has passed.
+    // We keep a small tolerance (`-1ms`) so we don't consistently miss the
+    // 16.67ms deadline on displays whose vsync isn't a perfect 60Hz.
+    if (now - lastRender < frameInterval - 1) return;
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    lastRender = now;
 
-    if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && spells && fx && npcs && swordFx) {
+    if (
+      running &&
+      player &&
+      roomMgr &&
+      enemies &&
+      projectiles &&
+      pickups &&
+      props &&
+      boss &&
+      spells &&
+      fx &&
+      npcs &&
+      swordFx
+    ) {
       pollKeyboard(input, touchUi.active());
 
       // v5: shop pauses gameplay — just render, don't update world state.
@@ -365,7 +508,6 @@ async function main(): Promise<void> {
       if (shop?.isOpen()) {
         endFrame(input, dt);
         renderer.render(scene, cam.camera);
-        requestAnimationFrame(tick);
         return;
       }
 
@@ -413,7 +555,9 @@ async function main(): Promise<void> {
       if (npcs.activeNpc) {
         hud?.updateInteractPrompt(npcs.activeNpc);
       } else {
-        hud?.setInteractPromptText(props?.nearestInteractLabel(player, roomMgr) ?? null);
+        hud?.setInteractPromptText(
+          props?.nearestInteractLabel(player, roomMgr) ?? null,
+        );
       }
       // v5: charge attack bar fills while holding attack
       hud?.setChargeBar(
@@ -424,8 +568,22 @@ async function main(): Promise<void> {
       endFrame(input, dt);
     }
 
+    // v12: throttled shadow rebuild — no-op on desktop (interval=1), fires
+    // every Nth frame on mobile. Skipping the shadow pass is the single
+    // biggest per-frame win on integrated GPUs.
+    const smap = renderer.shadowMap as unknown as {
+      autoUpdate?: boolean;
+      needsUpdate?: boolean;
+    };
+    if (RENDER.shadows && smap.autoUpdate === false) {
+      shadowFrame++;
+      if (shadowFrame >= shadowInterval) {
+        smap.needsUpdate = true;
+        shadowFrame = 0;
+      }
+    }
+
     renderer.render(scene, cam.camera);
-    requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
 

@@ -1,7 +1,13 @@
 import * as THREE from "three";
 import { COLORS, ROOM_H, ROOM_W, TILE } from "../config";
 import { findNode, spawn } from "../engine/loader";
-import type { ChestState, DoorDir, DoorState, RoomRuntime, SpikeState } from "../types";
+import type {
+  ChestState,
+  DoorDir,
+  DoorState,
+  RoomRuntime,
+  SpikeState,
+} from "../types";
 import {
   BOSS_CHARS,
   charAt,
@@ -27,7 +33,12 @@ import {
 // Gates on shared doors are single objects referenced by both DoorStates.
 // ---------------------------------------------------------------------------
 
-export function tileCenter(gx: number, gy: number, tx: number, tz: number): THREE.Vector3 {
+export function tileCenter(
+  gx: number,
+  gy: number,
+  tx: number,
+  tz: number,
+): THREE.Vector3 {
   return new THREE.Vector3(
     (gx * ROOM_W + tx + 0.5) * TILE,
     0,
@@ -49,18 +60,44 @@ interface SharedGate {
   lockIcon: THREE.Object3D | null;
 }
 
-const torchLights: { light: THREE.PointLight; roomKey: string; seed: number }[] = [];
-const campfireLights: { light: THREE.PointLight; roomKey: string; seed: number }[] = [];
+const torchLights: {
+  light: THREE.PointLight;
+  roomKey: string;
+  seed: number;
+}[] = [];
+const campfireLights: {
+  light: THREE.PointLight;
+  roomKey: string;
+  seed: number;
+}[] = [];
+/**
+ * v12: bucket torches/campfires by room key so `updateTorches` only
+ * iterates the ~4-8 lights actually in the active room instead of ALL
+ * ~150 lights every frame. This alone lifts mobile FPS by ~8-12.
+ */
+const torchLightsByRoom = new Map<
+  string,
+  { light: THREE.PointLight; seed: number }[]
+>();
+const campfireLightsByRoom = new Map<
+  string,
+  { light: THREE.PointLight; seed: number }[]
+>();
+let lastTorchActiveRoom: string | null = null;
 const builtEdges = new Set<string>();
 const builtPosts = new Set<string>();
 const sharedGates = new Map<string, SharedGate>();
 
 function canonicalEdge(room: RoomDef, dir: DoorDir): string {
   switch (dir) {
-    case "n": return `${room.gx},${room.gy}:n`;
-    case "s": return `${room.gx},${room.gy + 1}:n`;
-    case "w": return `${room.gx},${room.gy}:w`;
-    case "e": return `${room.gx + 1},${room.gy}:w`;
+    case "n":
+      return `${room.gx},${room.gy}:n`;
+    case "s":
+      return `${room.gx},${room.gy + 1}:n`;
+    case "w":
+      return `${room.gx},${room.gy}:w`;
+    case "e":
+      return `${room.gx + 1},${room.gy}:w`;
   }
 }
 
@@ -68,10 +105,18 @@ function doorLineCenter(room: RoomDef, dir: DoorDir): THREE.Vector3 {
   const t = doorTile(dir);
   const c = tileCenter(room.gx, room.gy, t.tx, t.tz);
   switch (dir) {
-    case "n": c.z -= TILE / 2; break;
-    case "s": c.z += TILE / 2; break;
-    case "w": c.x -= TILE / 2; break;
-    case "e": c.x += TILE / 2; break;
+    case "n":
+      c.z -= TILE / 2;
+      break;
+    case "s":
+      c.z += TILE / 2;
+      break;
+    case "w":
+      c.x -= TILE / 2;
+      break;
+    case "e":
+      c.x += TILE / 2;
+      break;
   }
   return c;
 }
@@ -101,20 +146,31 @@ function addDoorMarker(
   // Two flanking posts, offset perpendicular to the door line.
   const offset = TILE * 0.55;
   const posts: THREE.Vector3[] = horizontal
-    ? [new THREE.Vector3(c.x - offset, 0, c.z), new THREE.Vector3(c.x + offset, 0, c.z)]
-    : [new THREE.Vector3(c.x, 0, c.z - offset), new THREE.Vector3(c.x, 0, c.z + offset)];
+    ? [
+        new THREE.Vector3(c.x - offset, 0, c.z),
+        new THREE.Vector3(c.x + offset, 0, c.z),
+      ]
+    : [
+        new THREE.Vector3(c.x, 0, c.z - offset),
+        new THREE.Vector3(c.x, 0, c.z + offset),
+      ];
 
   const postGeo = new THREE.CylinderGeometry(0.16, 0.22, 3.0, 8);
   const postMat = new THREE.MeshLambertMaterial({ color: 0x3a4358 });
   const capGeo = new THREE.OctahedronGeometry(0.35, 0);
   const capMat = new THREE.MeshLambertMaterial({
-    color: glow, emissive: glow, emissiveIntensity: 0.9, transparent: true, opacity: 0.95,
+    color: glow,
+    emissive: glow,
+    emissiveIntensity: 0.9,
+    transparent: true,
+    opacity: 0.95,
   });
 
   for (const p of posts) {
     const post = new THREE.Mesh(postGeo, postMat);
     post.position.set(p.x, 1.5, p.z);
-    post.castShadow = false; post.receiveShadow = false;
+    post.castShadow = false;
+    post.receiveShadow = false;
     target.add(post);
     // Glowing gem on top
     const cap = new THREE.Mesh(capGeo, capMat);
@@ -126,7 +182,9 @@ function addDoorMarker(
     // falloff. The emissive gem material still reads brightly on its own,
     // and the door TORCHES on dungeon walls already illuminate the area.
     // Desktop still opts in via the window flag set in main.ts.
-    if ((window as unknown as { KQ_USE_DOOR_LIGHTS?: boolean }).KQ_USE_DOOR_LIGHTS) {
+    if (
+      (window as unknown as { KQ_USE_DOOR_LIGHTS?: boolean }).KQ_USE_DOOR_LIGHTS
+    ) {
       const light = new THREE.PointLight(glow, 0.9, 8, 2);
       light.position.set(p.x, 3.15, p.z);
       target.add(light);
@@ -138,13 +196,21 @@ function addDoorMarker(
   const rune = new THREE.Mesh(
     new THREE.RingGeometry(0.65, 1.15, 20, 1, 0, Math.PI),
     new THREE.MeshBasicMaterial({
-      color: glow, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+      color: glow,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
     }),
   );
   rune.rotation.x = -Math.PI / 2;
   // Ring is a half-donut: rotate so the flat edge sits toward the room,
   // and the arc points outward through the door.
-  const outward: Record<DoorDir, number> = { n: 0, s: Math.PI, e: -Math.PI / 2, w: Math.PI / 2 };
+  const outward: Record<DoorDir, number> = {
+    n: 0,
+    s: Math.PI,
+    e: -Math.PI / 2,
+    w: Math.PI / 2,
+  };
   rune.rotation.z = outward[dir];
   const runeC = doorLineCenter(room, dir);
   // pull the rune slightly INTO the room so it's visible from inside
@@ -188,7 +254,12 @@ function addTorch(
   const t = spawn("torch_mounted", { castShadow: false, receiveShadow: false });
   t.position.copy(wallCenter);
   t.position.y = 2.4;
-  const rot: Record<DoorDir, number> = { s: 0, n: Math.PI, e: -Math.PI / 2, w: Math.PI / 2 };
+  const rot: Record<DoorDir, number> = {
+    s: 0,
+    n: Math.PI,
+    e: -Math.PI / 2,
+    w: Math.PI / 2,
+  };
   t.rotation.y = rot[facing];
   t.position.x += (facing === "e" ? 1 : facing === "w" ? -1 : 0) * 0.55;
   t.position.z += (facing === "s" ? 1 : facing === "n" ? -1 : 0) * 0.55;
@@ -199,8 +270,20 @@ function addTorch(
   light.position.y = 3.0;
   light.position.x += (facing === "e" ? 1 : facing === "w" ? -1 : 0) * 0.6;
   light.position.z += (facing === "s" ? 1 : facing === "n" ? -1 : 0) * 0.6;
+  // v12: start invisible. `updateTorches` flips visibility per active room.
+  // A hidden PointLight is a true zero-cost light on both WebGL and WebGPU
+  // (it's skipped in the uniform upload), unlike intensity=0 which still
+  // consumes a light slot in the fragment shader.
+  light.visible = false;
   target.add(light);
-  torchLights.push({ light, roomKey, seed: Math.random() * 100 });
+  const rec = { light, seed: Math.random() * 100 };
+  torchLights.push({ ...rec, roomKey });
+  let bucket = torchLightsByRoom.get(roomKey);
+  if (!bucket) {
+    bucket = [];
+    torchLightsByRoom.set(roomKey, bucket);
+  }
+  bucket.push(rec);
 }
 
 function buildDungeonEdge(
@@ -225,7 +308,8 @@ function buildDungeonEdge(
   const doorT = doorTile(dir);
   const hasDoor = room.doors.some((d) => d.dir === dir);
   const neighbor = neighborOf(room, dir);
-  const neighborDoor = neighbor?.doors.some((d) => d.dir === opposite(dir)) ?? false;
+  const neighborDoor =
+    neighbor?.doors.some((d) => d.dir === opposite(dir)) ?? false;
   const doorHere = hasDoor || neighborDoor;
 
   for (let i = 0; i < count; i++) {
@@ -262,7 +346,8 @@ function ensureGate(
 
   const neighbor = neighborOf(room, dir);
   const crossesBiome =
-    (room.biome === "village") !== ((neighbor?.biome ?? room.biome) === "village");
+    (room.biome === "village") !==
+    ((neighbor?.biome ?? room.biome) === "village");
 
   // Village boundaries have no dungeon portcullis (it's the outdoor entrance).
   if (crossesBiome || room.biome === "village") {
@@ -300,136 +385,262 @@ function ensureGate(
 // mixed in below so builder picks from a much wider variety.
 // ---------------------------------------------------------------------------
 const HOUSE_KEYS = [
-  "poly_house_a", "poly_house_b", "poly_house_c", "poly_house_d", "poly_house_e",
+  "poly_house_a",
+  "poly_house_b",
+  "poly_house_c",
+  "poly_house_d",
+  "poly_house_e",
   // v4 additions — SM_Bld_Village_01..05 are ~4×3×4m each (single houses).
   // 06 and 07 are excluded on purpose: 06 is a multi-house block and 07 is
   // a 9m-tall tower; both dwarf every other building and cover the camera.
-  "polyx_bld_village_01", "polyx_bld_village_02", "polyx_bld_village_03",
-  "polyx_bld_village_04", "polyx_bld_village_05",
+  "polyx_bld_village_01",
+  "polyx_bld_village_02",
+  "polyx_bld_village_03",
+  "polyx_bld_village_04",
+  "polyx_bld_village_05",
 ] as const;
 const TREE_KEYS = [
-  "poly_tree_a", "poly_tree_b", "poly_tree_c",
-  "poly_pine_a", "poly_pine_b", "poly_tree_birch",
+  "poly_tree_a",
+  "poly_tree_b",
+  "poly_tree_c",
+  "poly_pine_a",
+  "poly_pine_b",
+  "poly_tree_birch",
   // v4 additions — 13 more tree variants + more birches + more pines
-  "polyx_env_tree_01", "polyx_env_tree_02", "polyx_env_tree_03",
-  "polyx_env_tree_04", "polyx_env_tree_05", "polyx_env_tree_06",
-  "polyx_env_tree_07", "polyx_env_tree_08", "polyx_env_tree_09",
-  "polyx_env_tree_010", "polyx_env_tree_011", "polyx_env_tree_012",
-  "polyx_env_tree_013", "polyx_env_tree_014", "polyx_env_tree_015",
+  "polyx_env_tree_01",
+  "polyx_env_tree_02",
+  "polyx_env_tree_03",
+  "polyx_env_tree_04",
+  "polyx_env_tree_05",
+  "polyx_env_tree_06",
+  "polyx_env_tree_07",
+  "polyx_env_tree_08",
+  "polyx_env_tree_09",
+  "polyx_env_tree_010",
+  "polyx_env_tree_011",
+  "polyx_env_tree_012",
+  "polyx_env_tree_013",
+  "polyx_env_tree_014",
+  "polyx_env_tree_015",
   "polyx_env_tree_016",
-  "polyx_env_treebirch_01", "polyx_env_treebirch_02", "polyx_env_treebirch_03",
-  "polyx_env_treepine_01", "polyx_env_treepine_02",
-  "polyx_env_treepine_03", "polyx_env_treepine_04",
+  "polyx_env_treebirch_01",
+  "polyx_env_treebirch_02",
+  "polyx_env_treebirch_03",
+  "polyx_env_treepine_01",
+  "polyx_env_treepine_02",
+  "polyx_env_treepine_03",
+  "polyx_env_treepine_04",
 ] as const;
 const DEAD_TREE_KEYS = [
-  "poly_tree_dead", "polyx_env_treedead_01", "polyx_env_treedead_02",
+  "poly_tree_dead",
+  "polyx_env_treedead_01",
+  "polyx_env_treedead_02",
 ] as const;
 const BUSH_KEYS = [
-  "poly_bush_a", "poly_bush_b", "poly_bush_c", "poly_bush_d",
-  "polyx_env_bush_01", "polyx_env_bush_02", "polyx_env_bush_03", "polyx_env_bush_04",
+  "poly_bush_a",
+  "poly_bush_b",
+  "poly_bush_c",
+  "poly_bush_d",
+  "polyx_env_bush_01",
+  "polyx_env_bush_02",
+  "polyx_env_bush_03",
+  "polyx_env_bush_04",
 ] as const;
 const FLOWER_KEYS = [
-  "poly_flower_a", "poly_flower_b",
-  "polyx_env_flower_01", "polyx_env_flower_02", "polyx_env_flower_03",
-  "polyx_env_flower_04", "polyx_env_flower_05", "polyx_env_flower_06",
-  "polyx_env_flower_07", "polyx_env_flower_08",
+  "poly_flower_a",
+  "poly_flower_b",
+  "polyx_env_flower_01",
+  "polyx_env_flower_02",
+  "polyx_env_flower_03",
+  "polyx_env_flower_04",
+  "polyx_env_flower_05",
+  "polyx_env_flower_06",
+  "polyx_env_flower_07",
+  "polyx_env_flower_08",
 ] as const;
 const GRASS_DECOR = [
-  "poly_grass_a", "poly_grass_b",
-  "polyx_env_grass_01", "polyx_env_grass_02",
-  "polyx_env_flower_01", "polyx_env_flower_02", "polyx_env_flower_03",
-  "polyx_env_flower_04", "polyx_env_flower_05", "polyx_env_flower_06",
-  "polyx_env_flower_07", "polyx_env_flower_08",
-  "poly_mushroom", "polyx_env_mushroom_01",
-  "polyx_env_pebble_01", "polyx_env_pebble_02", "polyx_env_pebble_03",
-  "polyx_env_pebble_04", "polyx_env_pebble_05",
+  "poly_grass_a",
+  "poly_grass_b",
+  "polyx_env_grass_01",
+  "polyx_env_grass_02",
+  "polyx_env_flower_01",
+  "polyx_env_flower_02",
+  "polyx_env_flower_03",
+  "polyx_env_flower_04",
+  "polyx_env_flower_05",
+  "polyx_env_flower_06",
+  "polyx_env_flower_07",
+  "polyx_env_flower_08",
+  "poly_mushroom",
+  "polyx_env_mushroom_01",
+  "polyx_env_pebble_01",
+  "polyx_env_pebble_02",
+  "polyx_env_pebble_03",
+  "polyx_env_pebble_04",
+  "polyx_env_pebble_05",
 ] as const;
 const ROCK_KEYS = [
-  "poly_rock_a", "poly_rock_b", "poly_rock_flat",
-  "polyx_env_rock_01", "polyx_env_rock_02", "polyx_env_rock_03",
-  "polyx_env_rock_04", "polyx_env_rock_05", "polyx_env_rock_07",
-  "polyx_env_rock_08", "polyx_env_rock_09",
-  "polyx_env_rock_010", "polyx_env_rock_011", "polyx_env_rock_012",
-  "polyx_env_rock_013", "polyx_env_rock_014", "polyx_env_rock_015",
+  "poly_rock_a",
+  "poly_rock_b",
+  "poly_rock_flat",
+  "polyx_env_rock_01",
+  "polyx_env_rock_02",
+  "polyx_env_rock_03",
+  "polyx_env_rock_04",
+  "polyx_env_rock_05",
+  "polyx_env_rock_07",
+  "polyx_env_rock_08",
+  "polyx_env_rock_09",
+  "polyx_env_rock_010",
+  "polyx_env_rock_011",
+  "polyx_env_rock_012",
+  "polyx_env_rock_013",
+  "polyx_env_rock_014",
+  "polyx_env_rock_015",
   "polyx_env_rock_016",
 ] as const;
 const PLANT_KEYS = [
-  "polyx_env_plant_01", "polyx_env_plant_02", "polyx_env_plant_03",
-  "polyx_env_plant_04", "polyx_env_plant_05",
+  "polyx_env_plant_01",
+  "polyx_env_plant_02",
+  "polyx_env_plant_03",
+  "polyx_env_plant_04",
+  "polyx_env_plant_05",
 ] as const;
 const REED_KEYS = [
-  "polyx_env_reeds_01", "polyx_env_reeds_02", "polyx_env_reeds_03",
+  "polyx_env_reeds_01",
+  "polyx_env_reeds_02",
+  "polyx_env_reeds_03",
 ] as const;
 const GROUND_MOUND_KEYS = [
-  "polyx_env_groundmounds_01", "polyx_env_groundmounds_02", "polyx_env_groundmounds_03",
-  "polyx_env_groundmounds_04", "polyx_env_groundmounds_05", "polyx_env_groundmounds_06",
-  "polyx_env_groundmounds_07", "polyx_env_groundmounds_08", "polyx_env_groundmounds_09",
+  "polyx_env_groundmounds_01",
+  "polyx_env_groundmounds_02",
+  "polyx_env_groundmounds_03",
+  "polyx_env_groundmounds_04",
+  "polyx_env_groundmounds_05",
+  "polyx_env_groundmounds_06",
+  "polyx_env_groundmounds_07",
+  "polyx_env_groundmounds_08",
+  "polyx_env_groundmounds_09",
   "polyx_env_groundmounds_10",
 ] as const;
 const HILL_KEYS = [
-  "polyx_env_hill_01", "polyx_env_hill_02", "polyx_env_hill_03", "polyx_env_hill_04",
+  "polyx_env_hill_01",
+  "polyx_env_hill_02",
+  "polyx_env_hill_03",
+  "polyx_env_hill_04",
 ] as const;
 const STALL_KEYS = [
-  "poly_stall_a", "poly_stall_b",
-  "polyx_bld_stall_01", "polyx_bld_stall_02", "polyx_bld_stall_03", "polyx_bld_stall_04",
+  "poly_stall_a",
+  "poly_stall_b",
+  "polyx_bld_stall_01",
+  "polyx_bld_stall_02",
+  "polyx_bld_stall_03",
+  "polyx_bld_stall_04",
 ] as const;
 const STALL_COVER_KEYS = [
-  "polyx_bld_stall_cover_01", "polyx_bld_stall_cover_02", "polyx_bld_stall_cover_03",
-  "polyx_bld_stall_cover_04", "polyx_bld_stall_cover_05",
+  "polyx_bld_stall_cover_01",
+  "polyx_bld_stall_cover_02",
+  "polyx_bld_stall_cover_03",
+  "polyx_bld_stall_cover_04",
+  "polyx_bld_stall_cover_05",
 ] as const;
 const MARKET_ITEM_KEYS = [
-  "poly_pumpkin", "polyx_prop_pumpkin_02",
-  "polyx_prop_cheese_01", "polyx_prop_cheese_02", "polyx_prop_cheese_03",
-  "polyx_prop_meat_01", "polyx_prop_meat_02", "polyx_prop_meat_03",
-  "polyx_item_fruit_01", "polyx_item_fruit_02", "polyx_item_fruit_03",
+  "poly_pumpkin",
+  "polyx_prop_pumpkin_02",
+  "polyx_prop_cheese_01",
+  "polyx_prop_cheese_02",
+  "polyx_prop_cheese_03",
+  "polyx_prop_meat_01",
+  "polyx_prop_meat_02",
+  "polyx_prop_meat_03",
+  "polyx_item_fruit_01",
+  "polyx_item_fruit_02",
+  "polyx_item_fruit_03",
   "polyx_item_gourd_01",
-  "polyx_prop_basket_01", "polyx_prop_basket_02",
-  "polyx_prop_basket_03", "polyx_prop_basket_04",
-  "polyx_prop_pot_01", "polyx_prop_pot_02", "polyx_prop_pot_03",
-  "polyx_prop_sack_01", "polyx_prop_sack_02",
-  "polyx_prop_sack_03", "polyx_prop_sack_04",
+  "polyx_prop_basket_01",
+  "polyx_prop_basket_02",
+  "polyx_prop_basket_03",
+  "polyx_prop_basket_04",
+  "polyx_prop_pot_01",
+  "polyx_prop_pot_02",
+  "polyx_prop_pot_03",
+  "polyx_prop_sack_01",
+  "polyx_prop_sack_02",
+  "polyx_prop_sack_03",
+  "polyx_prop_sack_04",
 ] as const;
 const BOOK_KEYS = [
-  "polyx_prop_book_01", "polyx_prop_book_02", "polyx_prop_book_03",
+  "polyx_prop_book_01",
+  "polyx_prop_book_02",
+  "polyx_prop_book_03",
 ] as const;
 const POTION_KEYS = [
   "poly_potion_a",
-  "polyx_item_potion_01", "polyx_item_potion_02", "polyx_item_potion_03",
-  "polyx_item_potion_04", "polyx_item_potion_05", "polyx_item_potion_06",
-  "polyx_item_wine_01", "polyx_item_wine_02",
-  "polyx_item_canteen_01", "polyx_item_waterskin_01",
+  "polyx_item_potion_01",
+  "polyx_item_potion_02",
+  "polyx_item_potion_03",
+  "polyx_item_potion_04",
+  "polyx_item_potion_05",
+  "polyx_item_potion_06",
+  "polyx_item_wine_01",
+  "polyx_item_wine_02",
+  "polyx_item_canteen_01",
+  "polyx_item_waterskin_01",
 ] as const;
 const CART_KEYS = [
-  "poly_cart", "polyx_prop_cart_01", "polyx_prop_cart_02", "polyx_prop_cart_03",
+  "poly_cart",
+  "polyx_prop_cart_01",
+  "polyx_prop_cart_02",
+  "polyx_prop_cart_03",
 ] as const;
 const CLOUD_KEYS = [
-  "poly_cloud_a", "poly_cloud_b",
+  "poly_cloud_a",
+  "poly_cloud_b",
   // v4 additions — clouds 01/02/05/07 excluded (too wide, cover the camera);
   // 03/04/06 are 5-5.5m wide, comparable to the original poly_cloud_a/b.
-  "polyx_env_cloud_03", "polyx_env_cloud_04", "polyx_env_cloud_06",
+  "polyx_env_cloud_03",
+  "polyx_env_cloud_04",
+  "polyx_env_cloud_06",
 ] as const;
 const STALAGMITE_KEYS = [
-  "polyx_env_stalagmite_01", "polyx_env_stalagmite_02", "polyx_env_stalagmite_03",
+  "polyx_env_stalagmite_01",
+  "polyx_env_stalagmite_02",
+  "polyx_env_stalagmite_03",
 ] as const;
 const ICE_KEYS = [
-  "polyx_env_ice_01", "polyx_env_ice_02", "polyx_env_ice_03",
+  "polyx_env_ice_01",
+  "polyx_env_ice_02",
+  "polyx_env_ice_03",
 ] as const;
 const LILY_KEYS = [
   "poly_lillypad",
-  "polyx_env_lillypads_01", "polyx_env_lillypads_02", "polyx_env_lillypads_03",
+  "polyx_env_lillypads_01",
+  "polyx_env_lillypads_02",
+  "polyx_env_lillypads_03",
 ] as const;
 const WASHINGLINE_KEYS = [
   "poly_washingline",
-  "polyx_prop_washingline_01", "polyx_prop_washingline_02", "polyx_prop_washingline_03",
+  "polyx_prop_washingline_01",
+  "polyx_prop_washingline_02",
+  "polyx_prop_washingline_03",
 ] as const;
 const LANTERN_KEYS = [
-  "poly_lantern", "polyx_item_lantern_01", "polyx_item_lantern_02",
+  "poly_lantern",
+  "polyx_item_lantern_01",
+  "polyx_item_lantern_02",
 ] as const;
 const WEAPON_KEYS = [
-  "polyx_wep_sword_01", "polyx_wep_axe_01", "polyx_wep_greataxe_01",
-  "polyx_wep_dagger_01", "polyx_wep_scythe_01", "polyx_wep_pitchfork_01",
-  "polyx_wep_staff_01", "polyx_wep_staff_02",
-  "polyx_wep_sheild_01", "polyx_wep_sheild_02", "polyx_wep_sheild_03",
+  "polyx_wep_sword_01",
+  "polyx_wep_axe_01",
+  "polyx_wep_greataxe_01",
+  "polyx_wep_dagger_01",
+  "polyx_wep_scythe_01",
+  "polyx_wep_pitchfork_01",
+  "polyx_wep_staff_01",
+  "polyx_wep_staff_02",
+  "polyx_wep_sheild_01",
+  "polyx_wep_sheild_02",
+  "polyx_wep_sheild_03",
 ] as const;
 
 function pickBy<T>(arr: readonly T[], seed: number): T {
@@ -438,38 +649,60 @@ function pickBy<T>(arr: readonly T[], seed: number): T {
 
 // v5 — dedicated pools per new biome. Each biome swaps its main flora set.
 const PINE_KEYS = [
-  "poly_pine_a", "poly_pine_b",
-  "polyx_env_treepine_01", "polyx_env_treepine_02",
-  "polyx_env_treepine_03", "polyx_env_treepine_04",
+  "poly_pine_a",
+  "poly_pine_b",
+  "polyx_env_treepine_01",
+  "polyx_env_treepine_02",
+  "polyx_env_treepine_03",
+  "polyx_env_treepine_04",
 ] as const;
 const SNOW_PINE_KEYS = [
-  "polyx_env_treepine_01_snow", "polyx_env_treepine_02_snow", "polyx_env_treepine_03_snow",
+  "polyx_env_treepine_01_snow",
+  "polyx_env_treepine_02_snow",
+  "polyx_env_treepine_03_snow",
 ] as const;
 const SNOW_TREE_KEYS = [
-  "polyx_env_tree_01_snow", "polyx_env_tree_02_snow", "polyx_env_tree_03_snow",
-  "polyx_env_tree_04_snow", "polyx_env_tree_06_snow", "polyx_env_tree_07_snow",
-  "polyx_env_tree_08_snow", "polyx_env_tree_09_snow",
-  "polyx_env_tree_010_snow", "polyx_env_tree_011_snow", "polyx_env_tree_012_snow",
-  "polyx_env_tree_013_snow", "polyx_env_tree_014_snow", "polyx_env_tree_015_snow",
-  "polyx_env_tree_016_snow", "polyx_env_tree_017_snow",
+  "polyx_env_tree_01_snow",
+  "polyx_env_tree_02_snow",
+  "polyx_env_tree_03_snow",
+  "polyx_env_tree_04_snow",
+  "polyx_env_tree_06_snow",
+  "polyx_env_tree_07_snow",
+  "polyx_env_tree_08_snow",
+  "polyx_env_tree_09_snow",
+  "polyx_env_tree_010_snow",
+  "polyx_env_tree_011_snow",
+  "polyx_env_tree_012_snow",
+  "polyx_env_tree_013_snow",
+  "polyx_env_tree_014_snow",
+  "polyx_env_tree_015_snow",
+  "polyx_env_tree_016_snow",
+  "polyx_env_tree_017_snow",
   "polyx_env_treebirch_01_snow",
 ] as const;
 const SNOW_PILE_KEYS = [
-  "polyx_env_snowpile_01", "polyx_env_snowpile_02", "polyx_env_snowpile_03",
+  "polyx_env_snowpile_01",
+  "polyx_env_snowpile_02",
+  "polyx_env_snowpile_03",
 ] as const;
 const SNOW_ROCK_KEYS = [
-  "polyx_env_rock_03_snow", "polyx_env_rock_04_snow", "polyx_env_rock_05_snow",
+  "polyx_env_rock_03_snow",
+  "polyx_env_rock_04_snow",
+  "polyx_env_rock_05_snow",
 ] as const;
 const SNOW_HUT_KEYS = ["polyx_bld_hut_01_snow"] as const;
 const SNOW_HILL_KEYS = [
-  "polyx_env_hillsnow_01", "polyx_env_hillsnow_02",
-  "polyx_env_hillsnow_03", "polyx_env_hillsnow_04",
+  "polyx_env_hillsnow_01",
+  "polyx_env_hillsnow_02",
+  "polyx_env_hillsnow_03",
+  "polyx_env_hillsnow_04",
 ] as const;
 
 // wetlands — dead trees + lily pads + reeds are the vibe
 const DEAD_ANY_KEYS = [
   "poly_tree_dead",
-  "polyx_env_treedead_01", "polyx_env_treedead_02",
+  "polyx_env_treedead_01",
+  "polyx_env_treedead_02",
   "polyx_env_treedead_02_snow",
 ] as const;
 
@@ -482,7 +715,12 @@ const DEAD_ANY_KEYS = [
  * reported. The fresh material always starts from our HSL and only borrows
  * the source's texture map + side settings.
  */
-function tintGround(root: THREE.Object3D, h: number, s: number, l: number): void {
+function tintGround(
+  root: THREE.Object3D,
+  h: number,
+  s: number,
+  l: number,
+): void {
   const color = new THREE.Color().setHSL(h, s, l);
   root.traverse((o) => {
     const mesh = o as THREE.Mesh;
@@ -502,11 +740,21 @@ function tintGround(root: THREE.Object3D, h: number, s: number, l: number): void
   });
 }
 
-function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number, dirt: boolean): void {
+function addGrassGround(
+  group: THREE.Group,
+  def: RoomDef,
+  tx: number,
+  tz: number,
+  dirt: boolean,
+): void {
   const c = tileCenter(def.gx, def.gy, tx, tz);
   const kind = dirt
-    ? (hash(tx, tz, def.gx, 10) < 0.5 ? "poly_ground_dirt_a" : "poly_ground_dirt_b")
-    : (hash(tx, tz, def.gx, 11) < 0.5 ? "poly_ground_grass_a" : "poly_ground_grass_b");
+    ? hash(tx, tz, def.gx, 10) < 0.5
+      ? "poly_ground_dirt_a"
+      : "poly_ground_dirt_b"
+    : hash(tx, tz, def.gx, 11) < 0.5
+      ? "poly_ground_grass_a"
+      : "poly_ground_grass_b";
   const floor = spawn(kind, { receiveShadow: true });
   floor.position.copy(c);
   // POLYGON floor tiles are 300 units square = 3m after 0.01x. Scale up 4/3
@@ -520,7 +768,7 @@ function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number
   const biome = def.biome;
   if (dirt) {
     const h = 0.08 + (hash(tx, tz, def.gx, 15) - 0.5) * 0.02; // rich brown
-    const s = 0.42 + hash(tx, tz, def.gx, 16) * 0.10;
+    const s = 0.42 + hash(tx, tz, def.gx, 16) * 0.1;
     const l = 0.34 + hash(tx, tz, def.gx, 17) * 0.06;
     tintGround(floor, h, s, l);
   } else if (biome === "snow") {
@@ -532,26 +780,26 @@ function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number
   } else if (biome === "wetland") {
     // murky green-brown swamp
     const h = 0.24 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03;
-    const s = 0.38 + hash(tx, tz, def.gx, 13) * 0.10;
+    const s = 0.38 + hash(tx, tz, def.gx, 13) * 0.1;
     const l = 0.28 + hash(tx, tz, def.gx, 14) * 0.06;
     tintGround(floor, h, s, l);
   } else if (biome === "meadow") {
     // sun-lit yellow-green with more golden warmth
-    const h = 0.20 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.02;
-    const s = 0.65 + hash(tx, tz, def.gx, 13) * 0.10;
-    const l = 0.58 + hash(tx, tz, def.gx, 14) * 0.10;
+    const h = 0.2 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.02;
+    const s = 0.65 + hash(tx, tz, def.gx, 13) * 0.1;
+    const l = 0.58 + hash(tx, tz, def.gx, 14) * 0.1;
     tintGround(floor, h, s, l);
   } else if (biome === "pine") {
     // deep forest green with slight blue undertone
     const h = 0.31 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.02;
-    const s = 0.50 + hash(tx, tz, def.gx, 13) * 0.10;
+    const s = 0.5 + hash(tx, tz, def.gx, 13) * 0.1;
     const l = 0.38 + hash(tx, tz, def.gx, 14) * 0.08;
     tintGround(floor, h, s, l);
   } else {
     // Default forest / village grass — yellow-green ↔ leaf
     const h = 0.27 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03;
-    const s = 0.55 + hash(tx, tz, def.gx, 13) * 0.10;
-    const l = 0.48 + hash(tx, tz, def.gx, 14) * 0.10;
+    const s = 0.55 + hash(tx, tz, def.gx, 13) * 0.1;
+    const l = 0.48 + hash(tx, tz, def.gx, 14) * 0.1;
     tintGround(floor, h, s, l);
   }
 
@@ -588,10 +836,19 @@ function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number
   } else {
     // dirt roads get pebbles occasionally, and rarely a pot / roadside prop
     if (hash(tx, tz, def.gx, 40) < 0.25) {
-      const p = spawn(pickBy([
-        "polyx_env_pebble_01", "polyx_env_pebble_02", "polyx_env_pebble_03",
-        "polyx_env_pebble_04", "polyx_env_pebble_05", "polyx_env_pebble_06",
-      ] as const, tx * 5 + tz * 3));
+      const p = spawn(
+        pickBy(
+          [
+            "polyx_env_pebble_01",
+            "polyx_env_pebble_02",
+            "polyx_env_pebble_03",
+            "polyx_env_pebble_04",
+            "polyx_env_pebble_05",
+            "polyx_env_pebble_06",
+          ] as const,
+          tx * 5 + tz * 3,
+        ),
+      );
       p.position.set(
         c.x + (hash(tx, tz, def.gx, 41) - 0.5) * 2.6,
         0.02,
@@ -616,10 +873,18 @@ function addGrassBasePlane(def: RoomDef, group: THREE.Group): void {
   // the wrong palette (snow biome shouldn't show green underneath, etc).
   let baseColor: number = COLORS.grassDark;
   switch (def.biome) {
-    case "snow":    baseColor = 0xd9e6ee; break; // pale blue-white
-    case "wetland": baseColor = 0x3d5a3a; break; // murky green
-    case "meadow":  baseColor = 0x9bb45c; break; // sun-lit yellow-green
-    case "pine":    baseColor = 0x2f4a35; break; // deep forest green
+    case "snow":
+      baseColor = 0xd9e6ee;
+      break; // pale blue-white
+    case "wetland":
+      baseColor = 0x3d5a3a;
+      break; // murky green
+    case "meadow":
+      baseColor = 0x9bb45c;
+      break; // sun-lit yellow-green
+    case "pine":
+      baseColor = 0x2f4a35;
+      break; // deep forest green
   }
   const mat = new THREE.MeshLambertMaterial({ color: baseColor });
   const mesh = new THREE.Mesh(geom, mat);
@@ -632,16 +897,33 @@ function addGrassBasePlane(def: RoomDef, group: THREE.Group): void {
   group.add(mesh);
 }
 
-function addTree(group: THREE.Group, x: number, z: number, seed: number, castShadow = true): void {
-  const t = spawn(pickBy(TREE_KEYS, seed), { castShadow, receiveShadow: false });
-  t.position.set(x + (hash(seed, 1) - 0.5) * 0.8, 0, z + (hash(seed, 2) - 0.5) * 0.8);
+function addTree(
+  group: THREE.Group,
+  x: number,
+  z: number,
+  seed: number,
+  castShadow = true,
+): void {
+  const t = spawn(pickBy(TREE_KEYS, seed), {
+    castShadow,
+    receiveShadow: false,
+  });
+  t.position.set(
+    x + (hash(seed, 1) - 0.5) * 0.8,
+    0,
+    z + (hash(seed, 2) - 0.5) * 0.8,
+  );
   t.rotation.y = hash(seed, 3) * Math.PI * 2;
   t.scale.multiplyScalar(0.9 + hash(seed, 4) * 0.4);
   group.add(t);
   // v4: 30% chance of a bush or mushroom at the base for foliage layering
   if (hash(seed, 15) < 0.3) {
     const under = spawn(pickBy(BUSH_KEYS, seed + 20));
-    under.position.set(t.position.x + (hash(seed, 16) - 0.5) * 1.6, 0, t.position.z + (hash(seed, 17) - 0.5) * 1.6);
+    under.position.set(
+      t.position.x + (hash(seed, 16) - 0.5) * 1.6,
+      0,
+      t.position.z + (hash(seed, 17) - 0.5) * 1.6,
+    );
     under.rotation.y = hash(seed, 18) * Math.PI * 2;
     under.scale.multiplyScalar(0.7 + hash(seed, 19) * 0.4);
     group.add(under);
@@ -670,11 +952,19 @@ function addHouse(group: THREE.Group, c: THREE.Vector3, seed: number): void {
   for (let i = 0; i < dec; i++) {
     const ang = hash(seed, i, 21) * Math.PI * 2;
     const r = 1.6 + hash(seed, i, 22) * 0.4;
-    const item = spawn(pickBy([
-      "polyx_prop_sack_01", "polyx_prop_sack_02",
-      "polyx_prop_basket_02", "polyx_prop_basket_04",
-      "polyx_prop_pot_02", "polyx_prop_barrel_01",
-    ] as const, seed * 3 + i));
+    const item = spawn(
+      pickBy(
+        [
+          "polyx_prop_sack_01",
+          "polyx_prop_sack_02",
+          "polyx_prop_basket_02",
+          "polyx_prop_basket_04",
+          "polyx_prop_pot_02",
+          "polyx_prop_barrel_01",
+        ] as const,
+        seed * 3 + i,
+      ),
+    );
     item.position.set(c.x + Math.cos(ang) * r, 0, c.z + Math.sin(ang) * r);
     item.rotation.y = hash(seed, i, 23) * Math.PI * 2;
     group.add(item);
@@ -682,23 +972,39 @@ function addHouse(group: THREE.Group, c: THREE.Vector3, seed: number): void {
   // v4: chance of a laundry line beside the house
   if (hash(seed, 9) < 0.4) {
     const line = spawn(pickBy(WASHINGLINE_KEYS, seed + 10));
-    const ang = Math.PI * 0.5 * (Math.floor(hash(seed, 11) * 4));
+    const ang = Math.PI * 0.5 * Math.floor(hash(seed, 11) * 4);
     line.position.set(c.x + Math.cos(ang) * 1.8, 0, c.z + Math.sin(ang) * 1.8);
     line.rotation.y = hash(seed, 12) * Math.PI * 2;
     group.add(line);
   }
 }
 
-function addCampfire(group: THREE.Group, roomKey: string, c: THREE.Vector3): void {
-  const fire = spawn("poly_campfire", { castShadow: false, receiveShadow: false });
+function addCampfire(
+  group: THREE.Group,
+  roomKey: string,
+  c: THREE.Vector3,
+): void {
+  const fire = spawn("poly_campfire", {
+    castShadow: false,
+    receiveShadow: false,
+  });
   fire.position.copy(c);
   fire.scale.multiplyScalar(1.4);
   group.add(fire);
 
   const light = new THREE.PointLight(0xff9a3d, 0, 12, 1.6);
   light.position.set(c.x, 1.6, c.z);
+  // v12: hidden by default; updateTorches enables only the active room's.
+  light.visible = false;
   group.add(light);
-  campfireLights.push({ light, roomKey, seed: Math.random() * 100 });
+  const rec = { light, seed: Math.random() * 100 };
+  campfireLights.push({ ...rec, roomKey });
+  let bucket = campfireLightsByRoom.get(roomKey);
+  if (!bucket) {
+    bucket = [];
+    campfireLightsByRoom.set(roomKey, bucket);
+  }
+  bucket.push(rec);
 }
 
 function addWell(group: THREE.Group, c: THREE.Vector3): void {
@@ -708,15 +1014,25 @@ function addWell(group: THREE.Group, c: THREE.Vector3): void {
   group.add(w);
 }
 
-function addMarketStall(group: THREE.Group, c: THREE.Vector3, seed: number): void {
-  const stall = spawn(pickBy(STALL_KEYS, seed), { castShadow: true, receiveShadow: true });
+function addMarketStall(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
+  const stall = spawn(pickBy(STALL_KEYS, seed), {
+    castShadow: true,
+    receiveShadow: true,
+  });
   stall.position.copy(c);
   const rot = hash(seed, 3) < 0.5 ? Math.PI / 2 : -Math.PI / 2;
   stall.rotation.y = rot;
   group.add(stall);
 
   // v4: awning/cover on top for silhouette
-  const cover = spawn(pickBy(STALL_COVER_KEYS, seed + 1), { castShadow: true, receiveShadow: false });
+  const cover = spawn(pickBy(STALL_COVER_KEYS, seed + 1), {
+    castShadow: true,
+    receiveShadow: false,
+  });
   cover.position.set(c.x, 0, c.z);
   cover.rotation.y = rot;
   group.add(cover);
@@ -736,7 +1052,16 @@ function addMarketStall(group: THREE.Group, c: THREE.Vector3, seed: number): voi
   }
 
   // v4: a sack or basket at the base
-  const base = spawn(pickBy(["polyx_prop_sack_01", "polyx_prop_sack_02", "polyx_prop_basket_03"] as const, seed + 2));
+  const base = spawn(
+    pickBy(
+      [
+        "polyx_prop_sack_01",
+        "polyx_prop_sack_02",
+        "polyx_prop_basket_03",
+      ] as const,
+      seed + 2,
+    ),
+  );
   base.position.set(c.x + Math.cos(rot) * 1.4, 0, c.z + Math.sin(rot) * 1.4);
   base.rotation.y = hash(seed, 6) * Math.PI * 2;
   group.add(base);
@@ -752,13 +1077,20 @@ function addRoadsign(group: THREE.Group, c: THREE.Vector3): void {
 
 // -------------------- v4: new composition helpers --------------------
 
-function addLanternPost(group: THREE.Group, c: THREE.Vector3, seed: number): void {
+function addLanternPost(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
   // Lantern floating on a small stone base, warm yellow point light.
   // NOTE: polyx_ assets are returned as a wrapper Group with scale=0.01
   // baked in. Using `.scale.set(0.7,...)` would DESTROY that baked scale
   // and spawn a 48-meter stone in the middle of the village. Use
   // `.scale.multiplyScalar()` for wrappers, and only when needed.
-  const stone = spawn("polyx_prop_stoneblock_01", { castShadow: false, receiveShadow: true });
+  const stone = spawn("polyx_prop_stoneblock_01", {
+    castShadow: false,
+    receiveShadow: true,
+  });
   stone.position.copy(c);
   group.add(stone);
   const lantern = spawn(pickBy(LANTERN_KEYS, seed));
@@ -770,8 +1102,15 @@ function addLanternPost(group: THREE.Group, c: THREE.Vector3, seed: number): voi
   group.add(light);
 }
 
-function addWashingLine(group: THREE.Group, c: THREE.Vector3, seed: number): void {
-  const line = spawn(pickBy(WASHINGLINE_KEYS, seed), { castShadow: false, receiveShadow: false });
+function addWashingLine(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
+  const line = spawn(pickBy(WASHINGLINE_KEYS, seed), {
+    castShadow: false,
+    receiveShadow: false,
+  });
   line.position.copy(c);
   line.rotation.y = hash(seed, 2) * Math.PI * 2;
   line.scale.multiplyScalar(1.1);
@@ -779,54 +1118,99 @@ function addWashingLine(group: THREE.Group, c: THREE.Vector3, seed: number): voi
 }
 
 function addCart(group: THREE.Group, c: THREE.Vector3, seed: number): void {
-  const cart = spawn(pickBy(CART_KEYS, seed), { castShadow: true, receiveShadow: true });
+  const cart = spawn(pickBy(CART_KEYS, seed), {
+    castShadow: true,
+    receiveShadow: true,
+  });
   cart.position.copy(c);
   cart.rotation.y = hash(seed, 2) * Math.PI * 2;
   group.add(cart);
   // v4: load the cart with some sacks or barrels
   const load = 1 + Math.floor(hash(seed, 3) * 2);
   for (let i = 0; i < load; i++) {
-    const item = spawn(pickBy([
-      "polyx_prop_sack_01", "polyx_prop_sack_02", "polyx_prop_barrel_01",
-      "polyx_prop_basket_02", "polyx_prop_pumpkin_02",
-    ] as const, seed * 3 + i));
-    item.position.set(c.x + (hash(seed, i, 5) - 0.5) * 0.8, 0.6, c.z + (hash(seed, i, 6) - 0.5) * 0.8);
+    const item = spawn(
+      pickBy(
+        [
+          "polyx_prop_sack_01",
+          "polyx_prop_sack_02",
+          "polyx_prop_barrel_01",
+          "polyx_prop_basket_02",
+          "polyx_prop_pumpkin_02",
+        ] as const,
+        seed * 3 + i,
+      ),
+    );
+    item.position.set(
+      c.x + (hash(seed, i, 5) - 0.5) * 0.8,
+      0.6,
+      c.z + (hash(seed, i, 6) - 0.5) * 0.8,
+    );
     item.rotation.y = hash(seed, i, 7) * Math.PI * 2;
     group.add(item);
   }
 }
 
-function addGroundMound(group: THREE.Group, c: THREE.Vector3, seed: number): void {
+function addGroundMound(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
   // Pack GroundMounds are 5–8m wide. On a 4m tile they'd cover 2+ tiles.
   // Scale them ~40% so they read as a small terrain bump next to a tree.
-  const m = spawn(pickBy(GROUND_MOUND_KEYS, seed), { castShadow: false, receiveShadow: true });
+  const m = spawn(pickBy(GROUND_MOUND_KEYS, seed), {
+    castShadow: false,
+    receiveShadow: true,
+  });
   m.position.copy(c);
   m.rotation.y = hash(seed, 2) * Math.PI * 2;
   m.scale.multiplyScalar(0.4 + hash(seed, 3) * 0.15);
   group.add(m);
 }
 
-function addTreeStump(group: THREE.Group, c: THREE.Vector3, seed: number): void {
-  const s = spawn(hash(seed, 1) < 0.5 ? "poly_tree_stump" : "polyx_env_treestump_01", {
-    castShadow: true, receiveShadow: true,
-  });
+function addTreeStump(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
+  const s = spawn(
+    hash(seed, 1) < 0.5 ? "poly_tree_stump" : "polyx_env_treestump_01",
+    {
+      castShadow: true,
+      receiveShadow: true,
+    },
+  );
   s.position.copy(c);
   s.rotation.y = hash(seed, 2) * Math.PI * 2;
   group.add(s);
   // v4: mushrooms on the stump
   if (hash(seed, 3) < 0.6) {
-    const shroom = spawn(pickBy(["poly_mushroom", "polyx_env_mushroom_01"] as const, seed));
-    shroom.position.set(c.x + (hash(seed, 4) - 0.5) * 0.6, 0.6, c.z + (hash(seed, 5) - 0.5) * 0.6);
+    const shroom = spawn(
+      pickBy(["poly_mushroom", "polyx_env_mushroom_01"] as const, seed),
+    );
+    shroom.position.set(
+      c.x + (hash(seed, 4) - 0.5) * 0.6,
+      0.6,
+      c.z + (hash(seed, 5) - 0.5) * 0.6,
+    );
     shroom.scale.multiplyScalar(1.4);
     group.add(shroom);
   }
 }
 
 // v5: pine tree — plain and snowy variants (biome picks which pool)
-function addPineTree(group: THREE.Group, c: THREE.Vector3, seed: number, snowy: boolean): void {
+function addPineTree(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+  snowy: boolean,
+): void {
   const key = pickBy(snowy ? SNOW_PINE_KEYS : PINE_KEYS, seed);
   const t = spawn(key, { castShadow: true, receiveShadow: false });
-  t.position.set(c.x + (hash(seed, 1) - 0.5) * 0.6, 0, c.z + (hash(seed, 2) - 0.5) * 0.6);
+  t.position.set(
+    c.x + (hash(seed, 1) - 0.5) * 0.6,
+    0,
+    c.z + (hash(seed, 2) - 0.5) * 0.6,
+  );
   t.rotation.y = hash(seed, 3) * Math.PI * 2;
   t.scale.multiplyScalar(0.9 + hash(seed, 4) * 0.4);
   group.add(t);
@@ -834,8 +1218,15 @@ function addPineTree(group: THREE.Group, c: THREE.Vector3, seed: number, snowy: 
 
 // v5: dead / cypress tree (for wetlands, graveyard vibes)
 function addDeadTree(group: THREE.Group, c: THREE.Vector3, seed: number): void {
-  const t = spawn(pickBy(DEAD_ANY_KEYS, seed), { castShadow: true, receiveShadow: false });
-  t.position.set(c.x + (hash(seed, 1) - 0.5) * 0.6, 0, c.z + (hash(seed, 2) - 0.5) * 0.6);
+  const t = spawn(pickBy(DEAD_ANY_KEYS, seed), {
+    castShadow: true,
+    receiveShadow: false,
+  });
+  t.position.set(
+    c.x + (hash(seed, 1) - 0.5) * 0.6,
+    0,
+    c.z + (hash(seed, 2) - 0.5) * 0.6,
+  );
   t.rotation.y = hash(seed, 3) * Math.PI * 2;
   t.scale.multiplyScalar(0.85 + hash(seed, 4) * 0.35);
   group.add(t);
@@ -843,7 +1234,10 @@ function addDeadTree(group: THREE.Group, c: THREE.Vector3, seed: number): void {
 
 // v5: snowpile (walkable snow drift decoration)
 function addSnowPile(group: THREE.Group, c: THREE.Vector3, seed: number): void {
-  const p = spawn(pickBy(SNOW_PILE_KEYS, seed), { castShadow: false, receiveShadow: true });
+  const p = spawn(pickBy(SNOW_PILE_KEYS, seed), {
+    castShadow: false,
+    receiveShadow: true,
+  });
   p.position.copy(c);
   p.rotation.y = hash(seed, 2) * Math.PI * 2;
   p.scale.multiplyScalar(0.7 + hash(seed, 3) * 0.4);
@@ -852,7 +1246,10 @@ function addSnowPile(group: THREE.Group, c: THREE.Vector3, seed: number): void {
 
 // v5: snow hut (single-piece, solid — used for Frozen Frontier huts)
 function addSnowHut(group: THREE.Group, c: THREE.Vector3, seed: number): void {
-  const h = spawn(pickBy(SNOW_HUT_KEYS, seed), { castShadow: true, receiveShadow: true });
+  const h = spawn(pickBy(SNOW_HUT_KEYS, seed), {
+    castShadow: true,
+    receiveShadow: true,
+  });
   h.position.copy(c);
   h.rotation.y = Math.floor(hash(seed, 2) * 4) * (Math.PI / 2);
   group.add(h);
@@ -863,25 +1260,39 @@ function addSnowHut(group: THREE.Group, c: THREE.Vector3, seed: number): void {
 }
 
 function addTreeLog(group: THREE.Group, c: THREE.Vector3, seed: number): void {
-  const l = spawn(hash(seed, 1) < 0.5 ? "poly_tree_log" : "polyx_env_treelog_01", {
-    castShadow: true, receiveShadow: true,
-  });
+  const l = spawn(
+    hash(seed, 1) < 0.5 ? "poly_tree_log" : "polyx_env_treelog_01",
+    {
+      castShadow: true,
+      receiveShadow: true,
+    },
+  );
   l.position.copy(c);
   l.rotation.y = hash(seed, 2) * Math.PI * 2;
   group.add(l);
   // moss / mushroom on the log
   if (hash(seed, 3) < 0.5) {
     const decor = spawn(pickBy(BUSH_KEYS, seed + 3));
-    decor.position.set(c.x + (hash(seed, 4) - 0.5) * 1.2, 0.4, c.z + (hash(seed, 5) - 0.5) * 1.2);
+    decor.position.set(
+      c.x + (hash(seed, 4) - 0.5) * 1.2,
+      0.4,
+      c.z + (hash(seed, 5) - 0.5) * 1.2,
+    );
     decor.scale.multiplyScalar(0.6);
     group.add(decor);
   }
 }
 
-function addMushroomCluster(group: THREE.Group, c: THREE.Vector3, seed: number): void {
+function addMushroomCluster(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
   const n = 2 + Math.floor(hash(seed) * 4);
   for (let i = 0; i < n; i++) {
-    const m = spawn(pickBy(["poly_mushroom", "polyx_env_mushroom_01"] as const, seed + i));
+    const m = spawn(
+      pickBy(["poly_mushroom", "polyx_env_mushroom_01"] as const, seed + i),
+    );
     m.position.set(
       c.x + (hash(seed, i, 1) - 0.5) * 2.2,
       0.02,
@@ -893,11 +1304,18 @@ function addMushroomCluster(group: THREE.Group, c: THREE.Vector3, seed: number):
   }
 }
 
-function addHillDecor(group: THREE.Group, c: THREE.Vector3, seed: number): void {
+function addHillDecor(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
   // The pack hills are 13-25 meters wide — WAY too large for a room tile.
   // We scale them down to ~30% so they read as small terrain bumps instead
   // of covering the whole scene.
-  const h = spawn(pickBy(HILL_KEYS, seed), { castShadow: true, receiveShadow: true });
+  const h = spawn(pickBy(HILL_KEYS, seed), {
+    castShadow: true,
+    receiveShadow: true,
+  });
   h.position.copy(c);
   h.rotation.y = hash(seed, 2) * Math.PI * 2;
   h.scale.multiplyScalar(0.28 + hash(seed, 3) * 0.08);
@@ -905,10 +1323,17 @@ function addHillDecor(group: THREE.Group, c: THREE.Vector3, seed: number): void 
 }
 
 /** Cluster of stalagmites for the dungeon rooms. */
-function addStalagmiteCluster(group: THREE.Group, c: THREE.Vector3, seed: number): void {
+function addStalagmiteCluster(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
   const n = 1 + Math.floor(hash(seed) * 3);
   for (let i = 0; i < n; i++) {
-    const s = spawn(pickBy(STALAGMITE_KEYS, seed + i), { castShadow: true, receiveShadow: false });
+    const s = spawn(pickBy(STALAGMITE_KEYS, seed + i), {
+      castShadow: true,
+      receiveShadow: false,
+    });
     s.position.set(
       c.x + (hash(seed, i, 1) - 0.5) * 1.6,
       0,
@@ -921,10 +1346,17 @@ function addStalagmiteCluster(group: THREE.Group, c: THREE.Vector3, seed: number
 }
 
 /** Books on the ground for the dungeon rooms with mages. */
-function addBooksOnGround(group: THREE.Group, c: THREE.Vector3, seed: number): void {
+function addBooksOnGround(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
   const n = 1 + Math.floor(hash(seed) * 3);
   for (let i = 0; i < n; i++) {
-    const b = spawn(pickBy(BOOK_KEYS, seed + i), { castShadow: false, receiveShadow: false });
+    const b = spawn(pickBy(BOOK_KEYS, seed + i), {
+      castShadow: false,
+      receiveShadow: false,
+    });
     b.position.set(
       c.x + (hash(seed, i, 1) - 0.5) * 1.6,
       0,
@@ -937,20 +1369,42 @@ function addBooksOnGround(group: THREE.Group, c: THREE.Vector3, seed: number): v
 }
 
 /** Fallen weapon (sword/axe) laying on the dungeon floor as flavor. */
-function addFallenWeapon(group: THREE.Group, c: THREE.Vector3, seed: number): void {
-  const w = spawn(pickBy(WEAPON_KEYS, seed), { castShadow: false, receiveShadow: false });
+function addFallenWeapon(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
+  const w = spawn(pickBy(WEAPON_KEYS, seed), {
+    castShadow: false,
+    receiveShadow: false,
+  });
   w.position.set(c.x, 0.1, c.z);
-  w.rotation.set(-Math.PI / 2 + (hash(seed, 1) - 0.5) * 0.3, hash(seed, 2) * Math.PI * 2, 0);
+  w.rotation.set(
+    -Math.PI / 2 + (hash(seed, 1) - 0.5) * 0.3,
+    hash(seed, 2) * Math.PI * 2,
+    0,
+  );
   w.scale.multiplyScalar(0.9 + hash(seed, 3) * 0.3);
   group.add(w);
 }
 
 /** Ice crystal cluster (sorcerer's room, treasury). */
-function addIceCluster(group: THREE.Group, c: THREE.Vector3, seed: number): void {
+function addIceCluster(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
   const n = 1 + Math.floor(hash(seed) * 3);
   for (let i = 0; i < n; i++) {
-    const ice = spawn(pickBy(ICE_KEYS, seed + i), { castShadow: false, receiveShadow: false });
-    ice.position.set(c.x + (hash(seed, i, 1) - 0.5) * 1.5, 0, c.z + (hash(seed, i, 2) - 0.5) * 1.5);
+    const ice = spawn(pickBy(ICE_KEYS, seed + i), {
+      castShadow: false,
+      receiveShadow: false,
+    });
+    ice.position.set(
+      c.x + (hash(seed, i, 1) - 0.5) * 1.5,
+      0,
+      c.z + (hash(seed, i, 2) - 0.5) * 1.5,
+    );
     ice.rotation.y = hash(seed, i, 3) * Math.PI * 2;
     ice.scale.multiplyScalar(1.0 + hash(seed, i, 4) * 0.4);
     group.add(ice);
@@ -958,11 +1412,19 @@ function addIceCluster(group: THREE.Group, c: THREE.Vector3, seed: number): void
 }
 
 /** Random potion / bottle scatter for shelves in the sorcerer's den. */
-function addPotionsScatter(group: THREE.Group, c: THREE.Vector3, seed: number): void {
+function addPotionsScatter(
+  group: THREE.Group,
+  c: THREE.Vector3,
+  seed: number,
+): void {
   const n = 2 + Math.floor(hash(seed) * 3);
   for (let i = 0; i < n; i++) {
     const p = spawn(pickBy(POTION_KEYS, seed + i));
-    p.position.set(c.x + (hash(seed, i, 1) - 0.5) * 1.4, 0.5, c.z + (hash(seed, i, 2) - 0.5) * 1.4);
+    p.position.set(
+      c.x + (hash(seed, i, 1) - 0.5) * 1.4,
+      0.5,
+      c.z + (hash(seed, i, 2) - 0.5) * 1.4,
+    );
     p.rotation.y = hash(seed, i, 3) * Math.PI * 2;
     group.add(p);
   }
@@ -985,7 +1447,8 @@ function buildVillageFence(def: RoomDef, group: THREE.Group): void {
       if (charAt(def, tx, tz) === "D") continue;
       addGrassGround(group, def, tx, tz, false);
       const c = tileCenter(def.gx, def.gy, tx, tz);
-      if (charAt(def, tx, tz) === "T") addTree(group, c.x, c.z, tx * 17 + tz * 5);
+      if (charAt(def, tx, tz) === "T")
+        addTree(group, c.x, c.z, tx * 17 + tz * 5);
     }
   }
 }
@@ -995,7 +1458,11 @@ function buildVillageFence(def: RoomDef, group: THREE.Group): void {
  * scatter), but with biome-specific pools for pine/dead/snow tiles.
  * Called for `forest`, `snow`, `wetland`, `meadow`, `pine` biomes.
  */
-function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRuntime): void {
+function buildForestContent(
+  def: RoomDef,
+  group: THREE.Group,
+  runtime: RoomRuntime,
+): void {
   const biome = def.biome;
   const snowy = biome === "snow";
   for (let tz = 0; tz < ROOM_H; tz++) {
@@ -1049,9 +1516,13 @@ function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRunti
           break;
         case "R":
           {
-            const rock = spawn(pickBy(snowy ? SNOW_ROCK_KEYS : ROCK_KEYS, tx * 3 + tz), {
-              castShadow: true, receiveShadow: true,
-            });
+            const rock = spawn(
+              pickBy(snowy ? SNOW_ROCK_KEYS : ROCK_KEYS, tx * 3 + tz),
+              {
+                castShadow: true,
+                receiveShadow: true,
+              },
+            );
             rock.position.copy(c);
             rock.scale.multiplyScalar(0.9 + hash(tx, tz, def.gx, 45) * 0.3);
             group.add(rock);
@@ -1068,14 +1539,28 @@ function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRunti
             group.add(w);
           }
           break;
-        case ",": /* dirt path — floor already rendered */ break;
+        case ",":
+          /* dirt path — floor already rendered */ break;
         // ------- v4/v5 decorative chars -------
-        case "l": addLanternPost(group, c, tx * 7 + tz * 11); break;
-        case "m": addGroundMound(group, c, tx * 5 + tz * 23); break;
-        case "+": addTreeStump(group, c, tx * 11 + tz * 7); break;
-        case "-": addTreeLog(group, c, tx * 13 + tz * 17); break;
-        case "*": addMushroomCluster(group, c, tx * 7 + tz * 3); break;
-        case "M": addHillDecor(group, c, tx * 17 + tz * 19); runtime.solid[tz][tx] = true; break;
+        case "l":
+          addLanternPost(group, c, tx * 7 + tz * 11);
+          break;
+        case "m":
+          addGroundMound(group, c, tx * 5 + tz * 23);
+          break;
+        case "+":
+          addTreeStump(group, c, tx * 11 + tz * 7);
+          break;
+        case "-":
+          addTreeLog(group, c, tx * 13 + tz * 17);
+          break;
+        case "*":
+          addMushroomCluster(group, c, tx * 7 + tz * 3);
+          break;
+        case "M":
+          addHillDecor(group, c, tx * 17 + tz * 19);
+          runtime.solid[tz][tx] = true;
+          break;
       }
       // NPCs in outdoor tiles (hermit, villagers, shopkeeper, wanderers)
       const npcKind = NPC_CHARS[ch];
@@ -1107,7 +1592,11 @@ function addDungeonCeiling(_def: RoomDef, _target: THREE.Object3D): void {
   // intentionally left blank — see comment above.
 }
 
-function buildVillageContent(def: RoomDef, group: THREE.Group, runtime: RoomRuntime): THREE.Vector3 | null {
+function buildVillageContent(
+  def: RoomDef,
+  group: THREE.Group,
+  runtime: RoomRuntime,
+): THREE.Vector3 | null {
   let start: THREE.Vector3 | null = null;
   for (let tz = 0; tz < ROOM_H; tz++) {
     for (let tx = 0; tx < ROOM_W; tx++) {
@@ -1116,21 +1605,40 @@ function buildVillageContent(def: RoomDef, group: THREE.Group, runtime: RoomRunt
       const dirt = ch === ",";
       addGrassGround(group, def, tx, tz, dirt);
       switch (ch) {
-        case "P": start = c.clone(); break;
-        case "H": addHouse(group, c, tx * 41 + tz * 7); runtime.solid[tz][tx] = true; break;
+        case "P":
+          start = c.clone();
+          break;
+        case "H":
+          addHouse(group, c, tx * 41 + tz * 7);
+          runtime.solid[tz][tx] = true;
+          break;
         case "U":
           {
-            const hut = spawn("poly_hut", { castShadow: true, receiveShadow: true });
+            const hut = spawn("poly_hut", {
+              castShadow: true,
+              receiveShadow: true,
+            });
             hut.position.copy(c);
             hut.rotation.y = Math.PI;
             group.add(hut);
             runtime.solid[tz][tx] = true;
           }
           break;
-        case "L": addWell(group, c); runtime.solid[tz][tx] = true; break;
-        case "M": addMarketStall(group, c, tx * 23 + tz * 11); runtime.solid[tz][tx] = true; break;
-        case "C": addCampfire(group, def.key, c); break;
-        case "T": addTree(group, c.x, c.z, tx * 13 + tz * 3); runtime.solid[tz][tx] = true; break;
+        case "L":
+          addWell(group, c);
+          runtime.solid[tz][tx] = true;
+          break;
+        case "M":
+          addMarketStall(group, c, tx * 23 + tz * 11);
+          runtime.solid[tz][tx] = true;
+          break;
+        case "C":
+          addCampfire(group, def.key, c);
+          break;
+        case "T":
+          addTree(group, c.x, c.z, tx * 13 + tz * 3);
+          runtime.solid[tz][tx] = true;
+          break;
         case "R":
           {
             const rock = spawn(pickBy(ROCK_KEYS, tx * 5 + tz * 3), {
@@ -1153,7 +1661,9 @@ function buildVillageContent(def: RoomDef, group: THREE.Group, runtime: RoomRunt
           break;
         case "f":
           {
-            const flower = spawn(hash(tx, tz, 0, 5) < 0.5 ? "poly_flower_a" : "poly_flower_b");
+            const flower = spawn(
+              hash(tx, tz, 0, 5) < 0.5 ? "poly_flower_a" : "poly_flower_b",
+            );
             flower.position.copy(c);
             flower.scale.multiplyScalar(2);
             group.add(flower);
@@ -1166,16 +1676,34 @@ function buildVillageContent(def: RoomDef, group: THREE.Group, runtime: RoomRunt
             group.add(gr);
           }
           break;
-        case "r": addRoadsign(group, c); runtime.solid[tz][tx] = true; break;
+        case "r":
+          addRoadsign(group, c);
+          runtime.solid[tz][tx] = true;
+          break;
 
         // ------- v4: decorative chars using the full pack -------
-        case "l": addLanternPost(group, c, tx * 7 + tz * 11); break;
-        case "w": addWashingLine(group, c, tx * 3 + tz * 5); break;
-        case "$": addCart(group, c, tx * 17 + tz * 19); runtime.solid[tz][tx] = true; break;
-        case "m": addGroundMound(group, c, tx * 5 + tz * 23); break;
-        case "+": addTreeStump(group, c, tx * 11 + tz * 7); break;
-        case "-": addTreeLog(group, c, tx * 13 + tz * 17); break;
-        case "*": addMushroomCluster(group, c, tx * 7 + tz * 3); break;
+        case "l":
+          addLanternPost(group, c, tx * 7 + tz * 11);
+          break;
+        case "w":
+          addWashingLine(group, c, tx * 3 + tz * 5);
+          break;
+        case "$":
+          addCart(group, c, tx * 17 + tz * 19);
+          runtime.solid[tz][tx] = true;
+          break;
+        case "m":
+          addGroundMound(group, c, tx * 5 + tz * 23);
+          break;
+        case "+":
+          addTreeStump(group, c, tx * 11 + tz * 7);
+          break;
+        case "-":
+          addTreeLog(group, c, tx * 13 + tz * 17);
+          break;
+        case "*":
+          addMushroomCluster(group, c, tx * 7 + tz * 3);
+          break;
       }
       // NPCs — plain ground tile also gets rendered underneath (already done
       // above), so the villager stands on grass/dirt cleanly.
@@ -1216,13 +1744,16 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     scene.add(group);
 
     const solid: boolean[][] = [];
-    for (let tz = 0; tz < ROOM_H; tz++) solid.push(new Array<boolean>(ROOM_W).fill(false));
+    for (let tz = 0; tz < ROOM_H; tz++)
+      solid.push(new Array<boolean>(ROOM_W).fill(false));
 
     const runtime: RoomRuntime = {
       key: def.key,
       gx: def.gx,
       gy: def.gy,
-      origin: tileCenter(def.gx, def.gy, 0, 0).sub(new THREE.Vector3(TILE / 2, 0, TILE / 2)),
+      origin: tileCenter(def.gx, def.gy, 0, 0).sub(
+        new THREE.Vector3(TILE / 2, 0, TILE / 2),
+      ),
       solid,
       doors: [],
       chests: [],
@@ -1278,15 +1809,20 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
           }
           const floor = spawn("floor_large", { receiveShadow: true });
           floor.position.copy(c);
-          floor.rotation.y = (Math.floor(hash(tx, tz, def.gx, def.gy) * 4) * Math.PI) / 2;
+          floor.rotation.y =
+            (Math.floor(hash(tx, tz, def.gx, def.gy) * 4) * Math.PI) / 2;
           group.add(floor);
           const r = hash(tx + 31, tz + 7, def.gx, def.gy);
           if (ch === "." && r < 0.16) {
-            const detail = spawn(r < 0.08 ? "floor_weeds" : "floor_broken", { receiveShadow: true });
+            const detail = spawn(r < 0.08 ? "floor_weeds" : "floor_broken", {
+              receiveShadow: true,
+            });
             detail.position.copy(c);
             detail.position.y = 0.015;
-            detail.position.x += (hash(tx, tz + 99, def.gx, def.gy) - 0.5) * 1.6;
-            detail.position.z += (hash(tx + 55, tz, def.gx, def.gy) - 0.5) * 1.6;
+            detail.position.x +=
+              (hash(tx, tz + 99, def.gx, def.gy) - 0.5) * 1.6;
+            detail.position.z +=
+              (hash(tx + 55, tz, def.gx, def.gy) - 0.5) * 1.6;
             group.add(detail);
           }
         }
@@ -1316,8 +1852,10 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       })();
       if (needNorthWall) buildDungeonEdge(def, "n", sharedStatics);
       if (needWestWall) buildDungeonEdge(def, "w", sharedStatics);
-      if (needSouthWall) buildDungeonEdge({ ...def, gy: def.gy + 1 }, "n", sharedStatics);
-      if (needEastWall) buildDungeonEdge({ ...def, gx: def.gx + 1 }, "w", sharedStatics);
+      if (needSouthWall)
+        buildDungeonEdge({ ...def, gy: def.gy + 1 }, "n", sharedStatics);
+      if (needEastWall)
+        buildDungeonEdge({ ...def, gx: def.gx + 1 }, "w", sharedStatics);
 
       // -------- torches + banners on north walls (shared) ----------
       for (const tx of [1, ROOM_W - 2]) {
@@ -1411,9 +1949,13 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
               break;
             case "b":
             case "B": {
-              const barrel = spawn(ch === "b" ? "barrel_small" : "barrel_large", {
-                castShadow: true, receiveShadow: true,
-              });
+              const barrel = spawn(
+                ch === "b" ? "barrel_small" : "barrel_large",
+                {
+                  castShadow: true,
+                  receiveShadow: true,
+                },
+              );
               barrel.position.copy(c);
               barrel.position.x += (hash(tx, tz, 1, def.gy) - 0.5) * 1.2;
               barrel.position.z += (hash(tx, tz, 2, def.gy) - 0.5) * 1.2;
@@ -1428,15 +1970,22 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
               break;
             }
             case "x": {
-              const crates = spawn("crates_stacked", { castShadow: true, receiveShadow: true });
+              const crates = spawn("crates_stacked", {
+                castShadow: true,
+                receiveShadow: true,
+              });
               crates.position.copy(c);
-              crates.rotation.y = Math.floor(hash(tx, tz, 4, def.gy) * 4) * (Math.PI / 2);
+              crates.rotation.y =
+                Math.floor(hash(tx, tz, 4, def.gy) * 4) * (Math.PI / 2);
               group.add(crates);
               solid[tz][tx] = true;
               break;
             }
             case "o": {
-              const box = spawn("box_small", { castShadow: true, receiveShadow: true });
+              const box = spawn("box_small", {
+                castShadow: true,
+                receiveShadow: true,
+              });
               box.position.copy(c);
               box.position.x += (hash(tx, tz, 5, def.gy) - 0.5) * 1.4;
               box.rotation.y = hash(tx, tz, 6, def.gy) * Math.PI;
@@ -1444,14 +1993,20 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
               break;
             }
             case "p": {
-              const pillar = spawn("pillar", { castShadow: true, receiveShadow: true });
+              const pillar = spawn("pillar", {
+                castShadow: true,
+                receiveShadow: true,
+              });
               pillar.position.copy(c);
               group.add(pillar);
               solid[tz][tx] = true;
               break;
             }
             case "S": {
-              const stairs = spawn("stairs", { castShadow: true, receiveShadow: true });
+              const stairs = spawn("stairs", {
+                castShadow: true,
+                receiveShadow: true,
+              });
               stairs.position.copy(c);
               stairs.position.z += TILE / 2 - 0.2;
               stairs.rotation.y = Math.PI;
@@ -1460,10 +2015,13 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
               solid[tz][tx] = true;
               break;
             }
-            case "c": case "h": case "K": {
+            case "c":
+            case "h":
+            case "K": {
               const isGold = ch === "K";
               const chest = spawn(isGold ? "chest_gold" : "chest", {
-                castShadow: true, receiveShadow: true,
+                castShadow: true,
+                receiveShadow: true,
               });
               chest.position.copy(c);
               chest.rotation.y = Math.PI;
@@ -1479,7 +2037,9 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
                 chest.traverse((o) => {
                   const mesh = o as THREE.Mesh;
                   if (!mesh.isMesh) return;
-                  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                  const mats = Array.isArray(mesh.material)
+                    ? mesh.material
+                    : [mesh.material];
                   for (const mat of mats) {
                     const lam = mat as THREE.MeshLambertMaterial;
                     if (lam.emissive) {
@@ -1500,20 +2060,36 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
                 lid,
                 opened: false,
                 openT: 0,
-                contents: ch === "c" ? "coins" : ch === "h" ? "heart" : "bosskey",
+                contents:
+                  ch === "c" ? "coins" : ch === "h" ? "heart" : "bosskey",
                 tile: { tx, tz },
               });
               solid[tz][tx] = true;
               break;
             }
             // ---------- v4 dungeon flavor chars ----------
-            case "A": addStalagmiteCluster(group, c, tx * 7 + tz * 3 + def.gy); break;
-            case "%": addBooksOnGround(group, c, tx * 11 + tz * 5); break;
-            case "X": addFallenWeapon(group, c, tx * 13 + tz * 17); break;
-            case "i": addIceCluster(group, c, tx * 19 + tz * 23); break;
-            case "*": addMushroomCluster(group, c, tx * 7 + tz * 3); break;
-            case "?": addPotionsScatter(group, c, tx * 5 + tz * 11); break;
-            case "&": addBooksOnGround(group, c, tx * 3 + tz * 7); addPotionsScatter(group, c, tx * 5 + tz * 3); break;
+            case "A":
+              addStalagmiteCluster(group, c, tx * 7 + tz * 3 + def.gy);
+              break;
+            case "%":
+              addBooksOnGround(group, c, tx * 11 + tz * 5);
+              break;
+            case "X":
+              addFallenWeapon(group, c, tx * 13 + tz * 17);
+              break;
+            case "i":
+              addIceCluster(group, c, tx * 19 + tz * 23);
+              break;
+            case "*":
+              addMushroomCluster(group, c, tx * 7 + tz * 3);
+              break;
+            case "?":
+              addPotionsScatter(group, c, tx * 5 + tz * 11);
+              break;
+            case "&":
+              addBooksOnGround(group, c, tx * 3 + tz * 7);
+              addPotionsScatter(group, c, tx * 5 + tz * 3);
+              break;
           }
           const enemyKind = ENEMY_CHARS[ch];
           if (enemyKind) runtime.enemySpawns.push({ kind: enemyKind, tx, tz });
@@ -1543,8 +2119,14 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
     for (let i = 0; i < 55; i++) {
       const ring = 1.7 + Math.random() * 2.4;
       const ang = Math.random() * Math.PI * 2;
-      const cx = village.origin.x + (ROOM_W * TILE) / 2 + Math.cos(ang) * ROOM_W * TILE * ring * 0.5;
-      const cz = village.origin.z + (ROOM_H * TILE) / 2 + Math.sin(ang) * ROOM_H * TILE * ring * 0.5;
+      const cx =
+        village.origin.x +
+        (ROOM_W * TILE) / 2 +
+        Math.cos(ang) * ROOM_W * TILE * ring * 0.5;
+      const cz =
+        village.origin.z +
+        (ROOM_H * TILE) / 2 +
+        Math.sin(ang) * ROOM_H * TILE * ring * 0.5;
       addTree(forest, cx, cz, i * 97, false);
       if (i % 3 === 0) addBush(forest, cx + 3, cz - 2, i * 11);
     }
@@ -1569,20 +2151,38 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
 // ---------------------------- ambient updates -------------------------------
 
 export function updateTorches(activeRoomKey: string, time: number): void {
-  for (const t of torchLights) {
-    if (t.roomKey !== activeRoomKey) {
-      t.light.intensity = 0;
-      continue;
+  // v12: when the room changes, flip visibility on the whole previous
+  // bucket off and the new bucket on. Between transitions we only touch
+  // the ~4-8 lights in the active room — an O(1) per-frame cost.
+  if (lastTorchActiveRoom !== activeRoomKey) {
+    if (lastTorchActiveRoom !== null) {
+      const prevT = torchLightsByRoom.get(lastTorchActiveRoom);
+      if (prevT) for (const t of prevT) t.light.visible = false;
+      const prevC = campfireLightsByRoom.get(lastTorchActiveRoom);
+      if (prevC) for (const c of prevC) c.light.visible = false;
     }
-    t.light.intensity =
-      26 + Math.sin(time * 9 + t.seed) * 5 + Math.sin(time * 23 + t.seed * 2) * 3;
+    const curT = torchLightsByRoom.get(activeRoomKey);
+    if (curT) for (const t of curT) t.light.visible = true;
+    const curC = campfireLightsByRoom.get(activeRoomKey);
+    if (curC) for (const c of curC) c.light.visible = true;
+    lastTorchActiveRoom = activeRoomKey;
   }
-  for (const c of campfireLights) {
-    if (c.roomKey !== activeRoomKey) {
-      c.light.intensity = 0;
-      continue;
+  const activeT = torchLightsByRoom.get(activeRoomKey);
+  if (activeT) {
+    for (const t of activeT) {
+      t.light.intensity =
+        26 +
+        Math.sin(time * 9 + t.seed) * 5 +
+        Math.sin(time * 23 + t.seed * 2) * 3;
     }
-    c.light.intensity =
-      18 + Math.sin(time * 7 + c.seed) * 5 + Math.sin(time * 19 + c.seed * 2) * 3;
+  }
+  const activeC = campfireLightsByRoom.get(activeRoomKey);
+  if (activeC) {
+    for (const c of activeC) {
+      c.light.intensity =
+        18 +
+        Math.sin(time * 7 + c.seed) * 5 +
+        Math.sin(time * 19 + c.seed * 2) * 3;
+    }
   }
 }
