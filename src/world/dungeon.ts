@@ -150,7 +150,9 @@ export const ROOMS: RoomDef[] = [
     //   Row 5: Q merchants flanking, lantern posts on the road
     //   Row 6: elder E at 8, P player start at 6
     //   Row 8: L well + N priestess at 9
-    //   Row 10-11: farm huts, cart $, washing lines w
+    //   Row 9: cart $ (x=4), S shopkeeper Inga (x=10, moved here from
+    //          Frozen Frontier so the shop is discoverable from spawn)
+    //   Row 10-11: farm huts, washing lines w
     map: [
       "TTTTTTTDTTTTTTT",
       "T.fg.H.,.H.gg.T",
@@ -161,7 +163,7 @@ export const ROOMS: RoomDef[] = [
       "D,,,,,P,E,,,,,D",
       "T.f.,,,,,,,.fmT",
       "T.gg.,,L,N,.gwT",
-      "T.f.$.,,,..fggT",
+      "T.f.$.,,,.SfggT",
       "Tg.H..,,..H.f.T",
       "T.fgwU.,.gg.NgT",
       "TTTTTTTDTTTTTTT",
@@ -545,14 +547,15 @@ export const ROOMS: RoomDef[] = [
     name: "Frozen Frontier",
     biome: "snow",
     startVisible: false,
-    // Chars: h/H frozen hut, S shopkeeper (opens shop), n snowpile,
-    // y pine tree (snow), t dead tree
+    // Chars: h/H frozen hut, n snowpile, y pine tree (snow), t dead tree.
+    // v6: Inga (S) moved to Willowvale Village so the shop is discoverable
+    // from spawn. Hilde (N) still holds the frontier alone.
     map: [
       "yyyyyyyyyyyyyyy",
       "y.nn.H.,.H.nn.y",
       "y..nn..,.....ny",
       "y.n..n.,.nn..ny",
-      "y.SNn..,......y",
+      "y.nNn..,......y",
       "y....n.,......y",
       "y,,,,,,,,,,,,,D",
       "y....n.,......y",

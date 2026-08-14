@@ -289,22 +289,25 @@ const ROSTER: Record<string, NpcSpec> = {
     ],
   },
 
-  // v5 — Frozen Frontier (-2,4)
-  "-2,4:2,4": {
+  // v6 — Willowvale Village shopkeeper (moved south from the Frozen Frontier
+  // so the shop is discoverable right from spawn, next to the well).
+  "0,4:10,9": {
     id: "meet:shopkeeper-inga",
     name: "Inga the Trader",
     kind: "shopkeeper",
     lines: [
-      "Cold roads bring good custom. Press E again to see my wares, knight.",
+      "The Frontier grew too quiet for trade, so I came south. Press E again to see my wares, knight.",
     ],
   },
+
+  // v5 — Frozen Frontier (-2,4)
   "-2,4:3,4": {
     id: "meet:snow-villager",
     name: "Hilde of the Frontier",
     kind: "villager",
     lines: [
       "The road east is still frozen. Best travel by daylight.",
-      "Inga next door sells potions and hearts — she's the only merchant this far out.",
+      "Inga packed up and moved to Willowvale last month. Bad for trade up here, good for her.",
       "I heard wolves in the pines last night. Watch yourself.",
     ],
   },

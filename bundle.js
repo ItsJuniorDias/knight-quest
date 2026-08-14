@@ -38147,7 +38147,9 @@ void main() {
       //   Row 5: Q merchants flanking, lantern posts on the road
       //   Row 6: elder E at 8, P player start at 6
       //   Row 8: L well + N priestess at 9
-      //   Row 10-11: farm huts, cart $, washing lines w
+      //   Row 9: cart $ (x=4), S shopkeeper Inga (x=10, moved here from
+      //          Frozen Frontier so the shop is discoverable from spawn)
+      //   Row 10-11: farm huts, washing lines w
       map: [
         "TTTTTTTDTTTTTTT",
         "T.fg.H.,.H.gg.T",
@@ -38158,7 +38160,7 @@ void main() {
         "D,,,,,P,E,,,,,D",
         "T.f.,,,,,,,.fmT",
         "T.gg.,,L,N,.gwT",
-        "T.f.$.,,,..fggT",
+        "T.f.$.,,,.SfggT",
         "Tg.H..,,..H.f.T",
         "T.fgwU.,.gg.NgT",
         "TTTTTTTDTTTTTTT"
@@ -38536,14 +38538,15 @@ void main() {
       name: "Frozen Frontier",
       biome: "snow",
       startVisible: false,
-      // Chars: h/H frozen hut, S shopkeeper (opens shop), n snowpile,
-      // y pine tree (snow), t dead tree
+      // Chars: h/H frozen hut, n snowpile, y pine tree (snow), t dead tree.
+      // v6: Inga (S) moved to Willowvale Village so the shop is discoverable
+      // from spawn. Hilde (N) still holds the frontier alone.
       map: [
         "yyyyyyyyyyyyyyy",
         "y.nn.H.,.H.nn.y",
         "y..nn..,.....ny",
         "y.n..n.,.nn..ny",
-        "y.SNn..,......y",
+        "y.nNn..,......y",
         "y....n.,......y",
         "y,,,,,,,,,,,,,D",
         "y....n.,......y",
@@ -39977,22 +39980,24 @@ void main() {
         "Do not fail. If you fall here, another must come, and another. Break the chain, knight. Please."
       ]
     },
-    // v5 — Frozen Frontier (-2,4)
-    "-2,4:2,4": {
+    // v6 — Willowvale Village shopkeeper (moved south from the Frozen Frontier
+    // so the shop is discoverable right from spawn, next to the well).
+    "0,4:10,9": {
       id: "meet:shopkeeper-inga",
       name: "Inga the Trader",
       kind: "shopkeeper",
       lines: [
-        "Cold roads bring good custom. Press E again to see my wares, knight."
+        "The Frontier grew too quiet for trade, so I came south. Press E again to see my wares, knight."
       ]
     },
+    // v5 — Frozen Frontier (-2,4)
     "-2,4:3,4": {
       id: "meet:snow-villager",
       name: "Hilde of the Frontier",
       kind: "villager",
       lines: [
         "The road east is still frozen. Best travel by daylight.",
-        "Inga next door sells potions and hearts \u2014 she's the only merchant this far out.",
+        "Inga packed up and moved to Willowvale last month. Bad for trade up here, good for her.",
         "I heard wolves in the pines last night. Watch yourself."
       ]
     },
