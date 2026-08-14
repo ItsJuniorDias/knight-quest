@@ -33589,7 +33589,7 @@ void main() {
     antialias: true,
     // v7: hide non-neighbouring rooms + shadow casters when the player is
     // deep in the dungeon — halves scene-graph traversal cost.
-    aggressiveRoomCulling: IS_MOBILE,
+    aggressiveRoomCulling: false, /* v7.4: desligado, escondia porta de volta */
     // v7: skip animation-mixer updates for actors outside the current room.
     freezeDistantMixers: IS_MOBILE,
     // v7: adaptive perf target — the game loop drops one quality tier each
