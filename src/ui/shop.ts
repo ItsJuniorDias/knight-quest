@@ -130,7 +130,7 @@ export class Shop {
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;">
           <div>
             <div style="font-size:22px;font-weight:600;color:#f7e4a5;">Inga's Wares</div>
-            <div style="font-size:13px;color:#c9b596;margin-top:2px;">"Bought fair. Sold fairer."</div>
+            <div style="font-size:13px;color:#c9b596;margin-top:2px;font-style:italic;">"The Frontier grew too quiet. Now I trade beside the cart."</div>
           </div>
           <div id="shop-coin-badge" style="background:#5a3f22;padding:6px 12px;border-radius:8px;font-weight:600;color:#f7e4a5;">💰 0</div>
         </div>

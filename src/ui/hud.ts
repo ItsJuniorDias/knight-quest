@@ -172,7 +172,12 @@ export class Hud {
     }
     this.interactPrompt.classList.remove("hidden");
     const label = this.interactPrompt.querySelector<HTMLElement>(".lbl");
-    if (label) label.textContent = npc.kind === "ghost" ? "Listen" : "Talk";
+    if (label) {
+      label.textContent =
+        npc.kind === "ghost" ? "Listen" :
+        npc.kind === "shopkeeper" ? "Shop" :
+        "Talk";
+    }
   }
 
   /** Set the combo counter. 0 hides the badge. */

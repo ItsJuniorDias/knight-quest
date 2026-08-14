@@ -36,9 +36,9 @@
 //   X fallen weapon         i ice crystal
 //   ? potions scatter       & book + potions (alchemist workspace)
 //
-// NPC chars (v3):
+// NPC chars (v3/v6):
 //   N villager   E elder      Q merchant   J guard      Y hermit
-//   G ghost      k king-echo (Throne-room special)
+//   G ghost      k king-echo (Throne-room special)      I shopkeeper (v6)
 //
 // Doors are declared explicitly per room; the map's D cells are validated
 // against them by test/dungeon.test.mjs so the two can never drift apart.
@@ -150,8 +150,8 @@ export const ROOMS: RoomDef[] = [
     //   Row 5: Q merchants flanking, lantern posts on the road
     //   Row 6: elder E at 8, P player start at 6
     //   Row 8: L well + N priestess at 9
-    //   Row 9: cart $ (x=4), S shopkeeper Inga (x=10, moved here from
-    //          Frozen Frontier so the shop is discoverable from spawn)
+    //   Row 9: cart $ (x=4) with I shopkeeper Inga tending it (x=5, moved
+    //          here from Frozen Frontier so the shop lives beside the produce)
     //   Row 10-11: farm huts, washing lines w
     map: [
       "TTTTTTTDTTTTTTT",
@@ -163,7 +163,7 @@ export const ROOMS: RoomDef[] = [
       "D,,,,,P,E,,,,,D",
       "T.f.,,,,,,,.fmT",
       "T.gg.,,L,N,.gwT",
-      "T.f.$.,,,.SfggT",
+      "T.f.$I,,,..fggT",
       "Tg.H..,,..H.f.T",
       "T.fgwU.,.gg.NgT",
       "TTTTTTTDTTTTTTT",
@@ -710,6 +710,10 @@ export const ENEMY_CHARS: Record<string, EnemyKind> = {
 
 // v4: NPC characters. The special "k" (king echo) is a ghost with a
 // throne-room-only dialog, but the builder treats it as a "ghost" kind.
+// v6: shopkeeper moved from `S` to `I` because `S` was already reserved for
+// stairs decor in dungeon rooms (see legend at top). Using S for shopkeeper
+// spawned invisible knight-tinted shopkeepers on every staircase in the
+// dungeon, and any of them would open the shop on E.
 export const NPC_CHARS: Record<string, NpcKind> = {
   N: "villager",
   E: "elder",
@@ -718,7 +722,7 @@ export const NPC_CHARS: Record<string, NpcKind> = {
   Y: "hermit",
   G: "ghost",
   k: "ghost",       // king echo
-  S: "shopkeeper",  // v5: opens item shop UI on interact
+  I: "shopkeeper",  // v6: opens item shop UI on interact (was S in v5)
 };
 
 /** Cells the movement system treats as solid (before doors/props are applied). */

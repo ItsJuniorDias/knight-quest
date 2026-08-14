@@ -38147,8 +38147,8 @@ void main() {
       //   Row 5: Q merchants flanking, lantern posts on the road
       //   Row 6: elder E at 8, P player start at 6
       //   Row 8: L well + N priestess at 9
-      //   Row 9: cart $ (x=4), S shopkeeper Inga (x=10, moved here from
-      //          Frozen Frontier so the shop is discoverable from spawn)
+      //   Row 9: cart $ (x=4) with I shopkeeper Inga tending it (x=5, moved
+      //          here from Frozen Frontier so the shop lives beside the produce)
       //   Row 10-11: farm huts, washing lines w
       map: [
         "TTTTTTTDTTTTTTT",
@@ -38160,7 +38160,7 @@ void main() {
         "D,,,,,P,E,,,,,D",
         "T.f.,,,,,,,.fmT",
         "T.gg.,,L,N,.gwT",
-        "T.f.$.,,,.SfggT",
+        "T.f.$I,,,..fggT",
         "Tg.H..,,..H.f.T",
         "T.fgwU.,.gg.NgT",
         "TTTTTTTDTTTTTTT"
@@ -38705,8 +38705,8 @@ void main() {
     G: "ghost",
     k: "ghost",
     // king echo
-    S: "shopkeeper"
-    // v5: opens item shop UI on interact
+    I: "shopkeeper"
+    // v6: opens item shop UI on interact (was S in v5)
   };
 
   // src/systems/physics.ts
@@ -39981,13 +39981,16 @@ void main() {
       ]
     },
     // v6 — Willowvale Village shopkeeper (moved south from the Frozen Frontier
-    // so the shop is discoverable right from spawn, next to the well).
-    "0,4:10,9": {
+    // so the shop lives beside the produce cart, right in the market strip).
+    // Note: shopkeepers open the shop on first E press — this `lines` array is
+    // kept only for the story trigger id and as a safety net; the flavor text
+    // that the player actually sees is inside the shop overlay header.
+    "0,4:5,9": {
       id: "meet:shopkeeper-inga",
       name: "Inga the Trader",
       kind: "shopkeeper",
       lines: [
-        "The Frontier grew too quiet for trade, so I came south. Press E again to see my wares, knight."
+        "Welcome to my stall, knight."
       ]
     },
     // v5 — Frozen Frontier (-2,4)
@@ -40223,8 +40226,13 @@ void main() {
       this.activeNpc = bestActive;
       if (bestActive && input.interactPressed) {
         const npc = bestActive;
-        if (npc.kind === "shopkeeper" && npc.lastTalkedAt > 0) {
+        if (npc.kind === "shopkeeper") {
           sfx.npcTalk();
+          if (!this.triggeredIds.has(npc.id)) {
+            this.triggeredIds.add(npc.id);
+            this.events.onStoryTrigger(npc.id);
+          }
+          npc.lastTalkedAt = performance.now() / 1e3;
           this.events.onOpenShop();
           return;
         }
@@ -42466,7 +42474,9 @@ void main() {
       }
       this.interactPrompt.classList.remove("hidden");
       const label = this.interactPrompt.querySelector(".lbl");
-      if (label) label.textContent = npc.kind === "ghost" ? "Listen" : "Talk";
+      if (label) {
+        label.textContent = npc.kind === "ghost" ? "Listen" : npc.kind === "shopkeeper" ? "Shop" : "Talk";
+      }
     }
     /** Set the combo counter. 0 hides the badge. */
     setCombo(count) {
@@ -42748,7 +42758,7 @@ void main() {
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;">
           <div>
             <div style="font-size:22px;font-weight:600;color:#f7e4a5;">Inga's Wares</div>
-            <div style="font-size:13px;color:#c9b596;margin-top:2px;">"Bought fair. Sold fairer."</div>
+            <div style="font-size:13px;color:#c9b596;margin-top:2px;font-style:italic;">"The Frontier grew too quiet. Now I trade beside the cart."</div>
           </div>
           <div id="shop-coin-badge" style="background:#5a3f22;padding:6px 12px;border-radius:8px;font-weight:600;color:#f7e4a5;">\u{1F4B0} 0</div>
         </div>
@@ -43073,7 +43083,6 @@ void main() {
       const startDef = roomAt(...START_ROOM_KEY.split(",").map(Number));
       hud.setRoomLabel(startDef?.name ?? "Willowvale Village");
       minimap = new Minimap(hudMount);
-      shop = new Shop(uiMount);
       boss.spawn(world.bossSpawn);
       for (const [, room] of world.rooms) {
         for (const s of room.enemySpawns) {
@@ -43088,6 +43097,7 @@ void main() {
       const startTrack = startDefRoom?.biome === "village" ? "village" : startDefRoom?.biome === "forest" ? "forest" : "dungeon";
       playMusic(startTrack);
       screens.hide();
+      shop = new Shop(uiMount);
       running = true;
       window.setTimeout(() => story?.onEvent("start:game"), 700);
       story.onRoomChanged(START_ROOM_KEY);

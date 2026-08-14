@@ -209,7 +209,6 @@ async function main(): Promise<void> {
     const startDef = roomAt(...(START_ROOM_KEY.split(",").map(Number) as [number, number]));
     hud.setRoomLabel(startDef?.name ?? "Willowvale Village");
     minimap = new Minimap(hudMount);
-    shop = new Shop(uiMount);
 
     // spawn the boss (dormant) in the throne room; woken by RoomManager
     boss.spawn(world.bossSpawn);
@@ -232,6 +231,13 @@ async function main(): Promise<void> {
       startDefRoom?.biome === "forest" ? "forest" : "dungeon";
     playMusic(startTrack);
     screens.hide();
+
+    // v6 fix: build the Shop AFTER screens.hide(). Screens shares the uiMount
+    // (#ui) with the Shop, and hide() does `mount.innerHTML = ""` — which
+    // silently obliterates the shop overlay if it was created earlier. Result:
+    // the shop instance exists in memory (open_ = true, isOpen() = true) but
+    // its overlay div is detached from the DOM, so nothing appears on E press.
+    shop = new Shop(uiMount);
     running = true;
 
     // opening narrator beat, one beat later so the player can settle in

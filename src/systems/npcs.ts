@@ -290,13 +290,16 @@ const ROSTER: Record<string, NpcSpec> = {
   },
 
   // v6 — Willowvale Village shopkeeper (moved south from the Frozen Frontier
-  // so the shop is discoverable right from spawn, next to the well).
-  "0,4:10,9": {
+  // so the shop lives beside the produce cart, right in the market strip).
+  // Note: shopkeepers open the shop on first E press — this `lines` array is
+  // kept only for the story trigger id and as a safety net; the flavor text
+  // that the player actually sees is inside the shop overlay header.
+  "0,4:5,9": {
     id: "meet:shopkeeper-inga",
     name: "Inga the Trader",
     kind: "shopkeeper",
     lines: [
-      "The Frontier grew too quiet for trade, so I came south. Press E again to see my wares, knight.",
+      "Welcome to my stall, knight.",
     ],
   },
 
@@ -584,15 +587,21 @@ export class NpcSystem {
     if (bestActive && input.interactPressed) {
       const npc = bestActive;
 
-      // v5 fix: shopkeepers open the shop on any E press AFTER the intro
-      // line has been shown at least once (lastTalkedAt > 0). The old
-      // condition `lineIdx === 0` broke for shopkeepers with a single line
-      // (like Inga) because the wrap-around fired on the very first press,
-      // opening the shop simultaneously with the intro line.
-      if (npc.kind === "shopkeeper" && npc.lastTalkedAt > 0) {
+      // v6 fix: shopkeepers open the shop on the FIRST E press. Personality
+      // (the flavor line) lives inside the shop overlay header now, so we
+      // don't waste an interaction on an intro line that gets covered by
+      // the overlay two frames later. The old "press E again" pattern felt
+      // like a freeze because nobody reads the intro before pressing again.
+      if (npc.kind === "shopkeeper") {
         sfx.npcTalk();
+        // fire the trigger once so story director sees "met the shopkeeper"
+        if (!this.triggeredIds.has(npc.id)) {
+          this.triggeredIds.add(npc.id);
+          this.events.onStoryTrigger(npc.id);
+        }
+        npc.lastTalkedAt = performance.now() / 1000;
         this.events.onOpenShop();
-        return; // don't advance the dialog line this frame
+        return;
       }
 
       const line = npc.lines[npc.lineIdx];
