@@ -42254,6 +42254,24 @@ void main() {
                 chest.position.copy(c);
                 chest.rotation.y = Math.PI;
                 group.add(chest);
+                if (isGold) {
+                  chest.traverse((o) => {
+                    const mesh = o;
+                    if (!mesh.isMesh) return;
+                    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                    for (const mat of mats) {
+                      const lam = mat;
+                      if (lam.emissive) {
+                        lam.emissive = new Color(16758858);
+                        lam.emissiveIntensity = 0.55;
+                      }
+                    }
+                  });
+                  const glow = new PointLight(16762720, 1.6, 6.5, 1.8);
+                  glow.position.copy(c);
+                  glow.position.y = 1.4;
+                  group.add(glow);
+                }
                 const lid = findNode(chest, "lid");
                 runtime.chests.push({
                   root: chest,

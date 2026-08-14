@@ -1345,6 +1345,32 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
               chest.position.copy(c);
               chest.rotation.y = Math.PI;
               group.add(chest);
+
+              // v6 fix: the chest_gold model reads as "plain wooden chest"
+              // under Lambert lighting — no specular, so its gold trim looks
+              // like plain metal. Punch it up visually so players actually
+              // find the boss key: warm emissive tint on every mesh + a small
+              // amber point light above it. Only for the K chest, so regular
+              // chests remain visually distinct.
+              if (isGold) {
+                chest.traverse((o) => {
+                  const mesh = o as THREE.Mesh;
+                  if (!mesh.isMesh) return;
+                  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                  for (const mat of mats) {
+                    const lam = mat as THREE.MeshLambertMaterial;
+                    if (lam.emissive) {
+                      lam.emissive = new THREE.Color(0xffb84a);
+                      lam.emissiveIntensity = 0.55;
+                    }
+                  }
+                });
+                const glow = new THREE.PointLight(0xffc760, 1.6, 6.5, 1.8);
+                glow.position.copy(c);
+                glow.position.y = 1.4;
+                group.add(glow);
+              }
+
               const lid = findNode(chest, "lid");
               runtime.chests.push({
                 root: chest,
