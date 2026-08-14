@@ -89,26 +89,26 @@ export const RENDER = {
   camLookAhead: 3.2,
   roomSlideTime: 0.55,
 
-  // Fog: pull the far plane in on mobile so distant rooms don't cost draws.
-  fogNear: IS_MOBILE ? 26 : 34,
-  fogFar: IS_MOBILE ? 52 : 70,
+  // v7.2: qualidade visual mobile = desktop. Só otimizações INVISÍVEIS
+  // (culling, mixer freeze, sombras off, frame cap) dão o ganho de FPS.
+  fogNear: IS_MOBILE ? 30 : 34,
+  fogFar: IS_MOBILE ? 62 : 70,
 
   /** Convert glTF PBR materials to cheap Lambert (huge mobile win). */
   useLambert: true,
 
-  // Shadows: off on mobile / low-end by default. Adaptive system re-enables
-  // on desktop if fps is comfortable, or downgrades to basic shadow map on
-  // borderline devices.
+  // Sombras off no mobile — maior ganho de FPS que NÃO mexe na nitidez
+  // do personagem (é um render pass separado).
   shadows: !IS_MOBILE && !forceLow,
-  shadowMapSize: IS_MOBILE ? 512 : 1024,
-  /** Use PCFSoft (nice, expensive) or Basic (cheap, blocky). */
-  softShadows: !IS_MOBILE,
+  shadowMapSize: 1024,
+  softShadows: true,
 
-  // Fill-rate cap. Mobile GPUs choke rendering at native DPR; 1.0 is enough
-  // for a stylized flat-shaded game. Desktop keeps the crisp 2x.
-  maxPixelRatio: IS_MOBILE ? 1 : 2,
+  // Pixel ratio até 2 no mobile também. Densidade nativa é o que segura
+  // o serrilhado. O adaptive só reduz pra 1.5 se ainda travar depois de
+  // sombras/fog terem sido cortados.
+  maxPixelRatio: 2,
 
-  /** MSAA. Kept on even on mobile — the aliasing on characters was too harsh. */
+  /** MSAA on. Junto com pixelRatio 2 mantém personagens suaves. */
   antialias: true,
 
   /**

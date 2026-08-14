@@ -33571,22 +33571,23 @@ void main() {
     camLerp: 5,
     camLookAhead: 3.2,
     roomSlideTime: 0.55,
-    // v7: pull the fog in on mobile so distant rooms don't cost draws.
-    fogNear: IS_MOBILE ? 26 : 34,
-    fogFar: IS_MOBILE ? 52 : 70,
+    // v7.2: qualidade visual igual ao desktop no mobile, ganho de FPS vem
+    // só das otimizações INVISÍVEIS (culling por sala, mixers congelados,
+    // frame cap, shadows off). Nada que afete a nitidez do personagem
+    // é mexido no preset base.
+    fogNear: IS_MOBILE ? 30 : 34,
+    fogFar: IS_MOBILE ? 62 : 70,
     useLambert: true,
-    // v7: shadows off by default on mobile (soft PCF is the single biggest
-    // frame-rate killer on mobile GPUs). Adaptive tier below drops the type
-    // further if we can't hold target FPS.
+    // Sombras off no mobile — o maior ladrão de FPS, e não afeta o serrilhado
+    // dos personagens (é um pass separado de render).
     shadows: !IS_MOBILE && !__forceLow,
-    shadowMapSize: IS_MOBILE ? 512 : 1024,
-    softShadows: !IS_MOBILE,
-    // v7: fill-rate cap. Mobile GPUs choke at native DPR; 1.0 is enough for
-    // a stylized, flat-shaded game.
-    maxPixelRatio: IS_MOBILE ? 1 : 2,
-    // v7.1: antialias ligado em mobile também — personagens com aliasing
-    // ficavam serrilhados demais. MSAA custa mais no mobile mas as outras
-    // otimizações (sombras off, pixelRatio 1, culling) compensam.
+    shadowMapSize: 1024,
+    softShadows: true,
+    // Pixel ratio: até 2 no mobile também. Renderizar em resolução nativa é
+    // o que evita o aliasing forte nos sprites/skinned meshes. O adaptive
+    // reduz pra 1.5 se o device não aguentar.
+    maxPixelRatio: 2,
+    // MSAA ligado — combinado com pixelRatio alto, personagens ficam suaves.
     antialias: true,
     // v7: hide non-neighbouring rooms + shadow casters when the player is
     // deep in the dungeon — halves scene-graph traversal cost.
@@ -43487,12 +43488,14 @@ void main() {
         r.group.visible = (dxr + dyr) <= 1;
       }
     }
-    // ---- v7 adaptive perf: watch FPS, drop quality if we can't hold target ----
-    // Three tiers of degradation, applied at most once each:
-    //   tier 0: soft → basic shadow map
-    //   tier 1: shadows off entirely
-    //   tier 2: pixel ratio down to 85%
-    // Never re-upgrades — avoids oscillation.
+    // ---- v7.2 adaptive perf: mantém nitidez de personagem o quanto der ----
+    // Ordem dos tiers pensada pra o serrilhado ser o ÚLTIMO recurso:
+    //   tier 0: sombras soft → basic (perde só suavidade da sombra)
+    //   tier 1: sombras off (invisível pro personagem)
+    //   tier 2: fog puxa mais pra perto (menos draws, invisível pro personagem)
+    //   tier 3: pixelRatio de 2 → 1.5 (mínima perda de nitidez, só se ainda travar)
+    //   tier 4: pixelRatio de 1.5 → 1.25 (última carta)
+    // Nunca sobe de novo — evita oscilação.
     let __fpsFrames = 0;
     let __lastFpsCheck = performance.now();
     let __perfTier = 0;
@@ -43514,10 +43517,18 @@ void main() {
         sun.castShadow = false;
         RENDER.shadows = false;
         __perfTier = 2;
-      } else if (__perfTier === 2) {
-        const dpr = Math.max(0.75, renderer.getPixelRatio() * 0.85);
-        renderer.setPixelRatio(dpr);
+      } else if (__perfTier === 2 && scene.fog) {
+        scene.fog.near = Math.max(20, scene.fog.near - 6);
+        scene.fog.far = Math.max(40, scene.fog.far - 10);
         __perfTier = 3;
+      } else if (__perfTier === 3) {
+        const cur = renderer.getPixelRatio();
+        if (cur > 1.55) renderer.setPixelRatio(Math.min(cur, 1.5));
+        __perfTier = 4;
+      } else if (__perfTier === 4) {
+        const cur = renderer.getPixelRatio();
+        if (cur > 1.3) renderer.setPixelRatio(Math.min(cur, 1.25));
+        __perfTier = 5;
       }
     }
     // v7: raf-frame-cap. We already Math.min(dt, 0.05); on top of that we
