@@ -335,23 +335,23 @@ async function main(): Promise<void> {
   // entirely. `lastCulledKey` is a tiny memo so we only touch the graph
   // when the room actually changes.
   // ---------------------------------------------------------------------
+  // v7.3: raio 2 + sala anterior sempre visível — corrige bug de "porta
+  // de volta some" quando o jogador entra numa sala nova e olha pra trás.
   let lastCulledKey = "";
+  let prevRoomKey = "";
   function applyRoomCulling(currentKey: string): void {
     if (!world || !RENDER.aggressiveRoomCulling) return;
     if (currentKey === lastCulledKey) return;
+    prevRoomKey = lastCulledKey;
     lastCulledKey = currentKey;
     const [cx, cy] = currentKey.split(",").map(Number);
     for (const [key, r] of world.rooms) {
+      if (!r.visited) continue;
+      if (key === prevRoomKey) { r.group.visible = true; continue; }
       const [rx, ry] = key.split(",").map(Number);
       const dx = Math.abs(rx - cx);
       const dy = Math.abs(ry - cy);
-      // current + immediate neighbours (Manhattan <= 1) stay visible.
-      // Anything further gets hidden; once the player walks into it,
-      // rooms.ts flips visited/visible back on and this system re-includes it.
-      const shouldShow = r.visited && dx + dy <= 1;
-      // Only override if the room was already discovered. Never REVEAL a
-      // room that hasn't been entered yet (that's rooms.ts's job).
-      if (r.visited) r.group.visible = shouldShow;
+      r.group.visible = dx + dy <= 2;
     }
   }
 

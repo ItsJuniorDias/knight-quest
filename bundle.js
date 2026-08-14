@@ -33571,12 +33571,10 @@ void main() {
     camLerp: 5,
     camLookAhead: 3.2,
     roomSlideTime: 0.55,
-    // v7.2: qualidade visual igual ao desktop no mobile, ganho de FPS vem
-    // só das otimizações INVISÍVEIS (culling por sala, mixers congelados,
-    // frame cap, shadows off). Nada que afete a nitidez do personagem
-    // é mexido no preset base.
-    fogNear: IS_MOBILE ? 30 : 34,
-    fogFar: IS_MOBILE ? 62 : 70,
+    // v7.3: fog no mobile idêntica ao desktop — puxar pra perto escondia
+    // a porta de volta pra sala anterior no meio do nevoeiro.
+    fogNear: 34,
+    fogFar: 70,
     useLambert: true,
     // Sombras off no mobile — o maior ladrão de FPS, e não afeta o serrilhado
     // dos personagens (é um pass separado de render).
@@ -43468,24 +43466,30 @@ void main() {
       playMusic("village");
       story.onRoomChanged(START_ROOM_KEY);
     }
-    // ---- v7 mobile perf: aggressive per-room culling ----
-    // On mobile, hide any room the player isn't standing in or immediately
-    // next to. Three.js skips draw calls AND shadow contribution for hidden
-    // groups. `lastCulledKey` is a memo so we only touch the scene graph
-    // when the current room actually changes.
+    // ---- v7.3 mobile perf: room culling (bem menos agressivo agora) ----
+    // Bug reportado: com Manhattan<=1 a sala ANTERIOR sumia dependendo do
+    // layout do grid e o jogador perdia a referência da porta de volta.
+    // Correção:
+    //   • raio 2 (5x5 salas visíveis em vez de 3x3) — cobre qualquer
+    //     porta imediata mesmo com rooms conectadas via corredores curtos
+    //   • sempre mantém a sala ANTERIOR visível, custe o que custar,
+    //     mesmo que fique fora do raio (evita "voltar e não achar a porta")
     let __lastCulledKey = "";
+    let __prevRoomKey = "";
     function __applyRoomCulling(currentKey) {
       if (!world || !RENDER.aggressiveRoomCulling) return;
       if (currentKey === __lastCulledKey) return;
+      __prevRoomKey = __lastCulledKey; // sala de onde acabou de sair
       __lastCulledKey = currentKey;
       const parts = currentKey.split(",").map(Number);
       const cx = parts[0], cy = parts[1];
       for (const entry of world.rooms) {
         const key = entry[0], r = entry[1];
         if (!r.visited) continue;
+        if (key === __prevRoomKey) { r.group.visible = true; continue; }
         const p = key.split(",").map(Number);
         const dxr = Math.abs(p[0] - cx), dyr = Math.abs(p[1] - cy);
-        r.group.visible = (dxr + dyr) <= 1;
+        r.group.visible = (dxr + dyr) <= 2;
       }
     }
     // ---- v7.2 adaptive perf: mantém nitidez de personagem o quanto der ----

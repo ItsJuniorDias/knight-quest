@@ -89,10 +89,10 @@ export const RENDER = {
   camLookAhead: 3.2,
   roomSlideTime: 0.55,
 
-  // v7.2: qualidade visual mobile = desktop. Só otimizações INVISÍVEIS
-  // (culling, mixer freeze, sombras off, frame cap) dão o ganho de FPS.
-  fogNear: IS_MOBILE ? 30 : 34,
-  fogFar: IS_MOBILE ? 62 : 70,
+  // v7.3: fog no mobile idêntica ao desktop — puxar pra perto escondia a
+  // porta de volta pra sala anterior no meio do nevoeiro.
+  fogNear: 34,
+  fogFar: 70,
 
   /** Convert glTF PBR materials to cheap Lambert (huge mobile win). */
   useLambert: true,
