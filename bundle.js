@@ -39010,18 +39010,20 @@ void main() {
       biome: "dungeon",
       banner: "blue",
       startVisible: false,
+      // v7: home of the SHADOW REAVER (4) — a ghostly assassin darting from
+      // shadow to shadow between the abandoned cells.
       map: [
         "WWWWWWWWWWWWWWW",
         "W..x...A...x..W",
-        "W..1........1.W",
+        "W...........p.W",
         "W..b.......b..W",
         "W..A.......A..W",
         "W......h......W",
-        "W......G......D",
-        "W..1.......1..W",
+        "W......4......D",
+        "W......G......W",
         "W..b.A...A.b..W",
         "W...X......X..W",
-        "W..o...1...o..W",
+        "W..o.......o..W",
         "W......A......W",
         "WWWWWWWWWWWWWWW"
       ],
@@ -39036,18 +39038,19 @@ void main() {
       banner: "blue",
       startVisible: false,
       // The armory — LOADED with dropped weapons.
+      // v7: home of the IRON WARDEN (5) — a hulking guardian of the vault.
       map: [
         "WWWWWWWDWWWWWWW",
         "W..x.X...X.x..W",
-        "W.2.X.....X.2.W",
         "W...X.....X...W",
-        "W.2....X....2.W",
+        "W...X.....X...W",
+        "W......X......W",
         "W..b.X.c.X.b..W",
-        "D......G......D",
+        "D......5......D",
         "W..o.X...X.o..W",
-        "W.2...X.X...2.W",
+        "W.....X.X.....W",
         "W...X.....X...W",
-        "W..X..1.1..X..W",
+        "W..X.......X..W",
         "W..x.X...X.x..W",
         "WWWWWWWWWWWWWWW"
       ],
@@ -39188,12 +39191,13 @@ void main() {
       banner: "red",
       startVisible: false,
       // Sorcerer's den — ice crystals, potion tables, books stacked.
+      // v7: home of the BONE NECROMANCER (V). Minions and mages guard him.
       map: [
         "WWWWWWWWWWWWWWW",
         "W..s.i.G.i.s..W",
         "W...3.....3...W",
         "W....?.&.?....W",
-        "W......h......W",
+        "W......V......W",
         "W...i..c..i...W",
         "D.............W",
         "W...3.&s&s3...W",
@@ -39221,10 +39225,8 @@ void main() {
       startVisible: false,
       // Throne room — pillars, stalagmites flanking a central aisle,
       // the boss dead center, king echo ghost by the throne base.
-      // v6: added a north door leading into the COLISEUM — the seven-boss
-      // gauntlet. Stays gated while Malric lives; opens on his death.
       map: [
-        "WWWWWWWDWWWWWWW",
+        "WWWWWWWWWWWWWWW",
         "W.p.........p.W",
         "W.A.........A.W",
         "W.............W",
@@ -39235,204 +39237,6 @@ void main() {
         "W.p....A....p.W",
         "W.............W",
         "W.A....k....A.W",
-        "W.............W",
-        "WWWWWWWDWWWWWWW"
-      ],
-      doors: [
-        { dir: "s", kind: "open" },
-        { dir: "n", kind: "open" }
-      ]
-    },
-    // ============================================================
-    // v6 — THE COLISEUM: seven-boss gauntlet north of the throne
-    // ============================================================
-    // (0,-1) — Necromancer's Sanctum. Ring of pillars around the caster.
-    {
-      key: "0,-1",
-      gx: 0,
-      gy: -1,
-      name: "Necromancer's Sanctum",
-      biome: "dungeon",
-      banner: "blue",
-      startVisible: false,
-      map: [
-        "WWWWWWWDWWWWWWW",
-        "W.p.p.....p.p.W",
-        "W.............W",
-        "W..%........p.W",
-        "W....A...A....W",
-        "W......V......W",
-        "D.............D",
-        "W.....&.......W",
-        "W....A...A....W",
-        "W.p.........p.W",
-        "W...%......%..W",
-        "W.p.p.....p.p.W",
-        "WWWWWWWDWWWWWWW"
-      ],
-      doors: [
-        { dir: "n", kind: "open" },
-        { dir: "s", kind: "open" },
-        { dir: "w", kind: "open" },
-        { dir: "e", kind: "open" }
-      ]
-    },
-    // (-1,-1) — Reaver's Shadow. Pillars for teleport ambush lanes.
-    {
-      key: "-1,-1",
-      gx: -1,
-      gy: -1,
-      name: "Reaver's Shadow",
-      biome: "dungeon",
-      banner: "blue",
-      startVisible: false,
-      map: [
-        "WWWWWWWWWWWWWWW",
-        "W.p.......p...W",
-        "W...A.....A...W",
-        "W.............W",
-        "W....p...p....W",
-        "W......4......W",
-        "W.............D",
-        "W....p...p....W",
-        "W...A.....A...W",
-        "W.p.......p...W",
-        "W.............W",
-        "W.p.p.....p.p.W",
-        "WWWWWWWWWWWWWWW"
-      ],
-      doors: [{ dir: "e", kind: "open" }]
-    },
-    // (1,-1) — Warden's Vault. Weapons/anvil clutter, big central floor.
-    {
-      key: "1,-1",
-      gx: 1,
-      gy: -1,
-      name: "Warden's Vault",
-      biome: "dungeon",
-      banner: "red",
-      startVisible: false,
-      map: [
-        "WWWWWWWWWWWWWWW",
-        "W.p.X.X.X.X.p.W",
-        "W.............W",
-        "W..X.......X..W",
-        "W.............W",
-        "W......5......W",
-        "D.............W",
-        "W..X.......X..W",
-        "W.............W",
-        "W.p.X.X.X.X.p.W",
-        "W.............W",
-        "W.............W",
-        "WWWWWWWWWWWWWWW"
-      ],
-      doors: [{ dir: "w", kind: "open" }]
-    },
-    // (0,-2) — Crystal Cavern. Ice/crystal decor everywhere, tall room.
-    {
-      key: "0,-2",
-      gx: 0,
-      gy: -2,
-      name: "Crystal Cavern",
-      biome: "dungeon",
-      banner: "blue",
-      startVisible: false,
-      map: [
-        "WWWWWWWDWWWWWWW",
-        "W.i.i.....i.i.W",
-        "W...A.....A...W",
-        "W.i.........i.W",
-        "W....A...A....W",
-        "W......6......W",
-        "D.............D",
-        "W....A...A....W",
-        "W.i.........i.W",
-        "W...A.....A...W",
-        "W.i.i.....i.i.W",
-        "W.............W",
-        "WWWWWWWDWWWWWWW"
-      ],
-      doors: [
-        { dir: "n", kind: "open" },
-        { dir: "s", kind: "open" },
-        { dir: "w", kind: "open" },
-        { dir: "e", kind: "open" }
-      ]
-    },
-    // (-1,-2) — Void Serpent Pit. Dark, columns, potion residue.
-    {
-      key: "-1,-2",
-      gx: -1,
-      gy: -2,
-      name: "Void Serpent Pit",
-      biome: "dungeon",
-      banner: "blue",
-      startVisible: false,
-      map: [
-        "WWWWWWWWWWWWWWW",
-        "W.p.p.....p.p.W",
-        "W.............W",
-        "W...?.....?...W",
-        "W.............W",
-        "W......7......W",
-        "W.............D",
-        "W...?.....?...W",
-        "W.............W",
-        "W.p.p.....p.p.W",
-        "W.............W",
-        "W..?.......?..W",
-        "WWWWWWWWWWWWWWW"
-      ],
-      doors: [{ dir: "e", kind: "open" }]
-    },
-    // (1,-2) — Flame Sanctum. Braziers everywhere (books-as-brazier decor).
-    {
-      key: "1,-2",
-      gx: 1,
-      gy: -2,
-      name: "Flame Sanctum",
-      biome: "dungeon",
-      banner: "red",
-      startVisible: false,
-      map: [
-        "WWWWWWWWWWWWWWW",
-        "W.%.%.....%.%.W",
-        "W.............W",
-        "W..A.......A..W",
-        "W.............W",
-        "W......8......W",
-        "D.............W",
-        "W..A.......A..W",
-        "W.............W",
-        "W.%.%.....%.%.W",
-        "W.............W",
-        "W..%.......%..W",
-        "WWWWWWWWWWWWWWW"
-      ],
-      doors: [{ dir: "w", kind: "open" }]
-    },
-    // (0,-3) — Storm Peak. Elevated arena with pillars in the corners.
-    {
-      key: "0,-3",
-      gx: 0,
-      gy: -3,
-      name: "Storm Peak",
-      biome: "dungeon",
-      banner: "blue",
-      startVisible: false,
-      map: [
-        "WWWWWWWWWWWWWWW",
-        "W.p.........p.W",
-        "W.............W",
-        "W...A.....A...W",
-        "W.............W",
-        "W......9......W",
-        "W.............W",
-        "W...A.....A...W",
-        "W.............W",
-        "W.p.........p.W",
-        "W..A.......A..W",
         "W.............W",
         "WWWWWWWDWWWWWWW"
       ],
@@ -39452,8 +39256,8 @@ void main() {
       biome: "snow",
       startVisible: false,
       // Chars: h/H frozen hut, n snowpile, y pine tree (snow), t dead tree.
-      // v6: Inga (S) moved to Willowvale Village so the shop is discoverable
-      // from spawn. Hilde (N) still holds the frontier alone.
+      // v7: the CRYSTAL GOLEM (6) has risen from the frozen ground here.
+      // Hilde still lives in the frontier — offer her some backup if you can.
       map: [
         "yyyyyyyyyyyyyyy",
         "y.nn.H.,.H.nn.y",
@@ -39461,9 +39265,9 @@ void main() {
         "y.n..n.,.nn..ny",
         "y.nNn..,......y",
         "y....n.,......y",
-        "y,,,,,,,,,,,,,D",
+        "y,,,,,,6,,,,,,D",
         "y....n.,......y",
-        "y.n..N.,.n.n..y",
+        "y.n....,.n.n..y",
         "y..n..y.,.nn..y",
         "y.n.H.y.,....Hy",
         "y..nn..,.nn..ny",
@@ -39481,17 +39285,19 @@ void main() {
       name: "Sunflower Meadow",
       biome: "meadow",
       startVisible: false,
+      // v7: the STORM ELEMENTAL (9) circles the meadow — chain lightning
+      // and tornado warnings; keep moving.
       map: [
         "TTTTTTTTTTTTTTT",
         "T.fmf.gg.fgg.fT",
         "T.gg.f.mgg.f..T",
         "T.f.gg.f.fN.g.T",
-        "Tfmff.gg2mg.f.T",
+        "Tfmff.gg.mg.f.T",
         "T.gg.f.fmgg.fmT",
-        "D.f.mg.f..gg.fT",
+        "D.f.mg.9..gg.fT",
         "T.mg.fY.gg.f.gT",
         "Tfmff.gg.mg.f.T",
-        "T.gg.f2gg.fgg.T",
+        "T.gg.f.gg.fgg.T",
         "T.f.mgg.f.f.gmT",
         "T.gg.f.mg.gg.fT",
         "TTTTTTTTTTTTTTT"
@@ -39507,18 +39313,19 @@ void main() {
       name: "Silverpine Woods",
       biome: "pine",
       startVisible: false,
+      // v7: the FLAME DJINN (8) has set the pines ablaze — beware his fire ring.
       map: [
         "yyyyyyyyyyyyyyy",
         "y.y.g.yy.g.y.gy",
-        "y..y..R.y..1.yy",
+        "y..y..R.y....yy",
         "y.y.g.y.g.y.y.y",
         "y..y.g.y.y..-.y",
         "y.g.y..y.g.y.yy",
-        "D.y..gY..y.g..D",
+        "D.y..gY.8.y.g.D",
         "y.g.y.g.y.y..gy",
         "y.y..g.y.g.y..y",
-        "y.g.y2y.g.y..gy",
-        "y..y.g.y..y1..y",
+        "y.g.y.y.g.y..gy",
+        "y..y.g.y..y...y",
         "y.g.y..gg.y.g.y",
         "yyyyyyyyyyyyyyy"
       ],
@@ -39536,15 +39343,17 @@ void main() {
       name: "Whispering Wetlands",
       biome: "wetland",
       startVisible: false,
+      // v7: the VOID SERPENT (7) coils in the swamp — spits venom and lunges
+      // from behind the dead cypresses.
       map: [
         "ttttttttttttttt",
         "t..~~.t.~~.t..t",
         "t.t.~~..~~.t.tt",
         "t..t.~~~~..t..t",
         "t.t..t.~~t.t.tt",
-        "t.t.~~3~~..t.tt",
-        "D..~~..Y..~~..t",
-        "t.t.~~.3~~.t.tt",
+        "t.t.~~.~~..t.tt",
+        "D..~~..7..~~..t",
+        "t.t.~~..~~.t.tt",
         "t.t..t.~~.tt.tt",
         "t.tt.~~~~..t..t",
         "t..t.~~..~~.t.t",
@@ -39608,6 +39417,16 @@ void main() {
     "1": "minion",
     "2": "rogue",
     "3": "mage"
+  };
+  var BOSS_CHARS = {
+    Z: "skeleton_king",
+    V: "bone_necromancer",
+    "4": "shadow_reaver",
+    "5": "iron_warden",
+    "6": "crystal_golem",
+    "7": "void_serpent",
+    "8": "flame_djinn",
+    "9": "storm_elemental"
   };
   var NPC_CHARS = {
     N: "villager",
@@ -43728,6 +43547,11 @@ void main() {
         if (npcKind) runtime.npcSpawns.push({ kind: npcKind, tx, tz });
         const enemyKind = ENEMY_CHARS[ch];
         if (enemyKind) runtime.enemySpawns.push({ kind: enemyKind, tx, tz });
+        const bossKind = BOSS_CHARS[ch];
+        if (bossKind) {
+          runtime.hasBoss = true;
+          runtime.bossSpawns.push({ kind: bossKind, tx, tz });
+        }
       }
     }
   }

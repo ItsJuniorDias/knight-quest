@@ -1,30 +1,33 @@
-# Knight Quest — A Magic World Adventure (v6)
+# Knight Quest — A Magic World Adventure (v7)
 
-## v6: the Coliseum wing — 8 bosses
+## v7: bosses distributed across the whole world
 
-Seven new bosses live north of the Throne of Bones in a new "Coliseum"
-gauntlet. After defeating **Skeleton King Malric** you can push north
-through the newly-opened door and take them on in any order.
+Eight bosses now live in eight biome-appropriate rooms scattered across
+the map — no longer clustered in a single boss wing. Each boss room is a
+biome that already existed in the game, giving each fight its own feel.
 
-| Boss                    | Room                 | Style / signature move            |
-| ----------------------- | -------------------- | --------------------------------- |
-| Skeleton King Malric    | Throne of Bones      | Spin + jump-chop shockwave        |
-| The Bone Necromancer    | Necromancer's Sanctum| Fan of bolts + summons minions    |
-| The Shadow Reaver       | Reaver's Shadow      | Dash + triple stab + teleport     |
-| The Iron Warden         | Warden's Vault       | Tank — block + shockwave slam     |
-| The Crystal Golem       | Crystal Cavern       | Ground slam + rotating laser      |
-| The Void Serpent        | Void Serpent Pit     | Bite lunge + spit + shrinking coil|
-| The Flame Djinn         | Flame Sanctum        | Teleport + fireball + fire ring   |
-| The Storm Elemental     | Storm Peak           | Chain lightning + tornado         |
+| Boss                    | Room (coord)                | Biome     |
+| ----------------------- | --------------------------- | --------- |
+| Skeleton King Malric    | Throne of Bones (0,0)       | dungeon   |
+| The Bone Necromancer    | Sorcerer's Den (1,1)        | dungeon   |
+| The Iron Warden         | Armory (-1,2)               | dungeon   |
+| The Shadow Reaver       | Forgotten Cell (-2,2)       | dungeon   |
+| The Crystal Golem       | Frozen Frontier (-2,4)      | snow      |
+| The Storm Elemental     | Sunflower Meadow (2,4)      | meadow    |
+| The Flame Djinn         | Silverpine Woods (1,5)      | pine      |
+| The Void Serpent        | Whispering Wetlands (2,5)   | wetland   |
 
-The four Coliseum bosses at the top of the wing (Crystal Golem, Void
-Serpent, Flame Djinn, Storm Elemental) are **procedural** — their meshes
-are built from three.js primitives at spawn time, so they ship zero extra
-asset bytes but each has a unique silhouette.
+The four **procedural** bosses (Crystal Golem, Storm Elemental, Flame
+Djinn, Void Serpent) live outdoors — their meshes are built from three.js
+primitives at spawn time so they ship zero extra asset bytes. The three
+**elite skeleton** bosses (Necromancer, Warden, Reaver) reuse the KayKit
+skeleton models with per-instance tinting, larger scale, and completely
+new AI state machines.
 
-The three elite skeleton bosses (Necromancer, Reaver, Warden) reuse the
-KayKit skeleton models with per-instance tinting, a bigger scale, and
-completely new state machines.
+Each boss stays dormant until the player enters its room; on entry the
+combat gates drop and the boss awakes. Only Malric drops the Victory
+Crystal (main-quest ending); the other seven are optional side bosses
+that reward pickups when they fall.
 
 ## Original description
 

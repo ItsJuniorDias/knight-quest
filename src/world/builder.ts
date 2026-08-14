@@ -1002,6 +1002,14 @@ function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRunti
       // Enemies wandering the outdoor biomes (v5: not just dungeon anymore)
       const enemyKind = ENEMY_CHARS[ch];
       if (enemyKind) runtime.enemySpawns.push({ kind: enemyKind, tx, tz });
+      // v7: outdoor bosses (Golem in snow, Serpent in wetland, Djinn in
+      // pine, Storm in meadow). Only the marker → spawn is registered here;
+      // the ground tile itself is already rendered above by the biome pass.
+      const bossKind = BOSS_CHARS[ch];
+      if (bossKind) {
+        runtime.hasBoss = true;
+        runtime.bossSpawns.push({ kind: bossKind, tx, tz });
+      }
     }
   }
 }
