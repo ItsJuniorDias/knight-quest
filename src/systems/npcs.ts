@@ -34,12 +34,13 @@ const BLOCK_RADIUS = 0.5;  // NPCs push the player at this circle-radius
 
 // tint per kind (h, s, l) — knight body gets tinted, ghost gets special-cased
 const TINT: Record<NpcKind, [number, number, number]> = {
-  villager: [0.09, 0.55, 0.52], // warm brown
-  elder:    [0.13, 0.75, 0.55], // gold
-  merchant: [0.05, 0.7, 0.5],   // russet orange
-  guard:    [0.58, 0.55, 0.5],  // steel blue
-  hermit:   [0.68, 0.15, 0.42], // dusty purple-grey
-  ghost:    [0.55, 0.6, 0.65],  // pale cyan (overridden with transparency)
+  villager:   [0.09, 0.55, 0.52], // warm brown
+  elder:      [0.13, 0.75, 0.55], // gold
+  merchant:   [0.05, 0.7, 0.5],   // russet orange
+  guard:      [0.58, 0.55, 0.5],  // steel blue
+  hermit:     [0.68, 0.15, 0.42], // dusty purple-grey
+  ghost:      [0.55, 0.6, 0.65],  // pale cyan (overridden with transparency)
+  shopkeeper: [0.35, 0.55, 0.5],  // v5: emerald green apron
 };
 
 // ---------------------------------------------------------------------------
@@ -287,6 +288,80 @@ const ROSTER: Record<string, NpcSpec> = {
       "Do not fail. If you fall here, another must come, and another. Break the chain, knight. Please.",
     ],
   },
+
+  // v5 — Frozen Frontier (-2,4)
+  "-2,4:2,4": {
+    id: "meet:shopkeeper-inga",
+    name: "Inga the Trader",
+    kind: "shopkeeper",
+    lines: [
+      "Cold roads bring good custom. Press E again to see my wares, knight.",
+    ],
+  },
+  "-2,4:3,4": {
+    id: "meet:snow-villager",
+    name: "Hilde of the Frontier",
+    kind: "villager",
+    lines: [
+      "The road east is still frozen. Best travel by daylight.",
+      "Inga next door sells potions and hearts — she's the only merchant this far out.",
+      "I heard wolves in the pines last night. Watch yourself.",
+    ],
+  },
+  "-2,4:5,8": {
+    id: "meet:snow-child",
+    name: "Little Otto",
+    kind: "villager",
+    lines: [
+      "Are you a real knight? Mama says knights don't come here anymore.",
+      "The snow used to melt in spring. Now it never does.",
+    ],
+  },
+
+  // v5 — Sunflower Meadow (2,4)
+  "2,4:11,3": {
+    id: "meet:meadow-druid",
+    name: "Alva the Beekeeper",
+    kind: "hermit",
+    lines: [
+      "The bees keep the flowers, and the flowers keep the sun.",
+      "Bandits been thicker this year. Two of the raiders came through yesterday — watch the tall grass.",
+      "If you free the dungeon, I'll bring honey to the village. Been years.",
+    ],
+  },
+  "2,4:2,7": {
+    id: "meet:meadow-hermit",
+    name: "Old Roric",
+    kind: "hermit",
+    lines: [
+      "I used to be a soldier. Now I just watch the bees.",
+      "Take the bandit's coin. They took plenty from folk who couldn't spare it.",
+    ],
+  },
+
+  // v5 — Silverpine Woods (1,5)
+  "1,5:7,6": {
+    id: "meet:pine-hermit",
+    name: "Bern the Woodsman",
+    kind: "hermit",
+    lines: [
+      "Pines are old. Older than the dungeon. They remember the good king.",
+      "Skeletons been walking the trails. If one gets in your face, DODGE first, then strike.",
+      "Take the eastern path if you dare — the wetlands beyond are cursed.",
+    ],
+  },
+
+  // v5 — Whispering Wetlands (2,5)
+  "2,5:7,6": {
+    id: "meet:wetland-hermit",
+    name: "Vala the Marsh-Witch",
+    kind: "hermit",
+    lines: [
+      "You reek of iron. The bog does not like iron.",
+      "Mages come here to die. Their bones do not stay buried.",
+      "The frozen north hides more than merchants. Look for a shrine.",
+    ],
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -515,6 +590,11 @@ export class NpcSystem {
         this.triggeredIds.add(npc.id);
         this.events.onStoryTrigger(npc.id);
       }
+      // v5: shopkeepers also open the item shop after their intro line
+      if (npc.kind === "shopkeeper" && npc.lineIdx === 0) {
+        // lineIdx wrapped back to 0 means the intro line was just shown once
+        this.events.onOpenShop();
+      }
     }
   }
 
@@ -532,11 +612,12 @@ function prettyKind(k: NpcKind): string {
 
 function fallbackLine(k: NpcKind): string {
   switch (k) {
-    case "villager": return "Peace on you, traveler. Mind the north road.";
-    case "elder":    return "The old stones remember. Walk softly here.";
-    case "merchant": return "Trade's slow. Bring coin next time.";
-    case "guard":    return "Halt — nay, pass. You look honest enough.";
-    case "hermit":   return "Few come this far. Fewer return.";
-    case "ghost":    return "Cold... so cold. Please, cut me free.";
+    case "villager":   return "Peace on you, traveler. Mind the north road.";
+    case "elder":      return "The old stones remember. Walk softly here.";
+    case "merchant":   return "Trade's slow. Bring coin next time.";
+    case "guard":      return "Halt — nay, pass. You look honest enough.";
+    case "hermit":     return "Few come this far. Fewer return.";
+    case "ghost":      return "Cold... so cold. Please, cut me free.";
+    case "shopkeeper": return "Come warm yourself. My wares'll keep you alive.";
   }
 }

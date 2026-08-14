@@ -8,7 +8,7 @@ import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { flash, type FxSystem } from "../art/fx";
 import type { EnemyData, EnemyKind, GameEvents, PlayerData, RoomRuntime } from "../types";
-import { attackWindowOpen, damagePlayer, inSwordArc } from "./player";
+import { attackWindowOpen, damagePlayer, inSwordArc, isHeavyAttack } from "./player";
 import { dist2, moveCircle, separate } from "./physics";
 import type { RoomManager } from "./rooms";
 import type { ProjectileSystem } from "./projectiles";
@@ -254,7 +254,11 @@ export class EnemySystem {
         if (attackWindowOpen(player) && !player.attackDidHit.has(e.id) && e.state !== "awaken") {
           if (inSwordArc(player, e.pos, cfg.radius)) {
             player.attackDidHit.add(e.id);
-            this.hurtEnemy(e, PLAYER.attackDamage, player.pos, pickups);
+            // v5: heavy strike scales damage + knockback; sharpBlade adds +1
+            const isHeavy = isHeavyAttack(player);
+            let dmg = isHeavy ? PLAYER.heavyAttackDamage : PLAYER.attackDamage;
+            if (player.upgrades?.sharpBlade) dmg += 1;
+            this.hurtEnemy(e, dmg, player.pos, pickups, isHeavy ? PLAYER.heavyKnockbackMul : 1);
             this.events.onSwordHit("enemy", e.pos);
           }
         }
@@ -319,7 +323,7 @@ export class EnemySystem {
     e.stateTime = 0;
   }
 
-  hurtEnemy(e: EnemyData, dmg: number, from: THREE.Vector3, pickups: PickupSystem): void {
+  hurtEnemy(e: EnemyData, dmg: number, from: THREE.Vector3, pickups: PickupSystem, knockbackMul = 1): void {
     if (e.state === "dying") return;
     e.hp -= dmg;
     flash(e.root, performance.now() / 1000);
@@ -329,7 +333,8 @@ export class EnemySystem {
     const dx = e.pos.x - from.x;
     const dz = e.pos.z - from.z;
     const d = Math.hypot(dx, dz) || 1;
-    e.vel.set((dx / d) * 7.5, 0, (dz / d) * 7.5);
+    const kb = 7.5 * knockbackMul;
+    e.vel.set((dx / d) * kb, 0, (dz / d) * kb);
 
     if (e.hp <= 0) {
       this.setState(e, "dying");

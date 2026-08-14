@@ -354,6 +354,43 @@ function pickBy<T>(arr: readonly T[], seed: number): T {
   return arr[Math.floor(hash(seed) * arr.length) % arr.length];
 }
 
+// v5 — dedicated pools per new biome. Each biome swaps its main flora set.
+const PINE_KEYS = [
+  "poly_pine_a", "poly_pine_b",
+  "polyx_env_treepine_01", "polyx_env_treepine_02",
+  "polyx_env_treepine_03", "polyx_env_treepine_04",
+] as const;
+const SNOW_PINE_KEYS = [
+  "polyx_env_treepine_01_snow", "polyx_env_treepine_02_snow", "polyx_env_treepine_03_snow",
+] as const;
+const SNOW_TREE_KEYS = [
+  "polyx_env_tree_01_snow", "polyx_env_tree_02_snow", "polyx_env_tree_03_snow",
+  "polyx_env_tree_04_snow", "polyx_env_tree_06_snow", "polyx_env_tree_07_snow",
+  "polyx_env_tree_08_snow", "polyx_env_tree_09_snow",
+  "polyx_env_tree_010_snow", "polyx_env_tree_011_snow", "polyx_env_tree_012_snow",
+  "polyx_env_tree_013_snow", "polyx_env_tree_014_snow", "polyx_env_tree_015_snow",
+  "polyx_env_tree_016_snow", "polyx_env_tree_017_snow",
+  "polyx_env_treebirch_01_snow",
+] as const;
+const SNOW_PILE_KEYS = [
+  "polyx_env_snowpile_01", "polyx_env_snowpile_02", "polyx_env_snowpile_03",
+] as const;
+const SNOW_ROCK_KEYS = [
+  "polyx_env_rock_03_snow", "polyx_env_rock_04_snow", "polyx_env_rock_05_snow",
+] as const;
+const SNOW_HUT_KEYS = ["polyx_bld_hut_01_snow"] as const;
+const SNOW_HILL_KEYS = [
+  "polyx_env_hillsnow_01", "polyx_env_hillsnow_02",
+  "polyx_env_hillsnow_03", "polyx_env_hillsnow_04",
+] as const;
+
+// wetlands — dead trees + lily pads + reeds are the vibe
+const DEAD_ANY_KEYS = [
+  "poly_tree_dead",
+  "polyx_env_treedead_01", "polyx_env_treedead_02",
+  "polyx_env_treedead_02_snow",
+] as const;
+
 /**
  * Recolor every mesh material under `root` with the given HSL. Builds a
  * FRESH MeshLambertMaterial per mesh instead of cloning the source
@@ -396,15 +433,41 @@ function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number
   floor.rotation.y = Math.floor(hash(tx, tz, def.gx, 3) * 4) * (Math.PI / 2);
 
   // Per-tile HSL — both grass AND dirt get an explicit fresh material so no
-  // asset can render as an unexpected black tile. Grass gets a jittered
-  // green, dirt gets a warm brown, both bright enough to always read.
+  // asset can render as an unexpected black tile. v5: ground tint changes
+  // with the biome so each new zone has a distinct floor color.
+  const biome = def.biome;
   if (dirt) {
     const h = 0.08 + (hash(tx, tz, def.gx, 15) - 0.5) * 0.02; // rich brown
     const s = 0.42 + hash(tx, tz, def.gx, 16) * 0.10;
     const l = 0.34 + hash(tx, tz, def.gx, 17) * 0.06;
     tintGround(floor, h, s, l);
+  } else if (biome === "snow") {
+    // pale blue-white snow ground
+    const h = 0.58 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03;
+    const s = 0.05 + hash(tx, tz, def.gx, 13) * 0.05;
+    const l = 0.85 + hash(tx, tz, def.gx, 14) * 0.06;
+    tintGround(floor, h, s, l);
+  } else if (biome === "wetland") {
+    // murky green-brown swamp
+    const h = 0.24 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03;
+    const s = 0.38 + hash(tx, tz, def.gx, 13) * 0.10;
+    const l = 0.28 + hash(tx, tz, def.gx, 14) * 0.06;
+    tintGround(floor, h, s, l);
+  } else if (biome === "meadow") {
+    // sun-lit yellow-green with more golden warmth
+    const h = 0.20 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.02;
+    const s = 0.65 + hash(tx, tz, def.gx, 13) * 0.10;
+    const l = 0.58 + hash(tx, tz, def.gx, 14) * 0.10;
+    tintGround(floor, h, s, l);
+  } else if (biome === "pine") {
+    // deep forest green with slight blue undertone
+    const h = 0.31 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.02;
+    const s = 0.50 + hash(tx, tz, def.gx, 13) * 0.10;
+    const l = 0.38 + hash(tx, tz, def.gx, 14) * 0.08;
+    tintGround(floor, h, s, l);
   } else {
-    const h = 0.27 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03; // yellow-green ↔ leaf
+    // Default forest / village grass — yellow-green ↔ leaf
+    const h = 0.27 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03;
     const s = 0.55 + hash(tx, tz, def.gx, 13) * 0.10;
     const l = 0.48 + hash(tx, tz, def.gx, 14) * 0.10;
     tintGround(floor, h, s, l);
@@ -467,7 +530,16 @@ function addGrassGround(group: THREE.Group, def: RoomDef, tx: number, tz: number
  */
 function addGrassBasePlane(def: RoomDef, group: THREE.Group): void {
   const geom = new THREE.PlaneGeometry(ROOM_W * TILE + 2, ROOM_H * TILE + 2);
-  const mat = new THREE.MeshLambertMaterial({ color: COLORS.grassDark });
+  // v5: base plane color matches biome so gaps between tiles never expose
+  // the wrong palette (snow biome shouldn't show green underneath, etc).
+  let baseColor: number = COLORS.grassDark;
+  switch (def.biome) {
+    case "snow":    baseColor = 0xd9e6ee; break; // pale blue-white
+    case "wetland": baseColor = 0x3d5a3a; break; // murky green
+    case "meadow":  baseColor = 0x9bb45c; break; // sun-lit yellow-green
+    case "pine":    baseColor = 0x2f4a35; break; // deep forest green
+  }
+  const mat = new THREE.MeshLambertMaterial({ color: baseColor });
   const mesh = new THREE.Mesh(geom, mat);
   mesh.rotation.x = -Math.PI / 2;
   mesh.receiveShadow = true;
@@ -668,6 +740,46 @@ function addTreeStump(group: THREE.Group, c: THREE.Vector3, seed: number): void 
   }
 }
 
+// v5: pine tree — plain and snowy variants (biome picks which pool)
+function addPineTree(group: THREE.Group, c: THREE.Vector3, seed: number, snowy: boolean): void {
+  const key = pickBy(snowy ? SNOW_PINE_KEYS : PINE_KEYS, seed);
+  const t = spawn(key, { castShadow: true, receiveShadow: false });
+  t.position.set(c.x + (hash(seed, 1) - 0.5) * 0.6, 0, c.z + (hash(seed, 2) - 0.5) * 0.6);
+  t.rotation.y = hash(seed, 3) * Math.PI * 2;
+  t.scale.multiplyScalar(0.9 + hash(seed, 4) * 0.4);
+  group.add(t);
+}
+
+// v5: dead / cypress tree (for wetlands, graveyard vibes)
+function addDeadTree(group: THREE.Group, c: THREE.Vector3, seed: number): void {
+  const t = spawn(pickBy(DEAD_ANY_KEYS, seed), { castShadow: true, receiveShadow: false });
+  t.position.set(c.x + (hash(seed, 1) - 0.5) * 0.6, 0, c.z + (hash(seed, 2) - 0.5) * 0.6);
+  t.rotation.y = hash(seed, 3) * Math.PI * 2;
+  t.scale.multiplyScalar(0.85 + hash(seed, 4) * 0.35);
+  group.add(t);
+}
+
+// v5: snowpile (walkable snow drift decoration)
+function addSnowPile(group: THREE.Group, c: THREE.Vector3, seed: number): void {
+  const p = spawn(pickBy(SNOW_PILE_KEYS, seed), { castShadow: false, receiveShadow: true });
+  p.position.copy(c);
+  p.rotation.y = hash(seed, 2) * Math.PI * 2;
+  p.scale.multiplyScalar(0.7 + hash(seed, 3) * 0.4);
+  group.add(p);
+}
+
+// v5: snow hut (single-piece, solid — used for Frozen Frontier huts)
+function addSnowHut(group: THREE.Group, c: THREE.Vector3, seed: number): void {
+  const h = spawn(pickBy(SNOW_HUT_KEYS, seed), { castShadow: true, receiveShadow: true });
+  h.position.copy(c);
+  h.rotation.y = Math.floor(hash(seed, 2) * 4) * (Math.PI / 2);
+  group.add(h);
+  // A snow pile decor next to the door
+  if (hash(seed, 5) < 0.7) {
+    addSnowPile(group, new THREE.Vector3(c.x + 1.3, 0, c.z + 1.1), seed + 3);
+  }
+}
+
 function addTreeLog(group: THREE.Group, c: THREE.Vector3, seed: number): void {
   const l = spawn(hash(seed, 1) < 0.5 ? "poly_tree_log" : "polyx_env_treelog_01", {
     castShadow: true, receiveShadow: true,
@@ -797,12 +909,13 @@ function buildVillageFence(def: RoomDef, group: THREE.Group): void {
 }
 
 /**
- * Build a "forest" biome tile: same grass ground as the village, plus much
- * denser foliage and rocks. Trees are treated as solid unless explicitly
- * placed as background — we mark trees at the edge as walls so the player
- * doesn't wander into the void.
+ * v5: outdoor content — same base logic as forest (grass ground + prop
+ * scatter), but with biome-specific pools for pine/dead/snow tiles.
+ * Called for `forest`, `snow`, `wetland`, `meadow`, `pine` biomes.
  */
 function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRuntime): void {
+  const biome = def.biome;
+  const snowy = biome === "snow";
   for (let tz = 0; tz < ROOM_H; tz++) {
     for (let tx = 0; tx < ROOM_W; tx++) {
       const ch = charAt(def, tx, tz);
@@ -813,11 +926,34 @@ function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRunti
           addTree(group, c.x, c.z, tx * 13 + tz * 3 + def.gx * 91);
           runtime.solid[tz][tx] = true;
           break;
+        case "y":
+          // v5: pine tree — snow-tinted if the biome is snowy
+          addPineTree(group, c, tx * 13 + tz * 5 + def.gy, snowy);
+          runtime.solid[tz][tx] = true;
+          break;
+        case "t":
+          // v5: dead / cypress tree — wetlands & meadow edges
+          addDeadTree(group, c, tx * 7 + tz * 11 + def.gx * 3);
+          runtime.solid[tz][tx] = true;
+          break;
+        case "n":
+          // v5: snow pile (walkable snow drift)
+          addSnowPile(group, c, tx * 5 + tz * 13);
+          break;
+        case "H":
+          // v5: house / snow hut depending on biome
+          if (snowy) {
+            addSnowHut(group, c, tx * 41 + tz * 7);
+          } else {
+            addHouse(group, c, tx * 41 + tz * 7);
+          }
+          runtime.solid[tz][tx] = true;
+          break;
         case "f":
           {
-            const flower = spawn(hash(tx, tz, 0, 5) < 0.5 ? "poly_flower_a" : "poly_flower_b");
+            const flower = spawn(pickBy(FLOWER_KEYS, tx * 3 + tz * 5));
             flower.position.copy(c);
-            flower.scale.multiplyScalar(2);
+            flower.scale.multiplyScalar(1.5 + hash(tx, tz, 0, 6) * 0.5);
             group.add(flower);
           }
           break;
@@ -831,7 +967,7 @@ function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRunti
           break;
         case "R":
           {
-            const rock = spawn(pickBy(ROCK_KEYS, tx * 3 + tz), {
+            const rock = spawn(pickBy(snowy ? SNOW_ROCK_KEYS : ROCK_KEYS, tx * 3 + tz), {
               castShadow: true, receiveShadow: true,
             });
             rock.position.copy(c);
@@ -840,7 +976,18 @@ function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRunti
             runtime.solid[tz][tx] = true;
           }
           break;
-        // ------- v4: decorative chars -------
+        case "~":
+          {
+            // v5: lily pads or shallow water — no solidity, decorative
+            const w = spawn(pickBy(LILY_KEYS, tx * 3 + tz));
+            w.position.copy(c);
+            w.rotation.y = hash(tx, tz, def.gx, 51) * Math.PI * 2;
+            w.scale.multiplyScalar(1.2 + hash(tx, tz, def.gx, 52) * 0.5);
+            group.add(w);
+          }
+          break;
+        case ",": /* dirt path — floor already rendered */ break;
+        // ------- v4/v5 decorative chars -------
         case "l": addLanternPost(group, c, tx * 7 + tz * 11); break;
         case "m": addGroundMound(group, c, tx * 5 + tz * 23); break;
         case "+": addTreeStump(group, c, tx * 11 + tz * 7); break;
@@ -848,9 +995,12 @@ function buildForestContent(def: RoomDef, group: THREE.Group, runtime: RoomRunti
         case "*": addMushroomCluster(group, c, tx * 7 + tz * 3); break;
         case "M": addHillDecor(group, c, tx * 17 + tz * 19); runtime.solid[tz][tx] = true; break;
       }
-      // NPCs in forest tiles (hermit, wanderers)
+      // NPCs in outdoor tiles (hermit, villagers, shopkeeper, wanderers)
       const npcKind = NPC_CHARS[ch];
       if (npcKind) runtime.npcSpawns.push({ kind: npcKind, tx, tz });
+      // Enemies wandering the outdoor biomes (v5: not just dungeon anymore)
+      const enemyKind = ENEMY_CHARS[ch];
+      if (enemyKind) runtime.enemySpawns.push({ kind: enemyKind, tx, tz });
     }
   }
 }
@@ -1001,7 +1151,16 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       buildVillageFence(def, group);
       const start = buildVillageContent(def, group, runtime);
       if (start) playerStart = start;
-    } else if (def.biome === "forest") {
+    } else if (
+      def.biome === "forest" ||
+      def.biome === "snow" ||
+      def.biome === "wetland" ||
+      def.biome === "meadow" ||
+      def.biome === "pine"
+    ) {
+      // v5: all outdoor biomes share the base builder — biome-specific look
+      // comes from ground tint (addGrassGround reads biome) + prop pools
+      // that swap when the biome is snowy/wetland/etc.
       addGrassBasePlane(def, group);
       buildForestContent(def, group, runtime);
     } else {

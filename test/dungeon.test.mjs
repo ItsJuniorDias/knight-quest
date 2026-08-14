@@ -32,7 +32,7 @@ function assertEq(a, b, msg) {
 }
 
 console.log("\n[dungeon layout]");
-assertEq(ROOMS.length, 15, "15 rooms total (village + forest + dungeon)");
+assertEq(ROOMS.length, 19, "19 rooms total (7 biomes with new snow/meadow/pine/wetland)");
 assertEq(START_ROOM_KEY, "0,4", "start room is village 0,4");
 assertEq(BOSS_ROOM_KEY, "0,0", "boss room is 0,0");
 // Every room must be 15 wide x 13 tall for the new ROOM_W/ROOM_H

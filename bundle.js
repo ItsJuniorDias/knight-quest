@@ -33586,6 +33586,17 @@ void main() {
     attackDamage: 1,
     comboWindow: 0.26,
     // seconds after a swing where a 2nd press chains the combo
+    // v5: heavy / charged attack — hold attack for `chargeTime` then release
+    chargeTime: 0.55,
+    // seconds of hold before the strike is "ready"
+    heavyAttackDuration: 0.72,
+    // longer swing, sells the weight
+    heavyAttackHitStart: 0.22,
+    heavyAttackHitEnd: 0.52,
+    heavyAttackDamage: 3,
+    // vs light=1 (or 2 with sharpBlade upgrade)
+    heavyKnockbackMul: 2,
+    // multiplies enemy knockback
     rollDuration: 0.46,
     rollSpeed: 13.5,
     rollCooldown: 0.22,
@@ -34232,6 +34243,7 @@ void main() {
       moveY: 0,
       attackPressed: false,
       attackBuffered: 0,
+      attackHeld: false,
       rollPressed: false,
       blockHeld: false,
       interactPressed: false
@@ -34294,6 +34306,7 @@ void main() {
     if (keys.has("KeyS") || keys.has("ArrowDown")) y += 1;
     applyStick(input, x, y);
     input.blockHeld = keys.has("ShiftLeft") || keys.has("ShiftRight");
+    input.attackHeld = keys.has("KeyJ") || keys.has("KeyZ") || keys.has("Space");
   }
 
   // node_modules/three/examples/jsm/utils/BufferGeometryUtils.js
@@ -37803,7 +37816,57 @@ void main() {
     "wep_sheild_03",
     "wep_staff_01",
     "wep_staff_02",
-    "wep_sword_01"
+    "wep_sword_01",
+    // v5: snow variants — a whole snow biome's worth of props. They still
+    // sample the same green atlas by default; assets that reference the
+    // snow-tinted atlas get it applied via applySnowMaterial at spawn time
+    // (see isSnowKey below). Assets tagged _snow render with the snow atlas.
+    "bld_fence_01_snow",
+    "bld_fence_02_snow",
+    "bld_hut_01_snow",
+    "bld_market_snow_01",
+    "bld_village_snowsheet_01",
+    "env_dirtmound_01_snow",
+    "env_hedge_01_snow",
+    "env_hillsnow_01",
+    "env_hillsnow_02",
+    "env_hillsnow_03",
+    "env_hillsnow_04",
+    "env_road_corner_01_snow",
+    "env_road_cross_01_snow",
+    "env_road_straight_01_snow",
+    "env_road_straight_02_snow",
+    "env_road_t_01_snow",
+    "env_rock_03_snow",
+    "env_rock_04_snow",
+    "env_rock_05_snow",
+    "env_snowpile_01",
+    "env_snowpile_02",
+    "env_snowpile_03",
+    "env_stream_corner_01_snow",
+    "env_stream_straight_01_snow",
+    "env_stream_straight_02_snow",
+    "env_treebirch_01_snow",
+    "env_treedead_02_snow",
+    "env_treepine_01_snow",
+    "env_treepine_02_snow",
+    "env_treepine_03_snow",
+    "env_tree_01_snow",
+    "env_tree_02_snow",
+    "env_tree_03_snow",
+    "env_tree_04_snow",
+    "env_tree_06_snow",
+    "env_tree_07_snow",
+    "env_tree_08_snow",
+    "env_tree_09_snow",
+    "env_tree_010_snow",
+    "env_tree_011_snow",
+    "env_tree_012_snow",
+    "env_tree_013_snow",
+    "env_tree_014_snow",
+    "env_tree_015_snow",
+    "env_tree_016_snow",
+    "env_tree_017_snow"
   ];
   var MANIFEST_POLYGON_OBJ = {};
   for (const name of MANIFEST_POLYGON_OBJ_LIST) {
@@ -37821,6 +37884,8 @@ void main() {
   var cache = /* @__PURE__ */ new Map();
   var atlasTexture = null;
   var atlasMaterial = null;
+  var atlasSnowTexture = null;
+  var atlasSnowMaterial = null;
   function convertMaterials(root) {
     if (!RENDER.useLambert) return;
     root.traverse((obj) => {
@@ -37841,13 +37906,17 @@ void main() {
       mesh.material = Array.isArray(mesh.material) ? mesh.material.map(convert) : convert(mesh.material);
     });
   }
-  function applyAtlasMaterial(root) {
-    if (!atlasMaterial) return;
+  function applyAtlasMaterial(root, useSnow) {
+    const mat = useSnow ? atlasSnowMaterial : atlasMaterial;
+    if (!mat) return;
     root.traverse((obj) => {
       const mesh = obj;
       if (!mesh.isMesh) return;
-      mesh.material = atlasMaterial;
+      mesh.material = mat;
     });
+  }
+  function isSnowKey(key) {
+    return key.includes("_snow") || key.includes("snowpile") || key.includes("hillsnow");
   }
   function enableShadows(root, cast, receive) {
     root.traverse((obj) => {
@@ -37861,9 +37930,9 @@ void main() {
     });
   }
   async function loadAtlas() {
-    return new Promise((resolve2, reject) => {
+    const loadTex = (url) => new Promise((resolve2, reject) => {
       new TextureLoader().load(
-        "assets/polygon-obj/atlas.png",
+        url,
         (tex) => {
           tex.colorSpace = SRGBColorSpace;
           tex.magFilter = NearestFilter;
@@ -37871,18 +37940,27 @@ void main() {
           tex.generateMipmaps = true;
           tex.wrapS = ClampToEdgeWrapping;
           tex.wrapT = ClampToEdgeWrapping;
-          atlasTexture = tex;
-          atlasMaterial = new MeshLambertMaterial({
-            map: tex,
-            side: DoubleSide,
-            // some pack meshes have single-sided flags flipped
-            color: 16777215
-          });
-          resolve2();
+          resolve2(tex);
         },
         void 0,
         (err) => reject(err)
       );
+    });
+    const [green, snow] = await Promise.all([
+      loadTex("assets/polygon-obj/atlas.png"),
+      loadTex("assets/polygon-obj/atlas_snow.png")
+    ]);
+    atlasTexture = green;
+    atlasSnowTexture = snow;
+    atlasMaterial = new MeshLambertMaterial({
+      map: green,
+      side: DoubleSide,
+      color: 16777215
+    });
+    atlasSnowMaterial = new MeshLambertMaterial({
+      map: snow,
+      side: DoubleSide,
+      color: 16777215
     });
   }
   async function loadAll(onProgress) {
@@ -37905,7 +37983,7 @@ void main() {
       onProgress(done, total, url.split("/").pop() ?? url);
       try {
         const grp = await objLoader.loadAsync(url);
-        applyAtlasMaterial(grp);
+        applyAtlasMaterial(grp, isSnowKey(key));
         cache.set(key, { scene: grp, animations: [] });
       } catch (e) {
         console.warn(`Failed to load ${url}:`, e);
@@ -38003,6 +38081,7 @@ void main() {
       name: "Southern Woods",
       biome: "forest",
       startVisible: false,
+      // v5: eastern door → Pine Woods, and 2 skeletons stalking the trees.
       map: [
         "TTTTTTTDTTTTTTT",
         "T.gggT.+*....TT",
@@ -38010,15 +38089,18 @@ void main() {
         "T.gggT.mfggg.TT",
         "T.f.**gT.....RT",
         "Tgg.g.fY..gg..T",
-        "T.f.gg.g.g.f..T",
+        "T.f.gg1g.g.f..D",
         "T.-g.f..g.f.g.T",
         "Tg..gg.gg.+gg.T",
-        "T.fg.f..f.gg.mT",
+        "T.fg.f2.f.gg.mT",
         "TT..gg.g.*f..TT",
         "TT.f.-gg.gg..TT",
         "TTTTTTTTTTTTTTT"
       ],
-      doors: [{ dir: "n", kind: "open" }]
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "e", kind: "open" }
+      ]
     },
     // ============================================================
     // ROW gy=4 — the village hub (start) + adjacent groves
@@ -38030,22 +38112,26 @@ void main() {
       name: "Willowvale Grove",
       biome: "forest",
       startVisible: false,
+      // v5: added a west door → Frozen Frontier, and 3 wandering skeletons.
       map: [
         "TTTTTTTTTTTTTTT",
         "T.fgg.f.gg.fg.T",
-        "Tg.f.gg.f.+g.gT",
+        "Tg.f.gg1f.+g.gT",
         "T.gg.f.gg.f.g.T",
         "T.f.-ggN.g.f.gT",
         "Tgg.f.gg.f.gg.T",
-        "T.g..g*f.gg.f.D",
+        "D.g..g*f.gg.f.D",
         "Tf.gg.f.gg.g.gT",
         "T.g.f.gg.gN.g.T",
-        "Tg.gg.f.mgg.g.T",
+        "Tg.gg2f.mgg.g.T",
         "T.f.gg.gg..f.gT",
-        "Tg..f..g.gg-f.T",
+        "Tg..f1.g.gg-f.T",
         "TTTTTTTTTTTTTTT"
       ],
-      doors: [{ dir: "e", kind: "open" }]
+      doors: [
+        { dir: "e", kind: "open" },
+        { dir: "w", kind: "open" }
+      ]
     },
     {
       key: "0,4",
@@ -38091,22 +38177,26 @@ void main() {
       name: "Old Orchard",
       biome: "forest",
       startVisible: false,
+      // v5: eastern door → Sunflower Meadow, and 2 rogues raiding the orchard.
       map: [
         "TTTTTTTTTTTTTTT",
         "T.gg.f.g.fg.g.T",
-        "Tf..gg.f.-g.f.T",
+        "Tf..gg2f.-g.f.T",
         "T.gg.f.gg.fN.gT",
         "T.f.m.gg.f.gg.T",
         "Tgg.f.g..gg.f.T",
-        "D.g..gg.f..g.gT",
+        "D.g..gg.f..g.gD",
         "Tf.gg.f.gg.f-.T",
         "T.gN.f..gg.g.gT",
         "Tg.gg.gg..f.f.T",
-        "T.f.gg.g.gg+g.T",
+        "T.f.gg2g.gg+g.T",
         "Tg..f*.gg.mf..T",
         "TTTTTTTTTTTTTTT"
       ],
-      doors: [{ dir: "w", kind: "open" }]
+      doors: [
+        { dir: "w", kind: "open" },
+        { dir: "e", kind: "open" }
+      ]
     },
     // ============================================================
     // ROW gy=3 — dungeon entrance corridor + side chambers
@@ -38432,6 +38522,120 @@ void main() {
         "WWWWWWWDWWWWWWW"
       ],
       doors: [{ dir: "s", kind: "open" }]
+    },
+    // ============================================================
+    // v5 — NEW BIOMES on the outer ring of the map
+    // ============================================================
+    // ---- SNOW FRONTIER (west of Grove, gx=-2 gy=4) ----------------
+    // Frozen little settlement with a merchant who opens a real shop.
+    // Snow atlas paints everything winter. One skeleton wandering outside.
+    {
+      key: "-2,4",
+      gx: -2,
+      gy: 4,
+      name: "Frozen Frontier",
+      biome: "snow",
+      startVisible: false,
+      // Chars: h/H frozen hut, S shopkeeper (opens shop), n snowpile,
+      // y pine tree (snow), t dead tree
+      map: [
+        "yyyyyyyyyyyyyyy",
+        "y.nn.H.,.H.nn.y",
+        "y..nn..,.....ny",
+        "y.n..n.,.nn..ny",
+        "y.SNn..,......y",
+        "y....n.,......y",
+        "y,,,,,,,,,,,,,D",
+        "y....n.,......y",
+        "y.n..N.,.n.n..y",
+        "y..n..y.,.nn..y",
+        "y.n.H.y.,....Hy",
+        "y..nn..,.nn..ny",
+        "yyyyyyyyyyyyyyy"
+      ],
+      doors: [{ dir: "e", kind: "open" }]
+    },
+    // ---- SUNFLOWER MEADOW (east of Orchard, gx=2 gy=4) -------------
+    // Rolling flower fields, bandit rogues raiding a lonely traveler.
+    // Bright open biome with tall grass and mounds.
+    {
+      key: "2,4",
+      gx: 2,
+      gy: 4,
+      name: "Sunflower Meadow",
+      biome: "meadow",
+      startVisible: false,
+      map: [
+        "TTTTTTTTTTTTTTT",
+        "T.fmf.gg.fgg.fT",
+        "T.gg.f.mgg.f..T",
+        "T.f.gg.f.fN.g.T",
+        "Tfmff.gg2mg.f.T",
+        "T.gg.f.fmgg.fmT",
+        "D.f.mg.f..gg.fT",
+        "T.mg.fY.gg.f.gT",
+        "Tfmff.gg.mg.f.T",
+        "T.gg.f2gg.fgg.T",
+        "T.f.mgg.f.f.gmT",
+        "T.gg.f.mg.gg.fT",
+        "TTTTTTTTTTTTTTT"
+      ],
+      doors: [{ dir: "w", kind: "open" }]
+    },
+    // ---- PINE WOODS (east of Southern Woods, gx=1 gy=5) ------------
+    // Dense pine forest with skeleton warband ambush.
+    {
+      key: "1,5",
+      gx: 1,
+      gy: 5,
+      name: "Silverpine Woods",
+      biome: "pine",
+      startVisible: false,
+      map: [
+        "yyyyyyyyyyyyyyy",
+        "y.y.g.yy.g.y.gy",
+        "y..y..R.y..1.yy",
+        "y.y.g.y.g.y.y.y",
+        "y..y.g.y.y..-.y",
+        "y.g.y..y.g.y.yy",
+        "D.y..gY..y.g..D",
+        "y.g.y.g.y.y..gy",
+        "y.y..g.y.g.y..y",
+        "y.g.y2y.g.y..gy",
+        "y..y.g.y..y1..y",
+        "y.g.y..gg.y.g.y",
+        "yyyyyyyyyyyyyyy"
+      ],
+      doors: [
+        { dir: "w", kind: "open" },
+        { dir: "e", kind: "open" }
+      ]
+    },
+    // ---- WETLANDS (east of Pine Woods, gx=2 gy=5) ------------------
+    // Cursed swamp — lily pads, dead trees, mist. Mages ambush travelers.
+    {
+      key: "2,5",
+      gx: 2,
+      gy: 5,
+      name: "Whispering Wetlands",
+      biome: "wetland",
+      startVisible: false,
+      map: [
+        "ttttttttttttttt",
+        "t..~~.t.~~.t..t",
+        "t.t.~~..~~.t.tt",
+        "t..t.~~~~..t..t",
+        "t.t..t.~~t.t.tt",
+        "t.t.~~3~~..t.tt",
+        "D..~~..Y..~~..t",
+        "t.t.~~.3~~.t.tt",
+        "t.t..t.~~.tt.tt",
+        "t.tt.~~~~..t..t",
+        "t..t.~~..~~.t.t",
+        "t.t..t.~~.t..tt",
+        "ttttttttttttttt"
+      ],
+      doors: [{ dir: "w", kind: "open" }]
     }
   ];
   var START_ROOM_KEY = "0,4";
@@ -38496,8 +38700,10 @@ void main() {
     J: "guard",
     Y: "hermit",
     G: "ghost",
-    k: "ghost"
+    k: "ghost",
     // king echo
+    S: "shopkeeper"
+    // v5: opens item shop UI on interact
   };
 
   // src/systems/physics.ts
@@ -38603,7 +38809,13 @@ void main() {
       coins: 0,
       hasBossKey: false,
       comboCount: 0,
-      comboTimer: 0
+      comboTimer: 0,
+      // v5: shop-driven fields
+      hp: PLAYER.maxHalfHearts / 2,
+      // start full in whole hearts
+      maxHp: PLAYER.maxHalfHearts / 2,
+      chargeTime: 0,
+      chargeReady: false
     };
   }
   var ATTACK_CLIPS = [
@@ -38659,6 +38871,24 @@ void main() {
         }
         p.state = moving ? "run" : "idle";
         play(p.anim, moving ? ["Running_A", "Walking_A"] : ["Idle"], { fade: 0.18 });
+        if (!frozen && input.attackHeld && !input.attackPressed && p.chargeTime === 0) {
+          p.chargeTime = 1e-3;
+        }
+        if (input.attackHeld && p.chargeTime > 0) {
+          p.chargeTime += dt;
+          if (p.chargeTime >= PLAYER.chargeTime && !p.chargeReady) {
+            p.chargeReady = true;
+            sfx.hitBlocked();
+          }
+        }
+        if (!input.attackHeld && p.chargeTime > 0) {
+          if (p.chargeReady) {
+            startHeavyAttack(p);
+            events.onSwordSwing(0);
+          }
+          p.chargeTime = 0;
+          p.chargeReady = false;
+        }
         if (!frozen && (input.attackPressed || input.attackBuffered > 0)) {
           startAttack(p, 0);
           input.attackBuffered = 0;
@@ -38701,6 +38931,18 @@ void main() {
             p.stateTime = 0;
             play(p.anim, ["Idle"], { fade: 0.14 });
           }
+        }
+        break;
+      }
+      case "heavyAttack": {
+        p.vel.x = p.facing.x * 3.4;
+        p.vel.z = p.facing.z * 3.4;
+        moveCircle(p.pos, p.vel, dt, PLAYER.radius, room, barrels);
+        roomMgr.clampAtClosedDoors(p.pos, PLAYER.radius);
+        if (p.stateTime >= PLAYER.heavyAttackDuration) {
+          p.state = "idle";
+          p.stateTime = 0;
+          play(p.anim, ["Idle"], { fade: 0.16 });
         }
         break;
       }
@@ -38756,8 +38998,27 @@ void main() {
     play(p.anim, ["Dodge_Forward"], { loop: false, force: true, timeScale: dur / PLAYER.rollDuration, fade: 0.05 });
     sfx.roll();
   }
+  function startHeavyAttack(p) {
+    p.state = "heavyAttack";
+    p.stateTime = 0;
+    p.attackDidHit.clear();
+    const clip = ["1H_Melee_Attack_Chop", "1H_Melee_Attack_Stab"];
+    const dur = clipDuration(p.anim, clip, 0.9);
+    play(p.anim, clip, { loop: false, force: true, timeScale: dur / PLAYER.heavyAttackDuration, fade: 0.08 });
+    sfx.swing();
+    sfx.bossRoar();
+  }
   function attackWindowOpen(p) {
-    return p.state === "attack" && p.stateTime >= PLAYER.attackHitStart && p.stateTime <= PLAYER.attackHitEnd;
+    if (p.state === "attack") {
+      return p.stateTime >= PLAYER.attackHitStart && p.stateTime <= PLAYER.attackHitEnd;
+    }
+    if (p.state === "heavyAttack") {
+      return p.stateTime >= PLAYER.heavyAttackHitStart && p.stateTime <= PLAYER.heavyAttackHitEnd;
+    }
+    return false;
+  }
+  function isHeavyAttack(p) {
+    return p.state === "heavyAttack";
   }
   function inSwordArc(p, target, targetRadius) {
     const dx = target.x - p.pos.x;
@@ -38784,7 +39045,14 @@ void main() {
         return { died: false, blocked: true };
       }
     }
-    p.halfHearts = Math.max(0, p.halfHearts - halfHearts);
+    let dmg = halfHearts;
+    if (p.upgrades?.reinforcedShield) dmg = Math.max(0, dmg - 1);
+    if (dmg === 0) {
+      p.invuln = 0.15;
+      return { died: false, blocked: true };
+    }
+    p.halfHearts = Math.max(0, p.halfHearts - dmg);
+    p.hp = Math.max(0, Math.ceil(p.halfHearts / 2));
     p.invuln = PLAYER.hurtInvuln;
     events.onHudDirty();
     fx.burst(new Vector3(p.pos.x, 1.3, p.pos.z), 16734564, 10, { speed: 4, up: 3 });
@@ -39028,7 +39296,10 @@ void main() {
           if (attackWindowOpen(player) && !player.attackDidHit.has(e.id) && e.state !== "awaken") {
             if (inSwordArc(player, e.pos, cfg.radius)) {
               player.attackDidHit.add(e.id);
-              this.hurtEnemy(e, PLAYER.attackDamage, player.pos, pickups);
+              const isHeavy = isHeavyAttack(player);
+              let dmg = isHeavy ? PLAYER.heavyAttackDamage : PLAYER.attackDamage;
+              if (player.upgrades?.sharpBlade) dmg += 1;
+              this.hurtEnemy(e, dmg, player.pos, pickups, isHeavy ? PLAYER.heavyKnockbackMul : 1);
               this.events.onSwordHit("enemy", e.pos);
             }
           }
@@ -39075,7 +39346,7 @@ void main() {
       e.state = s;
       e.stateTime = 0;
     }
-    hurtEnemy(e, dmg, from, pickups) {
+    hurtEnemy(e, dmg, from, pickups, knockbackMul = 1) {
       if (e.state === "dying") return;
       e.hp -= dmg;
       flash(e.root, performance.now() / 1e3);
@@ -39084,7 +39355,8 @@ void main() {
       const dx = e.pos.x - from.x;
       const dz = e.pos.z - from.z;
       const d = Math.hypot(dx, dz) || 1;
-      e.vel.set(dx / d * 7.5, 0, dz / d * 7.5);
+      const kb = 7.5 * knockbackMul;
+      e.vel.set(dx / d * kb, 0, dz / d * kb);
       if (e.hp <= 0) {
         this.setState(e, "dying");
         play(e.anim, ["Death_A", "Death_B"], { loop: false, force: true });
@@ -39306,7 +39578,10 @@ void main() {
       if (attackWindowOpen(player) && !player.attackDidHit.has(-9999)) {
         if (inSwordArc(player, b.pos, BOSS.radius)) {
           player.attackDidHit.add(-9999);
-          this.hurt(PLAYER.attackDamage, player.pos);
+          const isHeavy = isHeavyAttack(player);
+          let dmg = isHeavy ? PLAYER.heavyAttackDamage : PLAYER.attackDamage;
+          if (player.upgrades?.sharpBlade) dmg += 1;
+          this.hurt(dmg, player.pos);
           this.events.onSwordHit("boss", b.pos);
         }
       }
@@ -39473,8 +39748,10 @@ void main() {
     // steel blue
     hermit: [0.68, 0.15, 0.42],
     // dusty purple-grey
-    ghost: [0.55, 0.6, 0.65]
+    ghost: [0.55, 0.6, 0.65],
     // pale cyan (overridden with transparency)
+    shopkeeper: [0.35, 0.55, 0.5]
+    // v5: emerald green apron
   };
   var ROSTER = {
     // ---- Willowvale Village -----------------------------------------------
@@ -39699,6 +39976,76 @@ void main() {
         "Try to remember, when you swing \u2014 I was a man, once. And I loved this valley.",
         "Do not fail. If you fall here, another must come, and another. Break the chain, knight. Please."
       ]
+    },
+    // v5 — Frozen Frontier (-2,4)
+    "-2,4:2,4": {
+      id: "meet:shopkeeper-inga",
+      name: "Inga the Trader",
+      kind: "shopkeeper",
+      lines: [
+        "Cold roads bring good custom. Press E again to see my wares, knight."
+      ]
+    },
+    "-2,4:3,4": {
+      id: "meet:snow-villager",
+      name: "Hilde of the Frontier",
+      kind: "villager",
+      lines: [
+        "The road east is still frozen. Best travel by daylight.",
+        "Inga next door sells potions and hearts \u2014 she's the only merchant this far out.",
+        "I heard wolves in the pines last night. Watch yourself."
+      ]
+    },
+    "-2,4:5,8": {
+      id: "meet:snow-child",
+      name: "Little Otto",
+      kind: "villager",
+      lines: [
+        "Are you a real knight? Mama says knights don't come here anymore.",
+        "The snow used to melt in spring. Now it never does."
+      ]
+    },
+    // v5 — Sunflower Meadow (2,4)
+    "2,4:11,3": {
+      id: "meet:meadow-druid",
+      name: "Alva the Beekeeper",
+      kind: "hermit",
+      lines: [
+        "The bees keep the flowers, and the flowers keep the sun.",
+        "Bandits been thicker this year. Two of the raiders came through yesterday \u2014 watch the tall grass.",
+        "If you free the dungeon, I'll bring honey to the village. Been years."
+      ]
+    },
+    "2,4:2,7": {
+      id: "meet:meadow-hermit",
+      name: "Old Roric",
+      kind: "hermit",
+      lines: [
+        "I used to be a soldier. Now I just watch the bees.",
+        "Take the bandit's coin. They took plenty from folk who couldn't spare it."
+      ]
+    },
+    // v5 — Silverpine Woods (1,5)
+    "1,5:7,6": {
+      id: "meet:pine-hermit",
+      name: "Bern the Woodsman",
+      kind: "hermit",
+      lines: [
+        "Pines are old. Older than the dungeon. They remember the good king.",
+        "Skeletons been walking the trails. If one gets in your face, DODGE first, then strike.",
+        "Take the eastern path if you dare \u2014 the wetlands beyond are cursed."
+      ]
+    },
+    // v5 — Whispering Wetlands (2,5)
+    "2,5:7,6": {
+      id: "meet:wetland-hermit",
+      name: "Vala the Marsh-Witch",
+      kind: "hermit",
+      lines: [
+        "You reek of iron. The bog does not like iron.",
+        "Mages come here to die. Their bones do not stay buried.",
+        "The frozen north hides more than merchants. Look for a shrine."
+      ]
     }
   };
   function specKey(roomKey, tx, tz) {
@@ -39880,6 +40227,9 @@ void main() {
           this.triggeredIds.add(npc.id);
           this.events.onStoryTrigger(npc.id);
         }
+        if (npc.kind === "shopkeeper" && npc.lineIdx === 0) {
+          this.events.onOpenShop();
+        }
       }
     }
     clearAll() {
@@ -39906,6 +40256,8 @@ void main() {
         return "Few come this far. Fewer return.";
       case "ghost":
         return "Cold... so cold. Please, cut me free.";
+      case "shopkeeper":
+        return "Come warm yourself. My wares'll keep you alive.";
     }
   }
 
@@ -40806,6 +41158,18 @@ void main() {
     "polyx_env_bush_03",
     "polyx_env_bush_04"
   ];
+  var FLOWER_KEYS = [
+    "poly_flower_a",
+    "poly_flower_b",
+    "polyx_env_flower_01",
+    "polyx_env_flower_02",
+    "polyx_env_flower_03",
+    "polyx_env_flower_04",
+    "polyx_env_flower_05",
+    "polyx_env_flower_06",
+    "polyx_env_flower_07",
+    "polyx_env_flower_08"
+  ];
   var GRASS_DECOR = [
     "poly_grass_a",
     "poly_grass_b",
@@ -40960,6 +41324,12 @@ void main() {
     "polyx_env_ice_02",
     "polyx_env_ice_03"
   ];
+  var LILY_KEYS = [
+    "poly_lillypad",
+    "polyx_env_lillypads_01",
+    "polyx_env_lillypads_02",
+    "polyx_env_lillypads_03"
+  ];
   var WASHINGLINE_KEYS = [
     "poly_washingline",
     "polyx_prop_washingline_01",
@@ -40987,6 +41357,36 @@ void main() {
   function pickBy(arr, seed) {
     return arr[Math.floor(hash(seed) * arr.length) % arr.length];
   }
+  var PINE_KEYS = [
+    "poly_pine_a",
+    "poly_pine_b",
+    "polyx_env_treepine_01",
+    "polyx_env_treepine_02",
+    "polyx_env_treepine_03",
+    "polyx_env_treepine_04"
+  ];
+  var SNOW_PINE_KEYS = [
+    "polyx_env_treepine_01_snow",
+    "polyx_env_treepine_02_snow",
+    "polyx_env_treepine_03_snow"
+  ];
+  var SNOW_PILE_KEYS = [
+    "polyx_env_snowpile_01",
+    "polyx_env_snowpile_02",
+    "polyx_env_snowpile_03"
+  ];
+  var SNOW_ROCK_KEYS = [
+    "polyx_env_rock_03_snow",
+    "polyx_env_rock_04_snow",
+    "polyx_env_rock_05_snow"
+  ];
+  var SNOW_HUT_KEYS = ["polyx_bld_hut_01_snow"];
+  var DEAD_ANY_KEYS = [
+    "poly_tree_dead",
+    "polyx_env_treedead_01",
+    "polyx_env_treedead_02",
+    "polyx_env_treedead_02_snow"
+  ];
   function tintGround(root, h, s, l) {
     const color = new Color().setHSL(h, s, l);
     root.traverse((o) => {
@@ -41013,10 +41413,31 @@ void main() {
     floor.position.copy(c);
     floor.scale.multiplyScalar(TILE / 3);
     floor.rotation.y = Math.floor(hash(tx, tz, def.gx, 3) * 4) * (Math.PI / 2);
+    const biome = def.biome;
     if (dirt) {
       const h = 0.08 + (hash(tx, tz, def.gx, 15) - 0.5) * 0.02;
       const s = 0.42 + hash(tx, tz, def.gx, 16) * 0.1;
       const l = 0.34 + hash(tx, tz, def.gx, 17) * 0.06;
+      tintGround(floor, h, s, l);
+    } else if (biome === "snow") {
+      const h = 0.58 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03;
+      const s = 0.05 + hash(tx, tz, def.gx, 13) * 0.05;
+      const l = 0.85 + hash(tx, tz, def.gx, 14) * 0.06;
+      tintGround(floor, h, s, l);
+    } else if (biome === "wetland") {
+      const h = 0.24 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03;
+      const s = 0.38 + hash(tx, tz, def.gx, 13) * 0.1;
+      const l = 0.28 + hash(tx, tz, def.gx, 14) * 0.06;
+      tintGround(floor, h, s, l);
+    } else if (biome === "meadow") {
+      const h = 0.2 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.02;
+      const s = 0.65 + hash(tx, tz, def.gx, 13) * 0.1;
+      const l = 0.58 + hash(tx, tz, def.gx, 14) * 0.1;
+      tintGround(floor, h, s, l);
+    } else if (biome === "pine") {
+      const h = 0.31 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.02;
+      const s = 0.5 + hash(tx, tz, def.gx, 13) * 0.1;
+      const l = 0.38 + hash(tx, tz, def.gx, 14) * 0.08;
       tintGround(floor, h, s, l);
     } else {
       const h = 0.27 + (hash(tx, tz, def.gx, 12) - 0.5) * 0.03;
@@ -41072,7 +41493,25 @@ void main() {
   }
   function addGrassBasePlane(def, group) {
     const geom = new PlaneGeometry(ROOM_W * TILE + 2, ROOM_H * TILE + 2);
-    const mat = new MeshLambertMaterial({ color: COLORS.grassDark });
+    let baseColor = COLORS.grassDark;
+    switch (def.biome) {
+      case "snow":
+        baseColor = 14280430;
+        break;
+      // pale blue-white
+      case "wetland":
+        baseColor = 4020794;
+        break;
+      // murky green
+      case "meadow":
+        baseColor = 10204252;
+        break;
+      // sun-lit yellow-green
+      case "pine":
+        baseColor = 3099189;
+        break;
+    }
+    const mat = new MeshLambertMaterial({ color: baseColor });
     const mesh = new Mesh(geom, mat);
     mesh.rotation.x = -Math.PI / 2;
     mesh.receiveShadow = true;
@@ -41244,6 +41683,37 @@ void main() {
       group.add(shroom);
     }
   }
+  function addPineTree(group, c, seed, snowy) {
+    const key = pickBy(snowy ? SNOW_PINE_KEYS : PINE_KEYS, seed);
+    const t = spawn(key, { castShadow: true, receiveShadow: false });
+    t.position.set(c.x + (hash(seed, 1) - 0.5) * 0.6, 0, c.z + (hash(seed, 2) - 0.5) * 0.6);
+    t.rotation.y = hash(seed, 3) * Math.PI * 2;
+    t.scale.multiplyScalar(0.9 + hash(seed, 4) * 0.4);
+    group.add(t);
+  }
+  function addDeadTree(group, c, seed) {
+    const t = spawn(pickBy(DEAD_ANY_KEYS, seed), { castShadow: true, receiveShadow: false });
+    t.position.set(c.x + (hash(seed, 1) - 0.5) * 0.6, 0, c.z + (hash(seed, 2) - 0.5) * 0.6);
+    t.rotation.y = hash(seed, 3) * Math.PI * 2;
+    t.scale.multiplyScalar(0.85 + hash(seed, 4) * 0.35);
+    group.add(t);
+  }
+  function addSnowPile(group, c, seed) {
+    const p = spawn(pickBy(SNOW_PILE_KEYS, seed), { castShadow: false, receiveShadow: true });
+    p.position.copy(c);
+    p.rotation.y = hash(seed, 2) * Math.PI * 2;
+    p.scale.multiplyScalar(0.7 + hash(seed, 3) * 0.4);
+    group.add(p);
+  }
+  function addSnowHut(group, c, seed) {
+    const h = spawn(pickBy(SNOW_HUT_KEYS, seed), { castShadow: true, receiveShadow: true });
+    h.position.copy(c);
+    h.rotation.y = Math.floor(hash(seed, 2) * 4) * (Math.PI / 2);
+    group.add(h);
+    if (hash(seed, 5) < 0.7) {
+      addSnowPile(group, new Vector3(c.x + 1.3, 0, c.z + 1.1), seed + 3);
+    }
+  }
   function addTreeLog(group, c, seed) {
     const l = spawn(hash(seed, 1) < 0.5 ? "poly_tree_log" : "polyx_env_treelog_01", {
       castShadow: true,
@@ -41353,6 +41823,8 @@ void main() {
     }
   }
   function buildForestContent(def, group, runtime) {
+    const biome = def.biome;
+    const snowy = biome === "snow";
     for (let tz = 0; tz < ROOM_H; tz++) {
       for (let tx = 0; tx < ROOM_W; tx++) {
         const ch = charAt(def, tx, tz);
@@ -41363,11 +41835,30 @@ void main() {
             addTree(group, c.x, c.z, tx * 13 + tz * 3 + def.gx * 91);
             runtime.solid[tz][tx] = true;
             break;
+          case "y":
+            addPineTree(group, c, tx * 13 + tz * 5 + def.gy, snowy);
+            runtime.solid[tz][tx] = true;
+            break;
+          case "t":
+            addDeadTree(group, c, tx * 7 + tz * 11 + def.gx * 3);
+            runtime.solid[tz][tx] = true;
+            break;
+          case "n":
+            addSnowPile(group, c, tx * 5 + tz * 13);
+            break;
+          case "H":
+            if (snowy) {
+              addSnowHut(group, c, tx * 41 + tz * 7);
+            } else {
+              addHouse(group, c, tx * 41 + tz * 7);
+            }
+            runtime.solid[tz][tx] = true;
+            break;
           case "f":
             {
-              const flower = spawn(hash(tx, tz, 0, 5) < 0.5 ? "poly_flower_a" : "poly_flower_b");
+              const flower = spawn(pickBy(FLOWER_KEYS, tx * 3 + tz * 5));
               flower.position.copy(c);
-              flower.scale.multiplyScalar(2);
+              flower.scale.multiplyScalar(1.5 + hash(tx, tz, 0, 6) * 0.5);
               group.add(flower);
             }
             break;
@@ -41381,7 +41872,7 @@ void main() {
             break;
           case "R":
             {
-              const rock = spawn(pickBy(ROCK_KEYS, tx * 3 + tz), {
+              const rock = spawn(pickBy(snowy ? SNOW_ROCK_KEYS : ROCK_KEYS, tx * 3 + tz), {
                 castShadow: true,
                 receiveShadow: true
               });
@@ -41391,7 +41882,18 @@ void main() {
               runtime.solid[tz][tx] = true;
             }
             break;
-          // ------- v4: decorative chars -------
+          case "~":
+            {
+              const w = spawn(pickBy(LILY_KEYS, tx * 3 + tz));
+              w.position.copy(c);
+              w.rotation.y = hash(tx, tz, def.gx, 51) * Math.PI * 2;
+              w.scale.multiplyScalar(1.2 + hash(tx, tz, def.gx, 52) * 0.5);
+              group.add(w);
+            }
+            break;
+          case ",":
+            break;
+          // ------- v4/v5 decorative chars -------
           case "l":
             addLanternPost(group, c, tx * 7 + tz * 11);
             break;
@@ -41414,6 +41916,8 @@ void main() {
         }
         const npcKind = NPC_CHARS[ch];
         if (npcKind) runtime.npcSpawns.push({ kind: npcKind, tx, tz });
+        const enemyKind = ENEMY_CHARS[ch];
+        if (enemyKind) runtime.enemySpawns.push({ kind: enemyKind, tx, tz });
       }
     }
   }
@@ -41563,7 +42067,7 @@ void main() {
         buildVillageFence(def, group);
         const start = buildVillageContent(def, group, runtime);
         if (start) playerStart = start;
-      } else if (def.biome === "forest") {
+      } else if (def.biome === "forest" || def.biome === "snow" || def.biome === "wetland" || def.biome === "meadow" || def.biome === "pine") {
         addGrassBasePlane(def, group);
         buildForestContent(def, group, runtime);
       } else {
@@ -41838,6 +42342,7 @@ void main() {
         </div>
       </div>
       <div id="hud-combo" class="hidden"><span class="cx"></span><span class="clabel">COMBO</span></div>
+      <div id="hud-charge" class="hidden"><div id="hud-charge-fill"></div></div>
       <div id="hud-room-label"></div>
       <div id="hud-boss-bar" class="hidden">
         <div id="hud-boss-fill"></div>
@@ -41862,9 +42367,11 @@ void main() {
       this.narrText = mount.querySelector("#hud-narr-text");
       this.interactPrompt = mount.querySelector("#hud-interact");
       this.comboBadge = mount.querySelector("#hud-combo");
+      this.chargeBar = mount.querySelector("#hud-charge");
+      this.chargeFill = mount.querySelector("#hud-charge-fill");
     }
     render(player) {
-      const totalHearts = PLAYER.maxHalfHearts / 2;
+      const totalHearts = player.maxHp ?? PLAYER.maxHalfHearts / 2;
       let html = "";
       for (let i = 0; i < totalHearts; i++) {
         const remaining = player.halfHearts - i * 2;
@@ -41874,6 +42381,16 @@ void main() {
       this.hearts.innerHTML = html;
       this.coins.textContent = String(player.coins);
       this.keyIcon.classList.toggle("hidden", !player.hasBossKey);
+    }
+    /** v5: display charge attack fill (0 hidden, 0..1 fill, 1 ready glow). */
+    setChargeBar(frac, ready) {
+      if (frac <= 1e-3) {
+        this.chargeBar.classList.add("hidden");
+        return;
+      }
+      this.chargeBar.classList.remove("hidden");
+      this.chargeFill.style.width = `${Math.min(1, frac) * 100}%`;
+      this.chargeFill.classList.toggle("ready", ready);
     }
     setRoomLabel(text) {
       this.roomLabel.textContent = text;
@@ -42123,6 +42640,186 @@ void main() {
     }
   };
 
+  // src/ui/shop.ts
+  var SHOP_ITEMS = [
+    {
+      id: "heart_potion",
+      name: "Heart Potion",
+      price: 5,
+      desc: "Restore 3 hearts. Drink now.",
+      reasonUnavailable(p) {
+        const maxHalves = (p.maxHp ?? 3) * 2;
+        if (p.halfHearts >= maxHalves) return "You're already at full HP.";
+        return null;
+      },
+      apply(p) {
+        const maxHalves = (p.maxHp ?? 3) * 2;
+        p.halfHearts = Math.min(maxHalves, p.halfHearts + 6);
+        p.hp = Math.ceil(p.halfHearts / 2);
+        return true;
+      }
+    },
+    {
+      id: "extra_heart",
+      name: "Extra Heart",
+      price: 15,
+      desc: "Permanently +1 max HP (up to 8).",
+      reasonUnavailable(p) {
+        if ((p.maxHp ?? 3) >= 8) return "Your heart is at its limit.";
+        return null;
+      },
+      apply(p) {
+        p.maxHp = Math.min(8, (p.maxHp ?? 3) + 1);
+        p.halfHearts = p.maxHp * 2;
+        p.hp = p.maxHp;
+        return true;
+      }
+    },
+    {
+      id: "sword_upgrade",
+      name: "Sharpen the Blade",
+      price: 20,
+      desc: "+1 damage per swing. One-time.",
+      reasonUnavailable(p) {
+        if (p.upgrades?.sharpBlade) return "Already sharpened this run.";
+        return null;
+      },
+      apply(p) {
+        if (!p.upgrades) p.upgrades = {};
+        p.upgrades.sharpBlade = true;
+        return true;
+      }
+    },
+    {
+      id: "shield_upgrade",
+      name: "Reinforced Shield",
+      price: 20,
+      desc: "Reduce all damage taken by 1. One-time.",
+      reasonUnavailable(p) {
+        if (p.upgrades?.reinforcedShield) return "Already reinforced this run.";
+        return null;
+      },
+      apply(p) {
+        if (!p.upgrades) p.upgrades = {};
+        p.upgrades.reinforcedShield = true;
+        return true;
+      }
+    }
+  ];
+  var Shop = class {
+    constructor(mount) {
+      this.open_ = false;
+      this.player = null;
+      this.root = mount;
+      this.overlay = document.createElement("div");
+      this.overlay.id = "shop-overlay";
+      this.overlay.style.cssText = [
+        "position:fixed",
+        "inset:0",
+        "background:rgba(0,0,0,0.72)",
+        "display:none",
+        "align-items:center",
+        "justify-content:center",
+        "z-index:400",
+        "font-family:system-ui,-apple-system,sans-serif"
+      ].join(";");
+      this.overlay.innerHTML = this.buildInner();
+      this.root.appendChild(this.overlay);
+      this.escHandler = (e) => {
+        if (this.open_ && e.key === "Escape") this.close();
+      };
+      window.addEventListener("keydown", this.escHandler);
+    }
+    buildInner() {
+      return `
+      <div style="background:linear-gradient(180deg,#2b1f18,#1a1210);border:2px solid #7a5030;border-radius:12px;padding:26px 30px;max-width:520px;width:90%;color:#f2e6d5;box-shadow:0 20px 60px rgba(0,0,0,0.55);">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;">
+          <div>
+            <div style="font-size:22px;font-weight:600;color:#f7e4a5;">Inga's Wares</div>
+            <div style="font-size:13px;color:#c9b596;margin-top:2px;">"Bought fair. Sold fairer."</div>
+          </div>
+          <div id="shop-coin-badge" style="background:#5a3f22;padding:6px 12px;border-radius:8px;font-weight:600;color:#f7e4a5;">\u{1F4B0} 0</div>
+        </div>
+        <div id="shop-items" style="display:flex;flex-direction:column;gap:10px;"></div>
+        <button id="shop-close" style="margin-top:18px;width:100%;padding:12px;background:#5a3f22;color:#f2e6d5;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;">Leave (Esc)</button>
+      </div>
+    `;
+    }
+    open(player, onClose) {
+      this.player = player;
+      this.onCloseCb = onClose;
+      this.open_ = true;
+      this.overlay.style.display = "flex";
+      this.render();
+      const close = this.overlay.querySelector("#shop-close");
+      close.onclick = () => this.close();
+    }
+    close() {
+      if (!this.open_) return;
+      this.open_ = false;
+      this.overlay.style.display = "none";
+      this.player = null;
+      if (this.onCloseCb) this.onCloseCb();
+    }
+    isOpen() {
+      return this.open_;
+    }
+    render() {
+      if (!this.player) return;
+      const p = this.player;
+      const coin = this.overlay.querySelector("#shop-coin-badge");
+      coin.textContent = `\u{1F4B0} ${p.coins}`;
+      const list = this.overlay.querySelector("#shop-items");
+      list.innerHTML = "";
+      for (const item of SHOP_ITEMS) {
+        const reason = item.reasonUnavailable(p);
+        const canAfford = p.coins >= item.price;
+        const disabled = reason !== null || !canAfford;
+        const row = document.createElement("div");
+        row.style.cssText = [
+          "display:flex",
+          "align-items:center",
+          "gap:12px",
+          "background:rgba(120,80,50,0.24)",
+          "padding:12px 14px",
+          "border-radius:8px",
+          "border:1px solid rgba(140,100,70,0.35)",
+          disabled ? "opacity:0.5" : "opacity:1"
+        ].join(";");
+        row.innerHTML = `
+        <div style="flex:1;">
+          <div style="font-weight:600;font-size:15px;color:#f7e4a5;">${item.name}</div>
+          <div style="font-size:12px;color:#c9b596;margin-top:2px;">${reason ?? item.desc}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-weight:600;color:${canAfford ? "#f7e4a5" : "#ff8080"};">${item.price} \u{1F4B0}</div>
+        </div>
+        <button data-item="${item.id}" style="background:${disabled ? "#3a2a1c" : "#7a5030"};color:#f2e6d5;border:none;border-radius:6px;padding:8px 14px;font-weight:600;cursor:${disabled ? "not-allowed" : "pointer"};min-width:70px;" ${disabled ? "disabled" : ""}>Buy</button>
+      `;
+        list.appendChild(row);
+      }
+      list.querySelectorAll("button[data-item]").forEach((btn) => {
+        btn.onclick = () => {
+          const id = btn.dataset.item;
+          this.buy(id);
+        };
+      });
+    }
+    buy(id) {
+      const p = this.player;
+      if (!p) return;
+      const item = SHOP_ITEMS.find((it) => it.id === id);
+      if (!item) return;
+      if (item.reasonUnavailable(p)) return;
+      if (p.coins < item.price) return;
+      p.coins -= item.price;
+      if (item.apply(p)) {
+        sfx.coin();
+      }
+      this.render();
+    }
+  };
+
   // src/ui/touch.ts
   var TouchUi = class {
     constructor(mount, input) {
@@ -42278,6 +42975,7 @@ void main() {
     let npcs = null;
     let story = null;
     let swordFx = null;
+    let shop = null;
     let running = false;
     const events = {
       onHudDirty: () => hud?.render(player),
@@ -42302,9 +43000,9 @@ void main() {
         story?.onRoomChanged(key);
         if (key === BOSS_ROOM_KEY) {
           playMusic("boss");
-        } else if (def?.biome === "village") {
+        } else if (def?.biome === "village" || def?.biome === "snow" || def?.biome === "meadow") {
           playMusic("village");
-        } else if (def?.biome === "forest") {
+        } else if (def?.biome === "forest" || def?.biome === "pine" || def?.biome === "wetland") {
           playMusic("forest");
         } else if (def?.biome === "dungeon") {
           playMusic("dungeon");
@@ -42331,7 +43029,14 @@ void main() {
           swordFx.spawnArc(player.pos, player.facing, step2);
         }
       },
-      onGameEvent: (key) => story?.onEvent(key)
+      onGameEvent: (key) => story?.onEvent(key),
+      // v5: shop overlay — pauses gameplay while open
+      onOpenShop: () => {
+        if (!shop || !player) return;
+        shop.open(player, () => {
+        });
+      },
+      onCloseShop: () => shop?.close()
     };
     async function startGame() {
       initAudio();
@@ -42356,6 +43061,7 @@ void main() {
       const startDef = roomAt(...START_ROOM_KEY.split(",").map(Number));
       hud.setRoomLabel(startDef?.name ?? "Willowvale Village");
       minimap = new Minimap(hudMount);
+      shop = new Shop(uiMount);
       boss.spawn(world.bossSpawn);
       for (const [, room] of world.rooms) {
         for (const s of room.enemySpawns) {
@@ -42412,6 +43118,12 @@ void main() {
       last = now2;
       if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && fx && npcs && swordFx) {
         pollKeyboard(input, touchUi.active());
+        if (shop?.isOpen()) {
+          endFrame(input, dt);
+          renderer.render(scene, cam.camera);
+          requestAnimationFrame(tick);
+          return;
+        }
         updatePlayer(player, input, dt, roomMgr, fx, events);
         npcs.update(dt, player, roomMgr, input);
         enemies.update(dt, player, roomMgr, projectiles, pickups);
@@ -42440,6 +43152,11 @@ void main() {
         }
         hud?.render(player);
         hud?.updateInteractPrompt(npcs.activeNpc);
+        hud?.setChargeBar(
+          Math.min(1, player.chargeTime / 0.55),
+          // 0.55s = PLAYER.chargeTime
+          player.chargeReady
+        );
         minimap?.render(world.rooms, roomMgr.current.key, now2 / 1e3);
         endFrame(input, dt);
       }

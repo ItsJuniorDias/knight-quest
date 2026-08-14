@@ -54,6 +54,11 @@ export function createPlayer(scene: THREE.Scene, start: THREE.Vector3): PlayerDa
     hasBossKey: false,
     comboCount: 0,
     comboTimer: 0,
+    // v5: shop-driven fields
+    hp: PLAYER.maxHalfHearts / 2, // start full in whole hearts
+    maxHp: PLAYER.maxHalfHearts / 2,
+    chargeTime: 0,
+    chargeReady: false,
   };
 }
 
@@ -125,6 +130,30 @@ export function updatePlayer(
       p.state = moving ? "run" : "idle";
       play(p.anim, moving ? ["Running_A", "Walking_A"] : ["Idle"], { fade: 0.18 });
 
+      // v5: HOLDING the attack button starts charging a heavy strike.
+      // Attack tap (press+release quick) still fires the light combo.
+      if (!frozen && input.attackHeld && !input.attackPressed && p.chargeTime === 0) {
+        // First tick of "still holding after the press" → begin charge
+        p.chargeTime = 0.001;
+      }
+      if (input.attackHeld && p.chargeTime > 0) {
+        p.chargeTime += dt;
+        if (p.chargeTime >= PLAYER.chargeTime && !p.chargeReady) {
+          p.chargeReady = true;
+          // small screen tick when charge is ready — a subtle audio ping
+          sfx.hitBlocked();
+        }
+      }
+      // Release: if charged, do heavy; if not, do the regular light attack
+      if (!input.attackHeld && p.chargeTime > 0) {
+        if (p.chargeReady) {
+          startHeavyAttack(p);
+          events.onSwordSwing(0);
+        }
+        p.chargeTime = 0;
+        p.chargeReady = false;
+      }
+
       if (!frozen && (input.attackPressed || input.attackBuffered > 0)) {
         startAttack(p, 0);
         input.attackBuffered = 0;
@@ -172,6 +201,22 @@ export function updatePlayer(
           p.stateTime = 0;
           play(p.anim, ["Idle"], { fade: 0.14 });
         }
+      }
+      break;
+    }
+
+    case "heavyAttack": {
+      // v5: bigger lunge, longer active window, applies bigger knockback.
+      // The hit-detection uses attackWindowOpen() + inSwordArc() same as
+      // the light attack — damage difference comes from isHeavyAttack().
+      p.vel.x = p.facing.x * 3.4;
+      p.vel.z = p.facing.z * 3.4;
+      moveCircle(p.pos, p.vel, dt, PLAYER.radius, room, barrels);
+      roomMgr.clampAtClosedDoors(p.pos, PLAYER.radius);
+      if (p.stateTime >= PLAYER.heavyAttackDuration) {
+        p.state = "idle";
+        p.stateTime = 0;
+        play(p.anim, ["Idle"], { fade: 0.16 });
       }
       break;
     }
@@ -240,13 +285,33 @@ function startRoll(p: PlayerData, dir: { x: number; z: number }): void {
   sfx.roll();
 }
 
+// v5: heavy strike — plays a slower, weighted animation, wider hit arc later.
+function startHeavyAttack(p: PlayerData): void {
+  p.state = "heavyAttack";
+  p.stateTime = 0;
+  p.attackDidHit.clear();
+  const clip = ["1H_Melee_Attack_Chop", "1H_Melee_Attack_Stab"];
+  const dur = clipDuration(p.anim, clip, 0.9);
+  play(p.anim, clip, { loop: false, force: true, timeScale: dur / PLAYER.heavyAttackDuration, fade: 0.08 });
+  sfx.swing();
+  sfx.bossRoar(); // "heavy" cue — reuses the low sawtooth
+}
+
 /** True while the current sword swing's hit window is open. */
 export function attackWindowOpen(p: PlayerData): boolean {
-  return (
-    p.state === "attack" &&
-    p.stateTime >= PLAYER.attackHitStart &&
-    p.stateTime <= PLAYER.attackHitEnd
-  );
+  if (p.state === "attack") {
+    return p.stateTime >= PLAYER.attackHitStart && p.stateTime <= PLAYER.attackHitEnd;
+  }
+  if (p.state === "heavyAttack") {
+    // v5: heavy hit window is longer and starts a hair later than the light one
+    return p.stateTime >= PLAYER.heavyAttackHitStart && p.stateTime <= PLAYER.heavyAttackHitEnd;
+  }
+  return false;
+}
+
+/** True if the current swing is a heavy strike (used to scale damage/knockback). */
+export function isHeavyAttack(p: PlayerData): boolean {
+  return p.state === "heavyAttack";
 }
 
 /** Is `target` inside the frontal sword arc? */
@@ -291,7 +356,19 @@ export function damagePlayer(
     }
   }
 
-  p.halfHearts = Math.max(0, p.halfHearts - halfHearts);
+  // v5: reinforced shield upgrade absorbs 1 half-heart from every hit
+  let dmg = halfHearts;
+  if (p.upgrades?.reinforcedShield) dmg = Math.max(0, dmg - 1);
+  if (dmg === 0) {
+    // fully absorbed — brief invuln so the same hit doesn't retrigger next frame
+    p.invuln = 0.15;
+    return { died: false, blocked: true };
+  }
+
+  p.halfHearts = Math.max(0, p.halfHearts - dmg);
+  // v5: also keep hp/maxHp in sync so shop upgrades affect death check.
+  // p.hp is in WHOLE hearts, so we mirror halfHearts / 2.
+  p.hp = Math.max(0, Math.ceil(p.halfHearts / 2));
   p.invuln = PLAYER.hurtInvuln;
   events.onHudDirty();
   fx.burst(new THREE.Vector3(p.pos.x, 1.3, p.pos.z), 0xff5964, 10, { speed: 4, up: 3 });

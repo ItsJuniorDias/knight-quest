@@ -9,6 +9,7 @@ export interface InputState {
   moveY: number;
   attackPressed: boolean;
   attackBuffered: number; // seconds remaining in the buffer window
+  attackHeld: boolean;     // v5: true while the attack button is still pressed
   rollPressed: boolean;
   blockHeld: boolean;
   interactPressed: boolean;
@@ -26,6 +27,8 @@ export type PlayerState =
   | "idle"
   | "run"
   | "attack"
+  | "heavyAttack"  // v5: released charged strike, big damage
+  | "chargeHold"   // v5: holding attack button to charge
   | "roll"
   | "block"
   | "hurt"
@@ -51,6 +54,21 @@ export interface PlayerData {
   comboCount: number;
   /** seconds until the combo counter resets to 0 */
   comboTimer: number;
+  // v5: shop-relative fields. maxHp is in whole hearts; hp is the same unit.
+  // The legacy halfHearts field stays for backwards compatibility with any
+  // system that still reads it; hp/maxHp are the new source of truth for
+  // shop-driven max-HP upgrades.
+  hp: number;
+  maxHp: number;
+  /** v5: purchased one-time upgrades from the shop. */
+  upgrades?: {
+    sharpBlade?: boolean;
+    reinforcedShield?: boolean;
+  };
+  /** v5: seconds attack has been held (charge attack). 0 = not charging. */
+  chargeTime: number;
+  /** v5: true if the next release should fire a heavy strike, not a light. */
+  chargeReady: boolean;
 }
 
 export type EnemyKind = "minion" | "rogue" | "mage";
@@ -196,12 +214,13 @@ export interface RoomRuntime {
 // ---------------------------------------------------------------------------
 
 export type NpcKind =
-  | "villager"  // generic townsfolk
-  | "elder"    // gold-robed sage (quest giver)
-  | "merchant" // orange-clad trader
-  | "guard"    // steel-blue armored
-  | "hermit"   // wandering wise man in the forest
-  | "ghost";   // translucent restless dead haunting the dungeon
+  | "villager"    // generic townsfolk
+  | "elder"       // gold-robed sage (quest giver)
+  | "merchant"    // orange-clad trader
+  | "guard"       // steel-blue armored
+  | "hermit"      // wandering wise man in the forest
+  | "ghost"       // translucent restless dead haunting the dungeon
+  | "shopkeeper"; // v5: opens the shop UI on interact
 
 export interface NpcLine {
   who: string;
@@ -251,4 +270,7 @@ export interface GameEvents {
   onSwordSwing: (comboStep: 0 | 1) => void;
   /** Fire an event beat by key ('got:bosskey', 'unlocked:bossdoor', ...). */
   onGameEvent: (key: string) => void;
+  /** v5: Open/close the item shop UI. */
+  onOpenShop: () => void;
+  onCloseShop: () => void;
 }

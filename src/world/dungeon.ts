@@ -47,7 +47,14 @@
 import { ROOM_H, ROOM_W } from "../config";
 import type { DoorDir, EnemyKind, NpcKind } from "../types";
 
-export type RoomBiome = "dungeon" | "village" | "forest";
+export type RoomBiome =
+  | "dungeon"
+  | "village"
+  | "forest"
+  | "snow"      // v5: frozen village + snowy paths (uses snow atlas)
+  | "wetland"   // v5: swamp — lily pads, dead trees, mist
+  | "meadow"    // v5: flower fields, tall grass, sparse trees
+  | "pine";     // v5: dense pine forest
 
 export interface RoomDef {
   key: string;
@@ -76,6 +83,7 @@ export const ROOMS: RoomDef[] = [
     name: "Southern Woods",
     biome: "forest",
     startVisible: false,
+    // v5: eastern door → Pine Woods, and 2 skeletons stalking the trees.
     map: [
       "TTTTTTTDTTTTTTT",
       "T.gggT.+*....TT",
@@ -83,15 +91,18 @@ export const ROOMS: RoomDef[] = [
       "T.gggT.mfggg.TT",
       "T.f.**gT.....RT",
       "Tgg.g.fY..gg..T",
-      "T.f.gg.g.g.f..T",
+      "T.f.gg1g.g.f..D",
       "T.-g.f..g.f.g.T",
       "Tg..gg.gg.+gg.T",
-      "T.fg.f..f.gg.mT",
+      "T.fg.f2.f.gg.mT",
       "TT..gg.g.*f..TT",
       "TT.f.-gg.gg..TT",
       "TTTTTTTTTTTTTTT",
     ],
-    doors: [{ dir: "n", kind: "open" }],
+    doors: [
+      { dir: "n", kind: "open" },
+      { dir: "e", kind: "open" },
+    ],
   },
 
   // ============================================================
@@ -104,22 +115,26 @@ export const ROOMS: RoomDef[] = [
     name: "Willowvale Grove",
     biome: "forest",
     startVisible: false,
+    // v5: added a west door → Frozen Frontier, and 3 wandering skeletons.
     map: [
       "TTTTTTTTTTTTTTT",
       "T.fgg.f.gg.fg.T",
-      "Tg.f.gg.f.+g.gT",
+      "Tg.f.gg1f.+g.gT",
       "T.gg.f.gg.f.g.T",
       "T.f.-ggN.g.f.gT",
       "Tgg.f.gg.f.gg.T",
-      "T.g..g*f.gg.f.D",
+      "D.g..g*f.gg.f.D",
       "Tf.gg.f.gg.g.gT",
       "T.g.f.gg.gN.g.T",
-      "Tg.gg.f.mgg.g.T",
+      "Tg.gg2f.mgg.g.T",
       "T.f.gg.gg..f.gT",
-      "Tg..f..g.gg-f.T",
+      "Tg..f1.g.gg-f.T",
       "TTTTTTTTTTTTTTT",
     ],
-    doors: [{ dir: "e", kind: "open" }],
+    doors: [
+      { dir: "e", kind: "open" },
+      { dir: "w", kind: "open" },
+    ],
   },
   {
     key: "0,4",
@@ -165,22 +180,26 @@ export const ROOMS: RoomDef[] = [
     name: "Old Orchard",
     biome: "forest",
     startVisible: false,
+    // v5: eastern door → Sunflower Meadow, and 2 rogues raiding the orchard.
     map: [
       "TTTTTTTTTTTTTTT",
       "T.gg.f.g.fg.g.T",
-      "Tf..gg.f.-g.f.T",
+      "Tf..gg2f.-g.f.T",
       "T.gg.f.gg.fN.gT",
       "T.f.m.gg.f.gg.T",
       "Tgg.f.g..gg.f.T",
-      "D.g..gg.f..g.gT",
+      "D.g..gg.f..g.gD",
       "Tf.gg.f.gg.f-.T",
       "T.gN.f..gg.g.gT",
       "Tg.gg.gg..f.f.T",
-      "T.f.gg.g.gg+g.T",
+      "T.f.gg2g.gg+g.T",
       "Tg..f*.gg.mf..T",
       "TTTTTTTTTTTTTTT",
     ],
-    doors: [{ dir: "w", kind: "open" }],
+    doors: [
+      { dir: "w", kind: "open" },
+      { dir: "e", kind: "open" },
+    ],
   },
 
   // ============================================================
@@ -511,6 +530,125 @@ export const ROOMS: RoomDef[] = [
     ],
     doors: [{ dir: "s", kind: "open" }],
   },
+
+  // ============================================================
+  // v5 — NEW BIOMES on the outer ring of the map
+  // ============================================================
+
+  // ---- SNOW FRONTIER (west of Grove, gx=-2 gy=4) ----------------
+  // Frozen little settlement with a merchant who opens a real shop.
+  // Snow atlas paints everything winter. One skeleton wandering outside.
+  {
+    key: "-2,4",
+    gx: -2,
+    gy: 4,
+    name: "Frozen Frontier",
+    biome: "snow",
+    startVisible: false,
+    // Chars: h/H frozen hut, S shopkeeper (opens shop), n snowpile,
+    // y pine tree (snow), t dead tree
+    map: [
+      "yyyyyyyyyyyyyyy",
+      "y.nn.H.,.H.nn.y",
+      "y..nn..,.....ny",
+      "y.n..n.,.nn..ny",
+      "y.SNn..,......y",
+      "y....n.,......y",
+      "y,,,,,,,,,,,,,D",
+      "y....n.,......y",
+      "y.n..N.,.n.n..y",
+      "y..n..y.,.nn..y",
+      "y.n.H.y.,....Hy",
+      "y..nn..,.nn..ny",
+      "yyyyyyyyyyyyyyy",
+    ],
+    doors: [{ dir: "e", kind: "open" }],
+  },
+
+  // ---- SUNFLOWER MEADOW (east of Orchard, gx=2 gy=4) -------------
+  // Rolling flower fields, bandit rogues raiding a lonely traveler.
+  // Bright open biome with tall grass and mounds.
+  {
+    key: "2,4",
+    gx: 2,
+    gy: 4,
+    name: "Sunflower Meadow",
+    biome: "meadow",
+    startVisible: false,
+    map: [
+      "TTTTTTTTTTTTTTT",
+      "T.fmf.gg.fgg.fT",
+      "T.gg.f.mgg.f..T",
+      "T.f.gg.f.fN.g.T",
+      "Tfmff.gg2mg.f.T",
+      "T.gg.f.fmgg.fmT",
+      "D.f.mg.f..gg.fT",
+      "T.mg.fY.gg.f.gT",
+      "Tfmff.gg.mg.f.T",
+      "T.gg.f2gg.fgg.T",
+      "T.f.mgg.f.f.gmT",
+      "T.gg.f.mg.gg.fT",
+      "TTTTTTTTTTTTTTT",
+    ],
+    doors: [{ dir: "w", kind: "open" }],
+  },
+
+  // ---- PINE WOODS (east of Southern Woods, gx=1 gy=5) ------------
+  // Dense pine forest with skeleton warband ambush.
+  {
+    key: "1,5",
+    gx: 1,
+    gy: 5,
+    name: "Silverpine Woods",
+    biome: "pine",
+    startVisible: false,
+    map: [
+      "yyyyyyyyyyyyyyy",
+      "y.y.g.yy.g.y.gy",
+      "y..y..R.y..1.yy",
+      "y.y.g.y.g.y.y.y",
+      "y..y.g.y.y..-.y",
+      "y.g.y..y.g.y.yy",
+      "D.y..gY..y.g..D",
+      "y.g.y.g.y.y..gy",
+      "y.y..g.y.g.y..y",
+      "y.g.y2y.g.y..gy",
+      "y..y.g.y..y1..y",
+      "y.g.y..gg.y.g.y",
+      "yyyyyyyyyyyyyyy",
+    ],
+    doors: [
+      { dir: "w", kind: "open" },
+      { dir: "e", kind: "open" },
+    ],
+  },
+
+  // ---- WETLANDS (east of Pine Woods, gx=2 gy=5) ------------------
+  // Cursed swamp — lily pads, dead trees, mist. Mages ambush travelers.
+  {
+    key: "2,5",
+    gx: 2,
+    gy: 5,
+    name: "Whispering Wetlands",
+    biome: "wetland",
+    startVisible: false,
+    map: [
+      "ttttttttttttttt",
+      "t..~~.t.~~.t..t",
+      "t.t.~~..~~.t.tt",
+      "t..t.~~~~..t..t",
+      "t.t..t.~~t.t.tt",
+      "t.t.~~3~~..t.tt",
+      "D..~~..Y..~~..t",
+      "t.t.~~.3~~.t.tt",
+      "t.t..t.~~.tt.tt",
+      "t.tt.~~~~..t..t",
+      "t..t.~~..~~.t.t",
+      "t.t..t.~~.t..tt",
+      "ttttttttttttttt",
+    ],
+    doors: [{ dir: "w", kind: "open" }],
+  },
 ];
 
 export const START_ROOM_KEY = "0,4";
@@ -576,7 +714,8 @@ export const NPC_CHARS: Record<string, NpcKind> = {
   J: "guard",
   Y: "hermit",
   G: "ghost",
-  k: "ghost", // king echo
+  k: "ghost",       // king echo
+  S: "shopkeeper",  // v5: opens item shop UI on interact
 };
 
 /** Cells the movement system treats as solid (before doors/props are applied). */
@@ -584,13 +723,15 @@ export function isSolidChar(ch: string): boolean {
   return (
     ch === "W" || // dungeon wall
     ch === "T" || // tree
-    ch === "H" || // house
+    ch === "H" || // house / snow hut
     ch === "U" || // hut
     ch === "L" || // well
     ch === "M" || // market stall / hill
     ch === "F" || // fence
     ch === "R" || // rock
     ch === "=" || // bridge post
-    ch === "$"    // v4: cart (solid)
+    ch === "$" || // v4: cart (solid)
+    ch === "y" || // v5: pine tree (solid)
+    ch === "t"    // v5: dead tree / cypress (solid)
   );
 }

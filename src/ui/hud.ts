@@ -30,6 +30,8 @@ export class Hud {
   private interactPrompt: HTMLElement;
 
   private comboBadge: HTMLElement;
+  private chargeBar: HTMLElement;
+  private chargeFill: HTMLElement;
 
   constructor(mount: HTMLElement) {
     mount.innerHTML = `
@@ -41,6 +43,7 @@ export class Hud {
         </div>
       </div>
       <div id="hud-combo" class="hidden"><span class="cx"></span><span class="clabel">COMBO</span></div>
+      <div id="hud-charge" class="hidden"><div id="hud-charge-fill"></div></div>
       <div id="hud-room-label"></div>
       <div id="hud-boss-bar" class="hidden">
         <div id="hud-boss-fill"></div>
@@ -65,10 +68,13 @@ export class Hud {
     this.narrText = mount.querySelector("#hud-narr-text")!;
     this.interactPrompt = mount.querySelector("#hud-interact")!;
     this.comboBadge = mount.querySelector("#hud-combo")!;
+    this.chargeBar = mount.querySelector("#hud-charge")!;
+    this.chargeFill = mount.querySelector("#hud-charge-fill")!;
   }
 
   render(player: PlayerData): void {
-    const totalHearts = PLAYER.maxHalfHearts / 2;
+    // v5: max hearts follows the shop upgrade (if maxHp is set), else config default
+    const totalHearts = (player.maxHp ?? PLAYER.maxHalfHearts / 2);
     let html = "";
     for (let i = 0; i < totalHearts; i++) {
       const remaining = player.halfHearts - i * 2;
@@ -78,6 +84,17 @@ export class Hud {
     this.hearts.innerHTML = html;
     this.coins.textContent = String(player.coins);
     this.keyIcon.classList.toggle("hidden", !player.hasBossKey);
+  }
+
+  /** v5: display charge attack fill (0 hidden, 0..1 fill, 1 ready glow). */
+  setChargeBar(frac: number, ready: boolean): void {
+    if (frac <= 0.001) {
+      this.chargeBar.classList.add("hidden");
+      return;
+    }
+    this.chargeBar.classList.remove("hidden");
+    this.chargeFill.style.width = `${Math.min(1, frac) * 100}%`;
+    this.chargeFill.classList.toggle("ready", ready);
   }
 
   setRoomLabel(text: string): void {

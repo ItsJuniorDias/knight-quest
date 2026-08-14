@@ -6,7 +6,7 @@ import { getAnimations, spawn } from "../engine/loader";
 import { flash, type FxSystem } from "../art/fx";
 import { attachWeapon } from "./enemies";
 import type { BossData, GameEvents, PlayerData } from "../types";
-import { attackWindowOpen, damagePlayer, inSwordArc } from "./player";
+import { attackWindowOpen, damagePlayer, inSwordArc, isHeavyAttack } from "./player";
 import { moveCircle } from "./physics";
 import type { RoomManager } from "./rooms";
 import type { ProjectileSystem } from "./projectiles";
@@ -243,7 +243,11 @@ export class BossSystem {
     if (attackWindowOpen(player) && !player.attackDidHit.has(-9999)) {
       if (inSwordArc(player, b.pos, BOSS.radius)) {
         player.attackDidHit.add(-9999);
-        this.hurt(PLAYER.attackDamage, player.pos);
+        // v5: heavy hits do 3× base + sharpBlade adds one on top
+        const isHeavy = isHeavyAttack(player);
+        let dmg = isHeavy ? PLAYER.heavyAttackDamage : PLAYER.attackDamage;
+        if (player.upgrades?.sharpBlade) dmg += 1;
+        this.hurt(dmg, player.pos);
         this.events.onSwordHit("boss", b.pos);
       }
     }

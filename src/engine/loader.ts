@@ -228,6 +228,27 @@ const MANIFEST_POLYGON_OBJ_LIST = [
   "wep_musketpistol_01", "wep_pitchfork_01", "wep_scythe_01",
   "wep_sheild_01", "wep_sheild_02", "wep_sheild_03",
   "wep_staff_01", "wep_staff_02", "wep_sword_01",
+  // v5: snow variants — a whole snow biome's worth of props. They still
+  // sample the same green atlas by default; assets that reference the
+  // snow-tinted atlas get it applied via applySnowMaterial at spawn time
+  // (see isSnowKey below). Assets tagged _snow render with the snow atlas.
+  "bld_fence_01_snow", "bld_fence_02_snow", "bld_hut_01_snow",
+  "bld_market_snow_01", "bld_village_snowsheet_01",
+  "env_dirtmound_01_snow", "env_hedge_01_snow",
+  "env_hillsnow_01", "env_hillsnow_02", "env_hillsnow_03", "env_hillsnow_04",
+  "env_road_corner_01_snow", "env_road_cross_01_snow",
+  "env_road_straight_01_snow", "env_road_straight_02_snow", "env_road_t_01_snow",
+  "env_rock_03_snow", "env_rock_04_snow", "env_rock_05_snow",
+  "env_snowpile_01", "env_snowpile_02", "env_snowpile_03",
+  "env_stream_corner_01_snow",
+  "env_stream_straight_01_snow", "env_stream_straight_02_snow",
+  "env_treebirch_01_snow", "env_treedead_02_snow",
+  "env_treepine_01_snow", "env_treepine_02_snow", "env_treepine_03_snow",
+  "env_tree_01_snow", "env_tree_02_snow", "env_tree_03_snow", "env_tree_04_snow",
+  "env_tree_06_snow", "env_tree_07_snow", "env_tree_08_snow", "env_tree_09_snow",
+  "env_tree_010_snow", "env_tree_011_snow", "env_tree_012_snow",
+  "env_tree_013_snow", "env_tree_014_snow", "env_tree_015_snow",
+  "env_tree_016_snow", "env_tree_017_snow",
 ] as const;
 
 // Build the OBJ manifest with url + key
@@ -256,9 +277,11 @@ export interface LoadedAsset {
 
 const cache = new Map<string, LoadedAsset>();
 
-/** The single shared atlas texture for all polyx_ OBJ assets. */
+/** The shared atlas textures — one green (default), one snow-tinted. */
 let atlasTexture: THREE.Texture | null = null;
 let atlasMaterial: THREE.MeshLambertMaterial | null = null;
+let atlasSnowTexture: THREE.Texture | null = null;
+let atlasSnowMaterial: THREE.MeshLambertMaterial | null = null;
 
 function convertMaterials(root: THREE.Object3D): void {
   if (!RENDER.useLambert) return;
@@ -287,14 +310,21 @@ function convertMaterials(root: THREE.Object3D): void {
  * Apply the shared atlas material to every mesh under `root`. Called on
  * every OBJ load. The material is REUSED across meshes (not cloned) so
  * hundreds of props still ship a single GL material — huge draw-call win.
+ * Snow-tagged assets sample the winter atlas instead of the green one.
  */
-function applyAtlasMaterial(root: THREE.Object3D): void {
-  if (!atlasMaterial) return;
+function applyAtlasMaterial(root: THREE.Object3D, useSnow: boolean): void {
+  const mat = useSnow ? atlasSnowMaterial : atlasMaterial;
+  if (!mat) return;
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
-    mesh.material = atlasMaterial!;
+    mesh.material = mat;
   });
+}
+
+/** True if this asset key belongs to the snow-variant family. */
+export function isSnowKey(key: string): boolean {
+  return key.includes("_snow") || key.includes("snowpile") || key.includes("hillsnow");
 }
 
 function enableShadows(root: THREE.Object3D, cast: boolean, receive: boolean): void {
@@ -309,29 +339,40 @@ function enableShadows(root: THREE.Object3D, cast: boolean, receive: boolean): v
   });
 }
 
-/** Preload the shared atlas texture used by every polyx_ OBJ. */
+/** Preload the shared atlas textures used by every polyx_ OBJ. */
 async function loadAtlas(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    new THREE.TextureLoader().load(
-      "assets/polygon-obj/atlas.png",
-      (tex) => {
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.magFilter = THREE.NearestFilter; // pixel-crisp look
-        tex.minFilter = THREE.NearestMipmapLinearFilter;
-        tex.generateMipmaps = true;
-        tex.wrapS = THREE.ClampToEdgeWrapping;
-        tex.wrapT = THREE.ClampToEdgeWrapping;
-        atlasTexture = tex;
-        atlasMaterial = new THREE.MeshLambertMaterial({
-          map: tex,
-          side: THREE.DoubleSide, // some pack meshes have single-sided flags flipped
-          color: 0xffffff,
-        });
-        resolve();
-      },
-      undefined,
-      (err) => reject(err),
-    );
+  const loadTex = (url: string) =>
+    new Promise<THREE.Texture>((resolve, reject) => {
+      new THREE.TextureLoader().load(
+        url,
+        (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.magFilter = THREE.NearestFilter;
+          tex.minFilter = THREE.NearestMipmapLinearFilter;
+          tex.generateMipmaps = true;
+          tex.wrapS = THREE.ClampToEdgeWrapping;
+          tex.wrapT = THREE.ClampToEdgeWrapping;
+          resolve(tex);
+        },
+        undefined,
+        (err) => reject(err),
+      );
+    });
+  const [green, snow] = await Promise.all([
+    loadTex("assets/polygon-obj/atlas.png"),
+    loadTex("assets/polygon-obj/atlas_snow.png"),
+  ]);
+  atlasTexture = green;
+  atlasSnowTexture = snow;
+  atlasMaterial = new THREE.MeshLambertMaterial({
+    map: green,
+    side: THREE.DoubleSide,
+    color: 0xffffff,
+  });
+  atlasSnowMaterial = new THREE.MeshLambertMaterial({
+    map: snow,
+    side: THREE.DoubleSide,
+    color: 0xffffff,
   });
 }
 
@@ -361,7 +402,7 @@ export async function loadAll(
     onProgress(done, total, url.split("/").pop() ?? url);
     try {
       const grp: THREE.Group = await objLoader.loadAsync(url);
-      applyAtlasMaterial(grp);
+      applyAtlasMaterial(grp, isSnowKey(key));
       cache.set(key, { scene: grp, animations: [] });
     } catch (e) {
       // Some OBJs may fail loading — skip and continue to avoid breaking the game

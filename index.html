@@ -51,6 +51,12 @@ html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: 
 #hud-combo.bump { animation: comboBump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes comboBump { 0% { transform: translateX(-50%) scale(0.7); } 60% { transform: translateX(-50%) scale(1.22); } 100% { transform: translateX(-50%) scale(1); } }
 
+/* ---------------- Charge attack bar (v5) ---------------- */
+#hud-charge { position: absolute; bottom: 130px; left: 50%; transform: translateX(-50%); width: 240px; height: 10px; background: rgba(0,0,0,0.55); border: 1px solid var(--gold); border-radius: 6px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.5); }
+#hud-charge-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #ffb347, #ff6b35); transition: width 0.05s linear; }
+#hud-charge-fill.ready { background: linear-gradient(90deg, #ffe066, #ffb347, #ffe066); background-size: 200% 100%; animation: chargeReadyPulse 0.7s ease-in-out infinite; box-shadow: 0 0 12px rgba(255,209,102,0.8); }
+@keyframes chargeReadyPulse { 0%, 100% { background-position: 0% 0; } 50% { background-position: 100% 0; } }
+
 /* ---------------- Interact prompt ---------------- */
 #hud-interact { position: absolute; bottom: 190px; left: 50%; transform: translateX(-50%); padding: 8px 16px; background: var(--panel); border: 1px solid var(--gold); border-radius: 999px; display: flex; align-items: center; gap: 8px; font-size: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); animation: promptBob 1.4s ease-in-out infinite; }
 #hud-interact .key { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; background: var(--gold); color: var(--bg); font-weight: 800; font-size: 15px; }

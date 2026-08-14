@@ -21,6 +21,7 @@ import { BOSS_ROOM_KEY, START_ROOM_KEY, roomAt } from "./world/dungeon";
 import { Hud } from "./ui/hud";
 import { Minimap } from "./ui/minimap";
 import { Screens } from "./ui/screens";
+import { Shop } from "./ui/shop";
 import { TouchUi } from "./ui/touch";
 
 // ---------------------------------------------------------------------------
@@ -107,6 +108,7 @@ async function main(): Promise<void> {
   let npcs: NpcSystem | null = null;
   let story: StoryDirector | null = null;
   let swordFx: SwordFxSystem | null = null;
+  let shop: Shop | null = null;
   let running = false;
 
   const events: GameEvents = {
@@ -130,14 +132,14 @@ async function main(): Promise<void> {
       if (def) hud?.setRoomLabel(def.name);
       minimap?.markVisited(key);
       story?.onRoomChanged(key);
-      // v4: music switches with biome. The boss room gets its own aggressive
-      // track as soon as the player enters; everywhere else is village/forest/
-      // dungeon based on the room's declared biome.
+      // v5: music by biome. Boss room has its own aggressive track;
+      // snow reuses village (folk/gentle), wetland/pine reuse forest,
+      // meadow reuses village for its bright pastoral feel.
       if (key === BOSS_ROOM_KEY) {
         playMusic("boss");
-      } else if (def?.biome === "village") {
+      } else if (def?.biome === "village" || def?.biome === "snow" || def?.biome === "meadow") {
         playMusic("village");
-      } else if (def?.biome === "forest") {
+      } else if (def?.biome === "forest" || def?.biome === "pine" || def?.biome === "wetland") {
         playMusic("forest");
       } else if (def?.biome === "dungeon") {
         playMusic("dungeon");
@@ -168,6 +170,12 @@ async function main(): Promise<void> {
       }
     },
     onGameEvent: (key) => story?.onEvent(key),
+    // v5: shop overlay — pauses gameplay while open
+    onOpenShop: () => {
+      if (!shop || !player) return;
+      shop.open(player, () => { /* shop closes → resume */ });
+    },
+    onCloseShop: () => shop?.close(),
   };
 
   async function startGame(): Promise<void> {
@@ -201,6 +209,7 @@ async function main(): Promise<void> {
     const startDef = roomAt(...(START_ROOM_KEY.split(",").map(Number) as [number, number]));
     hud.setRoomLabel(startDef?.name ?? "Willowvale Village");
     minimap = new Minimap(hudMount);
+    shop = new Shop(uiMount);
 
     // spawn the boss (dormant) in the throne room; woken by RoomManager
     boss.spawn(world.bossSpawn);
@@ -275,6 +284,15 @@ async function main(): Promise<void> {
     if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && fx && npcs && swordFx) {
       pollKeyboard(input, touchUi.active());
 
+      // v5: shop pauses gameplay — just render, don't update world state.
+      // We also drain per-frame input flags so buttons don't queue while paused.
+      if (shop?.isOpen()) {
+        endFrame(input, dt);
+        renderer.render(scene, cam.camera);
+        requestAnimationFrame(tick);
+        return;
+      }
+
       updatePlayer(player, input, dt, roomMgr, fx, events);
       npcs.update(dt, player, roomMgr, input);
       enemies.update(dt, player, roomMgr, projectiles, pickups);
@@ -311,6 +329,11 @@ async function main(): Promise<void> {
 
       hud?.render(player);
       hud?.updateInteractPrompt(npcs.activeNpc);
+      // v5: charge attack bar fills while holding attack
+      hud?.setChargeBar(
+        Math.min(1, player.chargeTime / 0.55), // 0.55s = PLAYER.chargeTime
+        player.chargeReady,
+      );
       minimap?.render(world!.rooms, roomMgr.current.key, now / 1000);
       endFrame(input, dt);
     }

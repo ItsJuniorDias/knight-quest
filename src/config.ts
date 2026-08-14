@@ -63,6 +63,14 @@ export const PLAYER = {
   attackDamage: 1,
   comboWindow: 0.26, // seconds after a swing where a 2nd press chains the combo
 
+  // v5: heavy / charged attack — hold attack for `chargeTime` then release
+  chargeTime: 0.55,          // seconds of hold before the strike is "ready"
+  heavyAttackDuration: 0.72, // longer swing, sells the weight
+  heavyAttackHitStart: 0.22,
+  heavyAttackHitEnd: 0.52,
+  heavyAttackDamage: 3,      // vs light=1 (or 2 with sharpBlade upgrade)
+  heavyKnockbackMul: 2.0,    // multiplies enemy knockback
+
   rollDuration: 0.46,
   rollSpeed: 13.5,
   rollCooldown: 0.22,

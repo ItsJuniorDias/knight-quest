@@ -19,6 +19,7 @@ export function createInputState(): InputState {
     moveY: 0,
     attackPressed: false,
     attackBuffered: 0,
+    attackHeld: false,
     rollPressed: false,
     blockHeld: false,
     interactPressed: false,
@@ -93,4 +94,6 @@ export function pollKeyboard(input: InputState, touchActive: boolean): void {
   if (keys.has("KeyS") || keys.has("ArrowDown")) y += 1;
   applyStick(input, x, y);
   input.blockHeld = keys.has("ShiftLeft") || keys.has("ShiftRight");
+  // v5: held-attack for charge attack
+  input.attackHeld = keys.has("KeyJ") || keys.has("KeyZ") || keys.has("Space");
 }
