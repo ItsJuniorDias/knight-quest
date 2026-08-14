@@ -46,6 +46,22 @@ export class TouchUi {
     return this.touching > 0;
   }
 
+  /** v6: hide the touch overlays entirely (used when the shop opens so the
+   *  stick + attack buttons don't compete with shop taps or block the view).
+   *  Also resets the touching counter so we don't leave the keyboard poll
+   *  disabled when we come back. */
+  setVisible(visible: boolean): void {
+    this.stickBase.style.display = visible ? "" : "none";
+    this.attackBtn.parentElement!.style.display = visible ? "" : "none";
+    if (!visible) {
+      this.touching = 0;
+      this.stickHat.style.transform = "translate(0,0)";
+      // Also cancel any active stick input so the player doesn't keep moving
+      // while the shop is up.
+      applyStick(this.input, 0, 0);
+    }
+  }
+
   private wireStick(): void {
     const down = (e: PointerEvent) => {
       if (this.stickPointer !== null) return;

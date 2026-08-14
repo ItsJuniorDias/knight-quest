@@ -185,7 +185,12 @@ async function main(): Promise<void> {
     // v5: shop overlay — pauses gameplay while open
     onOpenShop: () => {
       if (!shop || !player) return;
-      shop.open(player, () => { /* shop closes → resume */ });
+      // v6 mobile: hide the touch controls so they don't overlap the shop
+      // panel or accidentally receive taps meant for Buy/Leave.
+      touchUi.setVisible(false);
+      shop.open(player, () => {
+        touchUi.setVisible(true);
+      });
     },
     onCloseShop: () => shop?.close(),
   };

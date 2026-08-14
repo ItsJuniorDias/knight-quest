@@ -42782,13 +42782,22 @@ void main() {
         "display:none",
         "align-items:center",
         "justify-content:center",
-        "z-index:400",
+        // v6 mobile: super-high z-index guarantees the overlay sits above the
+        // touch controls (which use position:fixed inside their own stacking
+        // context and can end up above lower z-indexes on iOS Safari). Also
+        // set overflow so tall shop content on short viewports can scroll.
+        "z-index:9999",
+        "overflow-y:auto",
         "font-family:system-ui,-apple-system,sans-serif",
         // v5 fix: parent #ui has pointer-events:none, which is inherited.
         // Without this override, Buy/Leave buttons receive no clicks and the
         // shop feels frozen — only Esc closes it. Same pattern .screen and
         // #touch-stick use in index.html.
-        "pointer-events:auto"
+        "pointer-events:auto",
+        // v6 mobile: respect iPhone notch/dynamic island so the header isn't
+        // hidden under the status bar area.
+        "padding-top:env(safe-area-inset-top,0px)",
+        "padding-bottom:env(safe-area-inset-bottom,0px)"
       ].join(";");
       this.overlay.innerHTML = this.buildInner();
       this.root.appendChild(this.overlay);
@@ -42799,27 +42808,34 @@ void main() {
     }
     buildInner() {
       return `
-      <div style="background:linear-gradient(180deg,#2b1f18,#1a1210);border:2px solid #7a5030;border-radius:12px;padding:26px 30px;max-width:520px;width:90%;color:#f2e6d5;box-shadow:0 20px 60px rgba(0,0,0,0.55);">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;">
-          <div>
+      <div style="background:linear-gradient(180deg,#2b1f18,#1a1210);border:2px solid #7a5030;border-radius:12px;padding:26px 30px;max-width:520px;width:90%;max-height:calc(100vh - 32px);overflow-y:auto;color:#f2e6d5;box-shadow:0 20px 60px rgba(0,0,0,0.55);margin:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;gap:12px;">
+          <div style="min-width:0;flex:1;">
             <div style="font-size:22px;font-weight:600;color:#f7e4a5;">Inga's Wares</div>
             <div style="font-size:13px;color:#c9b596;margin-top:2px;font-style:italic;">"The Frontier grew too quiet. Now I trade beside the cart."</div>
           </div>
-          <div id="shop-coin-badge" style="background:#5a3f22;padding:6px 12px;border-radius:8px;font-weight:600;color:#f7e4a5;">\u{1F4B0} 0</div>
+          <div id="shop-coin-badge" style="background:#5a3f22;padding:6px 12px;border-radius:8px;font-weight:600;color:#f7e4a5;flex-shrink:0;">\u{1F4B0} 0</div>
         </div>
         <div id="shop-items" style="display:flex;flex-direction:column;gap:10px;"></div>
-        <button id="shop-close" style="margin-top:18px;width:100%;padding:12px;background:#5a3f22;color:#f2e6d5;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;">Leave (Esc)</button>
+        <button id="shop-close" style="margin-top:18px;width:100%;padding:14px;background:#5a3f22;color:#f2e6d5;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;touch-action:manipulation;">Leave (Esc)</button>
       </div>
     `;
     }
     open(player, onClose) {
       this.player = player;
       this.onCloseCb = onClose;
+      if (!this.overlay.parentElement) {
+        this.root.appendChild(this.overlay);
+      }
       this.open_ = true;
       this.overlay.style.display = "flex";
       this.render();
       const close = this.overlay.querySelector("#shop-close");
       close.onclick = () => this.close();
+      close.ontouchstart = (e) => {
+        e.preventDefault();
+        this.close();
+      };
     }
     close() {
       if (!this.open_) return;
@@ -42861,14 +42877,20 @@ void main() {
         <div style="text-align:right;">
           <div style="font-weight:600;color:${canAfford ? "#f7e4a5" : "#ff8080"};">${item.price} \u{1F4B0}</div>
         </div>
-        <button data-item="${item.id}" style="background:${disabled ? "#3a2a1c" : "#7a5030"};color:#f2e6d5;border:none;border-radius:6px;padding:8px 14px;font-weight:600;cursor:${disabled ? "not-allowed" : "pointer"};min-width:70px;" ${disabled ? "disabled" : ""}>Buy</button>
+        <button data-item="${item.id}" style="background:${disabled ? "#3a2a1c" : "#7a5030"};color:#f2e6d5;border:none;border-radius:6px;padding:10px 14px;font-weight:600;cursor:${disabled ? "not-allowed" : "pointer"};min-width:70px;touch-action:manipulation;" ${disabled ? "disabled" : ""}>Buy</button>
       `;
         list.appendChild(row);
       }
       list.querySelectorAll("button[data-item]").forEach((btn) => {
-        btn.onclick = () => {
+        if (btn.disabled) return;
+        const handler = () => {
           const id = btn.dataset.item;
           this.buy(id);
+        };
+        btn.onclick = handler;
+        btn.ontouchstart = (e) => {
+          e.preventDefault();
+          handler();
         };
       });
     }
@@ -42914,6 +42936,19 @@ void main() {
     }
     active() {
       return this.touching > 0;
+    }
+    /** v6: hide the touch overlays entirely (used when the shop opens so the
+     *  stick + attack buttons don't compete with shop taps or block the view).
+     *  Also resets the touching counter so we don't leave the keyboard poll
+     *  disabled when we come back. */
+    setVisible(visible) {
+      this.stickBase.style.display = visible ? "" : "none";
+      this.attackBtn.parentElement.style.display = visible ? "" : "none";
+      if (!visible) {
+        this.touching = 0;
+        this.stickHat.style.transform = "translate(0,0)";
+        applyStick(this.input, 0, 0);
+      }
     }
     wireStick() {
       const down = (e) => {
@@ -43105,7 +43140,9 @@ void main() {
       // v5: shop overlay — pauses gameplay while open
       onOpenShop: () => {
         if (!shop || !player) return;
+        touchUi.setVisible(false);
         shop.open(player, () => {
+          touchUi.setVisible(true);
         });
       },
       onCloseShop: () => shop?.close()
