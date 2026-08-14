@@ -39,6 +39,46 @@ export type MusicTrack =
 let currentTrack: MusicTrack | null = null;
 let pendingTrack: MusicTrack | null = null;
 
+// ---------------------------------------------------------------------------
+// v6: streamed music files (optional). If a file is registered for a track,
+// playMusic() uses the file with a smooth crossfade instead of the procedural
+// scheduler. Missing files fall back to procedural — you can migrate one
+// track at a time, drop `assets/music/village.mp3` and the village theme
+// automatically becomes the streamed version while dungeon stays procedural.
+//
+// Files go in `assets/music/` with the track name as filename. Loading is
+// lazy on first playMusic() — nothing loads if the user never opens the game.
+// ---------------------------------------------------------------------------
+interface MusicFile {
+  /** URL relative to the site root. If missing, procedural is used. */
+  url: string;
+  /** Playback volume 0..1 (per-track normalisation — some Suno exports are hot). */
+  gain: number;
+  /** Loop the file (false only for victory/gameover, which are one-shots). */
+  loop: boolean;
+  /** Populated lazily by loadMusicFile(). */
+  element?: HTMLAudioElement;
+  /** Web Audio node for crossfading; created together with element. */
+  source?: MediaElementAudioSourceNode;
+  /** Gain node so we can crossfade independent of `musicGain` master. */
+  trackGain?: GainNode;
+}
+
+const MUSIC_FILES: Partial<Record<MusicTrack, MusicFile>> = {
+  title:    { url: "assets/music/title.mp3",    gain: 0.9, loop: true  },
+  village:  { url: "assets/music/village.mp3",  gain: 0.9, loop: true  },
+  forest:   { url: "assets/music/forest.mp3",   gain: 0.9, loop: true  },
+  dungeon:  { url: "assets/music/dungeon.mp3",  gain: 0.9, loop: true  },
+  boss:     { url: "assets/music/boss.mp3",     gain: 1.0, loop: true  },
+  victory:  { url: "assets/music/victory.mp3",  gain: 1.0, loop: false },
+  gameover: { url: "assets/music/gameover.mp3", gain: 0.9, loop: false },
+};
+
+/** Which track (if any) is currently playing from a streamed file. */
+let activeFileTrack: MusicTrack | null = null;
+/** File-load attempts we've already made (success or fail) — no retry storms. */
+const fileTried = new Set<MusicTrack>();
+
 export function initAudio(): void {
   if (ctx) {
     if (ctx.state === "suspended") void ctx.resume();
@@ -445,12 +485,126 @@ function ensureSchedulerRunning(): void {
 }
 
 /**
+ * Try to load a streamed music file for a given track. Idempotent — safe
+ * to call many times, only fetches once. Silently gives up on error and
+ * leaves the track on procedural. Called lazily on first playMusic(track).
+ */
+async function tryLoadMusicFile(track: MusicTrack): Promise<HTMLAudioElement | null> {
+  if (!ctx || !musicGain) return null;
+  const spec = MUSIC_FILES[track];
+  if (!spec) return null;
+  if (spec.element) return spec.element;
+  if (fileTried.has(track)) return null;
+  fileTried.add(track);
+
+  // HEAD-check the URL so we don't create an <audio> element for a 404 —
+  // that would spam the console and log a spurious playback error.
+  try {
+    const head = await fetch(spec.url, { method: "HEAD" });
+    if (!head.ok) return null;
+  } catch {
+    return null;
+  }
+
+  const el = document.createElement("audio");
+  el.src = spec.url;
+  el.loop = spec.loop;
+  el.crossOrigin = "anonymous";
+  el.preload = "auto";
+  // Add to DOM (some browsers won't decode until it is)
+  el.style.display = "none";
+  document.body.appendChild(el);
+  spec.element = el;
+
+  const src = ctx.createMediaElementSource(el);
+  const g = ctx.createGain();
+  g.gain.value = 0; // silent until this track becomes active
+  src.connect(g).connect(musicGain);
+  spec.source = src;
+  spec.trackGain = g;
+
+  return el;
+}
+
+/** Stop the currently active streamed file with a fade-out. */
+function fadeOutActiveFile(fadeSeconds = 0.5): void {
+  if (!ctx || activeFileTrack === null) return;
+  const spec = MUSIC_FILES[activeFileTrack];
+  const g = spec?.trackGain;
+  if (g) {
+    const t = ctx.currentTime;
+    g.gain.cancelScheduledValues(t);
+    g.gain.setValueAtTime(g.gain.value, t);
+    g.gain.linearRampToValueAtTime(0, t + fadeSeconds);
+  }
+  // Actually pause after the fade — a still-playing but silent element
+  // wastes CPU.
+  const el = spec?.element;
+  if (el) window.setTimeout(() => el.pause(), fadeSeconds * 1000 + 50);
+  activeFileTrack = null;
+}
+
+/** Fade IN a streamed file for `track`, resuming it if it was paused. */
+function fadeInFile(track: MusicTrack, fadeSeconds = 0.5): void {
+  if (!ctx) return;
+  const spec = MUSIC_FILES[track];
+  if (!spec?.element || !spec.trackGain) return;
+  const t = ctx.currentTime;
+  spec.trackGain.gain.cancelScheduledValues(t);
+  spec.trackGain.gain.setValueAtTime(spec.trackGain.gain.value, t);
+  spec.trackGain.gain.linearRampToValueAtTime(spec.gain, t + fadeSeconds);
+  spec.element.currentTime = spec.element.currentTime; // touch to prevent glitch on some browsers
+  const p = spec.element.play();
+  if (p && typeof p.catch === "function") p.catch(() => {/* ignore autoplay reject */});
+  activeFileTrack = track;
+}
+
+/** Stop the procedural scheduler + fade musicGain to zero for the switch. */
+function stopProcedural(): void {
+  if (musicTimer !== null) {
+    clearInterval(musicTimer);
+    musicTimer = null;
+  }
+  currentTrack = null;
+  pendingTrack = null;
+}
+
+/**
  * Switch to (or start) a given music track. If a track is already playing,
  * the switch happens at the next bar boundary so notes don't glitch.
  * If nothing is playing yet, the new track kicks in immediately.
+ *
+ * v6: if `assets/music/<track>.mp3` exists, uses the streamed file with
+ * crossfade. Otherwise falls back to the procedural scheduler. This lets
+ * you migrate tracks one at a time — drop `village.mp3` and only that
+ * track becomes streamed while the rest stay procedural.
  */
 export function playMusic(track: MusicTrack): void {
   if (!ctx || !musicGain) return;
+
+  // Try the streamed-file path first. If the file loads OK, use it and
+  // stop procedural. If not, fall through to the procedural scheduler.
+  void tryLoadMusicFile(track).then((el) => {
+    if (!el) {
+      // No file for this track: use procedural path (below, non-async).
+      return;
+    }
+    // File is available. Crossfade from whatever is playing to this file.
+    if (activeFileTrack === track) return; // already playing
+    fadeOutActiveFile(0.5);
+    stopProcedural();
+    if (musicGain && ctx) {
+      // Master music channel back to full — procedural may have faded it out.
+      musicGain.gain.cancelScheduledValues(ctx.currentTime);
+      musicGain.gain.setValueAtTime(0.34, ctx.currentTime);
+    }
+    fadeInFile(track, 0.5);
+  });
+
+  // Procedural path — runs immediately (no file wait). If the file loads
+  // later, the .then() above will crossfade over. This keeps the audio
+  // starting instantly on first user gesture instead of waiting for fetch.
+  if (activeFileTrack !== null) return; // file already handling audio
   ensureSchedulerRunning();
   if (currentTrack === null) {
     // First play: gently fade in and start at step 0.
@@ -475,15 +629,11 @@ export function startMusic(): void {
 
 /** Stop scheduling and fade the music out. */
 export function stopMusic(): void {
+  fadeOutActiveFile(0.4);
   if (musicGain && ctx) {
     musicGain.gain.cancelScheduledValues(ctx.currentTime);
     musicGain.gain.setValueAtTime(musicGain.gain.value, ctx.currentTime);
     musicGain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.4);
   }
-  if (musicTimer !== null) {
-    clearInterval(musicTimer);
-    musicTimer = null;
-  }
-  currentTrack = null;
-  pendingTrack = null;
+  stopProcedural();
 }

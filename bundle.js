@@ -33890,6 +33890,17 @@ void main() {
   var musicTimer = null;
   var currentTrack = null;
   var pendingTrack = null;
+  var MUSIC_FILES = {
+    title: { url: "assets/music/title.mp3", gain: 0.9, loop: true },
+    village: { url: "assets/music/village.mp3", gain: 0.9, loop: true },
+    forest: { url: "assets/music/forest.mp3", gain: 0.9, loop: true },
+    dungeon: { url: "assets/music/dungeon.mp3", gain: 0.9, loop: true },
+    boss: { url: "assets/music/boss.mp3", gain: 1, loop: true },
+    victory: { url: "assets/music/victory.mp3", gain: 1, loop: false },
+    gameover: { url: "assets/music/gameover.mp3", gain: 0.9, loop: false }
+  };
+  var activeFileTrack = null;
+  var fileTried = /* @__PURE__ */ new Set();
   function initAudio() {
     if (ctx) {
       if (ctx.state === "suspended") void ctx.resume();
@@ -34219,8 +34230,87 @@ void main() {
     step = 0;
     musicTimer = window.setInterval(scheduleMusic, 40);
   }
+  async function tryLoadMusicFile(track) {
+    if (!ctx || !musicGain) return null;
+    const spec = MUSIC_FILES[track];
+    if (!spec) return null;
+    if (spec.element) return spec.element;
+    if (fileTried.has(track)) return null;
+    fileTried.add(track);
+    try {
+      const head = await fetch(spec.url, { method: "HEAD" });
+      if (!head.ok) return null;
+    } catch {
+      return null;
+    }
+    const el = document.createElement("audio");
+    el.src = spec.url;
+    el.loop = spec.loop;
+    el.crossOrigin = "anonymous";
+    el.preload = "auto";
+    el.style.display = "none";
+    document.body.appendChild(el);
+    spec.element = el;
+    const src = ctx.createMediaElementSource(el);
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    src.connect(g).connect(musicGain);
+    spec.source = src;
+    spec.trackGain = g;
+    return el;
+  }
+  function fadeOutActiveFile(fadeSeconds = 0.5) {
+    if (!ctx || activeFileTrack === null) return;
+    const spec = MUSIC_FILES[activeFileTrack];
+    const g = spec?.trackGain;
+    if (g) {
+      const t = ctx.currentTime;
+      g.gain.cancelScheduledValues(t);
+      g.gain.setValueAtTime(g.gain.value, t);
+      g.gain.linearRampToValueAtTime(0, t + fadeSeconds);
+    }
+    const el = spec?.element;
+    if (el) window.setTimeout(() => el.pause(), fadeSeconds * 1e3 + 50);
+    activeFileTrack = null;
+  }
+  function fadeInFile(track, fadeSeconds = 0.5) {
+    if (!ctx) return;
+    const spec = MUSIC_FILES[track];
+    if (!spec?.element || !spec.trackGain) return;
+    const t = ctx.currentTime;
+    spec.trackGain.gain.cancelScheduledValues(t);
+    spec.trackGain.gain.setValueAtTime(spec.trackGain.gain.value, t);
+    spec.trackGain.gain.linearRampToValueAtTime(spec.gain, t + fadeSeconds);
+    spec.element.currentTime = spec.element.currentTime;
+    const p = spec.element.play();
+    if (p && typeof p.catch === "function") p.catch(() => {
+    });
+    activeFileTrack = track;
+  }
+  function stopProcedural() {
+    if (musicTimer !== null) {
+      clearInterval(musicTimer);
+      musicTimer = null;
+    }
+    currentTrack = null;
+    pendingTrack = null;
+  }
   function playMusic(track) {
     if (!ctx || !musicGain) return;
+    void tryLoadMusicFile(track).then((el) => {
+      if (!el) {
+        return;
+      }
+      if (activeFileTrack === track) return;
+      fadeOutActiveFile(0.5);
+      stopProcedural();
+      if (musicGain && ctx) {
+        musicGain.gain.cancelScheduledValues(ctx.currentTime);
+        musicGain.gain.setValueAtTime(0.34, ctx.currentTime);
+      }
+      fadeInFile(track, 0.5);
+    });
+    if (activeFileTrack !== null) return;
     ensureSchedulerRunning();
     if (currentTrack === null) {
       currentTrack = track;

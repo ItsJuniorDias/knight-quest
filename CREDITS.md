@@ -35,8 +35,21 @@ embedded as a `bufferView` in each GLB's binary chunk.
 
 ## Audio
 
-All SFX and music are procedurally generated at runtime with the WebAudio
-API (`src/engine/audio.ts`). No audio files are shipped or licensed.
+SFX são procedurais (WebAudio API em `src/engine/audio.ts`).
+Trilha sonora usa MP3s opcionais em `assets/music/` — todos **CC0** do
+[OpenGameArt.org](https://opengameart.org). Rode `bash assets/music/download.sh`
+pra baixar. Se um arquivo faltar, o audio.ts cai automaticamente na síntese
+procedural daquela track.
+
+| track          | fonte                             | autor        |
+| -------------- | --------------------------------- | ------------ |
+| `title.mp3`    | Fantasy: Rising Moon              | RandomMind   |
+| `village.mp3`  | Medieval: The Bard's Tale         | RandomMind   |
+| `forest.mp3`   | Dark Forest Theme                 | cynicmusic   |
+| `dungeon.mp3`  | Dungeon Ambience (ogg→mp3)        | yd           |
+| `boss.mp3`     | Medieval: Battle                  | RandomMind   |
+| `victory.mp3`  | Medieval: Victory Theme           | RandomMind   |
+| `gameover.mp3` | Medieval: Defeat Theme            | RandomMind   |
 
 ## Fonts
 
