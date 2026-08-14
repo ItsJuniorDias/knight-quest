@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <title>Knight Quest — A Magic World Adventure</title>
 <style>
@@ -17,9 +17,13 @@
   --accent: #7de3ff;
   --danger: #dd4422;
 }
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-user-select: none; user-select: none; }
-#canvas { position: fixed; inset: 0; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+/* v6 mobile: no double-tap zoom, no long-press callout, no scroll bounce.
+   touch-action:manipulation on * kills the 300ms tap delay + double-tap zoom
+   without disabling pinch elsewhere. Body gets `none` because the whole
+   viewport is a game canvas — no scrolling wanted at all. */
+html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-user-select: none; user-select: none; touch-action: none; overscroll-behavior: none; }
+#canvas { position: fixed; inset: 0; touch-action: none; }
 #canvas canvas { display: block; width: 100%; height: 100%; }
 
 /* ---------------- HUD ---------------- */

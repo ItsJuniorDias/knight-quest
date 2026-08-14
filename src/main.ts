@@ -45,6 +45,18 @@ async function main(): Promise<void> {
   const uiMount = document.getElementById("ui")!;
   const touchMount = document.getElementById("touch")!;
 
+  // v6 mobile: kill iOS Safari's built-in zoom gestures. CSS `touch-action:none`
+  // + meta viewport `maximum-scale=1` cover ~90% of cases, but iOS Safari
+  // still fires `gesturestart` (pinch) and can double-tap-zoom regardless
+  // when the double-tap crosses element boundaries fast. `preventDefault`
+  // on both is the last-mile fix. `{ passive: false }` is required — the
+  // browser ignores preventDefault on passive listeners.
+  const killGesture = (e: Event) => e.preventDefault();
+  document.addEventListener("gesturestart", killGesture, { passive: false });
+  document.addEventListener("gesturechange", killGesture, { passive: false });
+  document.addEventListener("gestureend", killGesture, { passive: false });
+  document.addEventListener("dblclick", killGesture, { passive: false });
+
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio));
   renderer.setSize(window.innerWidth, window.innerHeight);

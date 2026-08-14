@@ -42943,6 +42943,11 @@ void main() {
     const hudMount = document.getElementById("hud");
     const uiMount = document.getElementById("ui");
     const touchMount = document.getElementById("touch");
+    const killGesture = (e) => e.preventDefault();
+    document.addEventListener("gesturestart", killGesture, { passive: false });
+    document.addEventListener("gesturechange", killGesture, { passive: false });
+    document.addEventListener("gestureend", killGesture, { passive: false });
+    document.addEventListener("dblclick", killGesture, { passive: false });
     const renderer = new WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio));
     renderer.setSize(window.innerWidth, window.innerHeight);
