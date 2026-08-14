@@ -104,6 +104,61 @@ export class Shop {
 
   constructor(mount: HTMLElement) {
     this.root = mount;
+
+    // v6 mobile: shop styles moved to a <style> tag so we can use media
+    // queries. Mobile viewport compacts EVERYTHING: paddings, font sizes,
+    // gaps, panel width — the previous inline styles were too big for a
+    // 390px iPhone screen.
+    if (!document.getElementById("shop-styles")) {
+      const style = document.createElement("style");
+      style.id = "shop-styles";
+      style.textContent = `
+        #shop-panel {
+          background: linear-gradient(180deg, #2b1f18, #1a1210);
+          border: 2px solid #7a5030;
+          border-radius: 12px;
+          padding: 22px 26px;
+          max-width: 480px;
+          width: 90%;
+          max-height: calc(100vh - 32px);
+          overflow-y: auto;
+          color: #f2e6d5;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+          margin: 16px;
+        }
+        #shop-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; gap: 10px; }
+        #shop-title { font-size: 20px; font-weight: 600; color: #f7e4a5; }
+        #shop-subtitle { font-size: 12px; color: #c9b596; margin-top: 2px; font-style: italic; }
+        #shop-coin-badge { background: #5a3f22; padding: 5px 10px; border-radius: 8px; font-weight: 600; color: #f7e4a5; flex-shrink: 0; font-size: 14px; }
+        #shop-items { display: flex; flex-direction: column; gap: 8px; }
+        .shop-item { display: flex; align-items: center; gap: 10px; background: rgba(120,80,50,0.24); padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(140,100,70,0.35); }
+        .shop-item-body { flex: 1; min-width: 0; }
+        .shop-item-name { font-weight: 600; font-size: 14px; color: #f7e4a5; }
+        .shop-item-desc { font-size: 11px; color: #c9b596; margin-top: 2px; }
+        .shop-item-price { font-weight: 600; text-align: right; font-size: 13px; }
+        .shop-item button { background: #7a5030; color: #f2e6d5; border: none; border-radius: 6px; padding: 8px 12px; font-weight: 600; cursor: pointer; min-width: 60px; touch-action: manipulation; font-size: 13px; }
+        .shop-item button:disabled { background: #3a2a1c; cursor: not-allowed; opacity: 0.6; }
+        #shop-close { margin-top: 14px; width: 100%; padding: 12px; background: #5a3f22; color: #f2e6d5; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; touch-action: manipulation; }
+
+        /* v6 mobile: aggressive compaction under 480px — narrow phones. */
+        @media (max-width: 480px) {
+          #shop-panel { padding: 14px 16px; max-width: 340px; width: calc(100% - 24px); margin: 12px; border-radius: 10px; }
+          #shop-header { margin-bottom: 10px; gap: 8px; }
+          #shop-title { font-size: 17px; }
+          #shop-subtitle { font-size: 11px; line-height: 1.3; }
+          #shop-coin-badge { padding: 4px 8px; font-size: 13px; }
+          #shop-items { gap: 6px; }
+          .shop-item { padding: 8px 10px; gap: 8px; border-radius: 6px; }
+          .shop-item-name { font-size: 13px; }
+          .shop-item-desc { font-size: 10px; margin-top: 1px; }
+          .shop-item-price { font-size: 12px; }
+          .shop-item button { padding: 7px 10px; font-size: 12px; min-width: 52px; }
+          #shop-close { margin-top: 10px; padding: 10px; font-size: 13px; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
     this.overlay = document.createElement("div");
     this.overlay.id = "shop-overlay";
     this.overlay.style.cssText = [
@@ -135,16 +190,16 @@ export class Shop {
 
   private buildInner(): string {
     return `
-      <div style="background:linear-gradient(180deg,#2b1f18,#1a1210);border:2px solid #7a5030;border-radius:12px;padding:26px 30px;max-width:520px;width:90%;max-height:calc(100vh - 32px);overflow-y:auto;color:#f2e6d5;box-shadow:0 20px 60px rgba(0,0,0,0.55);margin:16px;">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px;gap:12px;">
+      <div id="shop-panel">
+        <div id="shop-header">
           <div style="min-width:0;flex:1;">
-            <div style="font-size:22px;font-weight:600;color:#f7e4a5;">Inga's Wares</div>
-            <div style="font-size:13px;color:#c9b596;margin-top:2px;font-style:italic;">"The Frontier grew too quiet. Now I trade beside the cart."</div>
+            <div id="shop-title">Inga's Wares</div>
+            <div id="shop-subtitle">"The Frontier grew too quiet. Now I trade beside the cart."</div>
           </div>
-          <div id="shop-coin-badge" style="background:#5a3f22;padding:6px 12px;border-radius:8px;font-weight:600;color:#f7e4a5;flex-shrink:0;">💰 0</div>
+          <div id="shop-coin-badge">💰 0</div>
         </div>
-        <div id="shop-items" style="display:flex;flex-direction:column;gap:10px;"></div>
-        <button id="shop-close" style="margin-top:18px;width:100%;padding:14px;background:#5a3f22;color:#f2e6d5;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;touch-action:manipulation;">Leave (Esc)</button>
+        <div id="shop-items"></div>
+        <button id="shop-close">Leave (Esc)</button>
       </div>
     `;
   }
@@ -196,21 +251,15 @@ export class Shop {
       const canAfford = p.coins >= item.price;
       const disabled = reason !== null || !canAfford;
       const row = document.createElement("div");
-      row.style.cssText = [
-        "display:flex", "align-items:center", "gap:12px",
-        "background:rgba(120,80,50,0.24)", "padding:12px 14px",
-        "border-radius:8px", "border:1px solid rgba(140,100,70,0.35)",
-        disabled ? "opacity:0.5" : "opacity:1",
-      ].join(";");
+      row.className = "shop-item";
+      if (disabled) row.style.opacity = "0.55";
       row.innerHTML = `
-        <div style="flex:1;">
-          <div style="font-weight:600;font-size:15px;color:#f7e4a5;">${item.name}</div>
-          <div style="font-size:12px;color:#c9b596;margin-top:2px;">${reason ?? item.desc}</div>
+        <div class="shop-item-body">
+          <div class="shop-item-name">${item.name}</div>
+          <div class="shop-item-desc">${reason ?? item.desc}</div>
         </div>
-        <div style="text-align:right;">
-          <div style="font-weight:600;color:${canAfford ? "#f7e4a5" : "#ff8080"};">${item.price} 💰</div>
-        </div>
-        <button data-item="${item.id}" style="background:${disabled ? "#3a2a1c" : "#7a5030"};color:#f2e6d5;border:none;border-radius:6px;padding:10px 14px;font-weight:600;cursor:${disabled ? "not-allowed" : "pointer"};min-width:70px;touch-action:manipulation;" ${disabled ? "disabled" : ""}>Buy</button>
+        <div class="shop-item-price" style="color:${canAfford ? "#f7e4a5" : "#ff8080"};">${item.price} 💰</div>
+        <button data-item="${item.id}" ${disabled ? "disabled" : ""}>Buy</button>
       `;
       list.appendChild(row);
     }
