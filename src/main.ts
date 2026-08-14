@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { WebGPURenderer } from "three/webgpu";
 import { COLORS, DESKTOP_RENDER, MOBILE_RENDER, RENDER, detectMobile } from "./config";
 import { FxSystem, tickFlashes } from "./art/fx";
 import { initAudio, playMusic, sfx, stopMusic } from "./engine/audio";
@@ -68,10 +69,37 @@ async function main(): Promise<void> {
   (window as unknown as { KQ_USE_DOOR_LIGHTS: boolean }).KQ_USE_DOOR_LIGHTS = profile.useDoorLights;
   (window as unknown as { KQ_IS_MOBILE: boolean }).KQ_IS_MOBILE = isMobile;
 
-  const renderer = new THREE.WebGLRenderer({
+  // v13: WebGPU FIRST, WebGL FALLBACK.
+  // WebGPU (three.js WebGPURenderer) runs 2-4× faster than WebGL2 on the
+  // same GPU because it batches state changes, uses compute for skinning,
+  // and skips the WebGL driver overhead. Available in Chrome/Edge desktop
+  // + Android, Safari 18+, and iOS 18+ Safari. Non-supporting browsers
+  // (older Safari, Firefox stable) automatically fall back to WebGLRenderer.
+  const supportsWebGPU = typeof (navigator as { gpu?: unknown }).gpu !== "undefined";
+  const rendererOpts = {
     antialias: !isMobile, // native MSAA is a killer on integrated GPUs
-    powerPreference: "high-performance",
-  });
+    powerPreference: "high-performance" as const,
+  };
+  // Both renderer classes share the subset of methods we call: setSize,
+  // setPixelRatio, render, setClearColor, and .shadowMap.{enabled,type}
+  // plus a WebGL-style `.domElement`. Alias as a union for type safety.
+  type SharedRenderer = THREE.WebGLRenderer | InstanceType<typeof WebGPURenderer>;
+  let renderer: SharedRenderer;
+  if (supportsWebGPU) {
+    const gpu = new WebGPURenderer(rendererOpts as ConstructorParameters<typeof WebGPURenderer>[0]);
+    // WebGPURenderer's init is async — device request + shader compile.
+    try {
+      await gpu.init();
+      console.log("[knight-quest] using WebGPU renderer");
+      renderer = gpu;
+    } catch (err) {
+      console.warn("[knight-quest] WebGPU init failed, falling back to WebGL:", err);
+      renderer = new THREE.WebGLRenderer(rendererOpts);
+    }
+  } else {
+    console.log("[knight-quest] WebGPU not supported, using WebGL");
+    renderer = new THREE.WebGLRenderer(rendererOpts);
+  }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(COLORS.bg);
@@ -80,7 +108,7 @@ async function main(): Promise<void> {
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = profile.shadowFilterHard ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
   }
-  canvasWrap.appendChild(renderer.domElement);
+  canvasWrap.appendChild(renderer.domElement as HTMLCanvasElement);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(COLORS.bg);
