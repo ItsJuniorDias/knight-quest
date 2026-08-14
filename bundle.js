@@ -33538,35 +33538,62 @@ void main() {
   var TILE = 4;
   var ROOM_W = 15;
   var ROOM_H = 13;
+  // ---- v7 mobile perf: auto-detect touch / web-view / small-screen ----
+  function __readPerfOverride() {
+    try {
+      const p = new URLSearchParams(window.location.search).get("perf");
+      if (p === "low" || p === "med" || p === "high") return p;
+    } catch (e) {}
+    return null;
+  }
+  function __detectMobile() {
+    if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+    const ov = __readPerfOverride();
+    if (ov === "high") return false;
+    if (ov === "low" || ov === "med") return true;
+    const ua = navigator.userAgent || "";
+    const mobileUa = /android|iphone|ipad|ipod|iemobile|blackberry|opera mini|mobile safari|webview|wv\)/i.test(ua);
+    const mm = typeof window.matchMedia === "function" ? window.matchMedia.bind(window) : null;
+    const coarsePointer = mm && mm("(pointer: coarse)").matches;
+    const noHover = mm && mm("(hover: none)").matches;
+    const smallScreen = Math.min(window.innerWidth, window.innerHeight) < 820;
+    const touchOnly = "ontouchstart" in window && !(mm && mm("(hover: hover)").matches);
+    const votes = [mobileUa, coarsePointer, noHover, smallScreen, touchOnly].filter(Boolean).length;
+    return votes >= 2;
+  }
+  var IS_MOBILE = __detectMobile();
+  var __forceLow = __readPerfOverride() === "low";
   var RENDER = {
-    /**
-     * Camera: BOTW/OoT-flavored third-person chase cam, fixed to world axes.
-     * Higher FOV + shorter distance + shallower elevation = more of the world
-     * fills the screen and the horizon reads as "ahead of the knight" rather
-     * than "directly overhead".
-     */
+    // Camera: BOTW/OoT-flavored third-person chase cam, fixed to world axes.
     camFov: 48,
     camDistance: 22,
-    /** Elevation angle in radians (~42 degrees — clearly behind, not on top). */
     camElevation: 0.74,
-    /** How fast the camera eases toward its target (per-second lerp factor). */
     camLerp: 5,
-    /**
-     * How far AHEAD of the player the camera looks (in the movement direction).
-     * Zelda-like: the player sits in the lower third of the frame so you can
-     * see what's coming.
-     */
     camLookAhead: 3.2,
-    /** Seconds for the room-to-room slide transition. */
     roomSlideTime: 0.55,
-    /** Fog near/far — near matches the room bounds, far hides distant geometry. */
-    fogNear: 34,
-    fogFar: 70,
-    /** Convert glTF PBR materials to cheap Lambert (huge mobile win, flat cute look). */
+    // v7: pull the fog in on mobile so distant rooms don't cost draws.
+    fogNear: IS_MOBILE ? 26 : 34,
+    fogFar: IS_MOBILE ? 52 : 70,
     useLambert: true,
-    shadows: true,
-    shadowMapSize: 1024,
-    maxPixelRatio: 2
+    // v7: shadows off by default on mobile (soft PCF is the single biggest
+    // frame-rate killer on mobile GPUs). Adaptive tier below drops the type
+    // further if we can't hold target FPS.
+    shadows: !IS_MOBILE && !__forceLow,
+    shadowMapSize: IS_MOBILE ? 512 : 1024,
+    softShadows: !IS_MOBILE,
+    // v7: fill-rate cap. Mobile GPUs choke at native DPR; 1.0 is enough for
+    // a stylized, flat-shaded game.
+    maxPixelRatio: IS_MOBILE ? 1 : 2,
+    // v7: MSAA. Expensive on tiled mobile GPUs — off.
+    antialias: !IS_MOBILE,
+    // v7: hide non-neighbouring rooms + shadow casters when the player is
+    // deep in the dungeon — halves scene-graph traversal cost.
+    aggressiveRoomCulling: IS_MOBILE,
+    // v7: skip animation-mixer updates for actors outside the current room.
+    freezeDistantMixers: IS_MOBILE,
+    // v7: adaptive perf target — the game loop drops one quality tier each
+    // second the rolling FPS falls below this. 0 disables the system.
+    adaptiveTargetFps: IS_MOBILE ? 55 : 0
   };
   var PLAYER = {
     maxHalfHearts: 12,
@@ -38077,6 +38104,9 @@ void main() {
           tex.magFilter = NearestFilter;
           tex.minFilter = NearestMipmapLinearFilter;
           tex.generateMipmaps = true;
+          // v7 mobile: cap anisotropy at 1 (default is device max, often 16).
+          // On a pixel-art atlas the extra samples are invisible but expensive.
+          tex.anisotropy = 1;
           tex.wrapS = ClampToEdgeWrapping;
           tex.wrapT = ClampToEdgeWrapping;
           resolve2(tex);
@@ -39313,11 +39343,19 @@ void main() {
     }
     update(dt, player, roomMgr, projectiles, pickups) {
       const room = roomMgr.current;
+      // v7 mobile: skip animation-mixer updates for enemies in other rooms.
+      // Their state won't change (the switch below already `continue`s for
+      // non-current rooms) so ticking the mixer is pure waste — easily 40+
+      // skinned-mesh joint updates per frame in a full dungeon.
+      const __freezeDistantE = RENDER.freezeDistantMixers;
       for (const e of this.enemies) {
         if (e.dead) continue;
         e.stateTime += dt;
+        if (e.roomKey !== room.key) {
+          if (!__freezeDistantE) e.anim.mixer.update(dt);
+          continue;
+        }
         e.anim.mixer.update(dt);
-        if (e.roomKey !== room.key) continue;
         const cfg = ENEMIES[e.kind];
         const toPlayer = new Vector3().subVectors(player.pos, e.pos);
         const dist = Math.hypot(toPlayer.x, toPlayer.z);
@@ -40287,10 +40325,15 @@ void main() {
       const room = roomMgr.current;
       let bestActive = null;
       let bestDist = Infinity;
+      // v7 mobile: freeze skinned-mesh anim for NPCs outside the room.
+      const __freezeDistantN = RENDER.freezeDistantMixers;
       for (const npc of this.npcs) {
         npc.stateTime += dt;
+        if (npc.roomKey !== room.key) {
+          if (!__freezeDistantN) npc.anim.mixer.update(dt);
+          continue;
+        }
         npc.anim.mixer.update(dt);
-        if (npc.roomKey !== room.key) continue;
         const d = Math.hypot(player.pos.x - npc.pos.x, player.pos.z - npc.pos.z);
         if (d < TALK_RADIUS) {
           npc.state = "talking";
@@ -43212,33 +43255,50 @@ void main() {
     document.addEventListener("gesturechange", killGesture, { passive: false });
     document.addEventListener("gestureend", killGesture, { passive: false });
     document.addEventListener("dblclick", killGesture, { passive: false });
-    const renderer = new WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    const renderer = new WebGLRenderer({
+      antialias: RENDER.antialias,
+      powerPreference: "high-performance",
+      stencil: false,
+      depth: true,
+      alpha: false
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setClearColor(COLORS.bg);
     renderer.outputColorSpace = SRGBColorSpace;
     if (RENDER.shadows) {
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = PCFSoftShadowMap;
+      // v7: soft shadows are pretty but expensive; mobile gets BasicShadowMap.
+      renderer.shadowMap.type = RENDER.softShadows ? PCFSoftShadowMap : 0;
     }
     canvasWrap.appendChild(renderer.domElement);
     const scene = new Scene();
     scene.background = new Color(COLORS.bg);
     scene.fog = new Fog(COLORS.fog, RENDER.fogNear, RENDER.fogFar);
-    const ambient = new AmbientLight(COLORS.ambient, 0.9);
+    // v7: slightly brighter ambient on mobile compensates for missing shadow contact.
+    const ambient = new AmbientLight(COLORS.ambient, IS_MOBILE ? 1.05 : 0.9);
     scene.add(ambient);
-    const sun = new DirectionalLight(COLORS.sun, 1.15);
+    const sun = new DirectionalLight(COLORS.sun, IS_MOBILE ? 1.25 : 1.15);
     sun.position.set(30, 60, 20);
     sun.castShadow = RENDER.shadows;
     sun.shadow.mapSize.set(RENDER.shadowMapSize, RENDER.shadowMapSize);
-    sun.shadow.camera.left = -60;
-    sun.shadow.camera.right = 60;
-    sun.shadow.camera.top = 60;
-    sun.shadow.camera.bottom = -60;
+    // v7: shrink the sun's shadow frustum to roughly the current play area.
+    // Combined with the sunTarget follow below, we keep the same texel
+    // density on the shadow map with 4-6x less geometry inside the frustum.
+    var __shadowSpan = IS_MOBILE ? 26 : 40;
+    sun.shadow.camera.left = -__shadowSpan;
+    sun.shadow.camera.right = __shadowSpan;
+    sun.shadow.camera.top = __shadowSpan;
+    sun.shadow.camera.bottom = -__shadowSpan;
     sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = 200;
+    sun.shadow.camera.far = IS_MOBILE ? 140 : 200;
     sun.shadow.bias = -1e-3;
     scene.add(sun);
+    // v7: shadow-cam target follows the player, so the shrunk frustum always
+    // covers where the action is. Updated inside the tick loop.
+    const sunTarget = new Object3D();
+    scene.add(sunTarget);
+    sun.target = sunTarget;
     const cam = new CameraRig(window.innerWidth / window.innerHeight);
     const input = createInputState();
     const detachKeyboard = attachKeyboard(input);
@@ -43405,10 +43465,73 @@ void main() {
       playMusic("village");
       story.onRoomChanged(START_ROOM_KEY);
     }
+    // ---- v7 mobile perf: aggressive per-room culling ----
+    // On mobile, hide any room the player isn't standing in or immediately
+    // next to. Three.js skips draw calls AND shadow contribution for hidden
+    // groups. `lastCulledKey` is a memo so we only touch the scene graph
+    // when the current room actually changes.
+    let __lastCulledKey = "";
+    function __applyRoomCulling(currentKey) {
+      if (!world || !RENDER.aggressiveRoomCulling) return;
+      if (currentKey === __lastCulledKey) return;
+      __lastCulledKey = currentKey;
+      const parts = currentKey.split(",").map(Number);
+      const cx = parts[0], cy = parts[1];
+      for (const entry of world.rooms) {
+        const key = entry[0], r = entry[1];
+        if (!r.visited) continue;
+        const p = key.split(",").map(Number);
+        const dxr = Math.abs(p[0] - cx), dyr = Math.abs(p[1] - cy);
+        r.group.visible = (dxr + dyr) <= 1;
+      }
+    }
+    // ---- v7 adaptive perf: watch FPS, drop quality if we can't hold target ----
+    // Three tiers of degradation, applied at most once each:
+    //   tier 0: soft → basic shadow map
+    //   tier 1: shadows off entirely
+    //   tier 2: pixel ratio down to 85%
+    // Never re-upgrades — avoids oscillation.
+    let __fpsFrames = 0;
+    let __lastFpsCheck = performance.now();
+    let __perfTier = 0;
+    function __tickAdaptive(now3) {
+      if (RENDER.adaptiveTargetFps <= 0) return;
+      __fpsFrames++;
+      if (now3 - __lastFpsCheck < 1200) return;
+      const fps = (__fpsFrames * 1e3) / (now3 - __lastFpsCheck);
+      __fpsFrames = 0;
+      __lastFpsCheck = now3;
+      if (fps >= RENDER.adaptiveTargetFps - 2) return;
+      if (__perfTier === 0 && renderer.shadowMap.enabled && RENDER.softShadows) {
+        renderer.shadowMap.type = 0;
+        RENDER.softShadows = false;
+        sun.shadow.needsUpdate = true;
+        __perfTier = 1;
+      } else if (__perfTier <= 1 && renderer.shadowMap.enabled) {
+        renderer.shadowMap.enabled = false;
+        sun.castShadow = false;
+        RENDER.shadows = false;
+        __perfTier = 2;
+      } else if (__perfTier === 2) {
+        const dpr = Math.max(0.75, renderer.getPixelRatio() * 0.85);
+        renderer.setPixelRatio(dpr);
+        __perfTier = 3;
+      }
+    }
+    // v7: raf-frame-cap. We already Math.min(dt, 0.05); on top of that we
+    // cap incoming frames to ~62fps so a Hz-mismatched 120Hz mobile panel
+    // doesn't waste half its budget re-rendering identical world state.
     let last = performance.now();
+    const __minFrameMs = 1e3 / 62;
     function tick(now2) {
-      const dt = Math.min(0.05, (now2 - last) / 1e3);
+      const elapsed = now2 - last;
+      if (elapsed < __minFrameMs) {
+        requestAnimationFrame(tick);
+        return;
+      }
+      const dt = Math.min(0.05, elapsed / 1e3);
       last = now2;
+      __tickAdaptive(now2);
       if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && fx && npcs && swordFx) {
         pollKeyboard(input, touchUi.active());
         if (shop?.isOpen()) {
@@ -43429,6 +43552,13 @@ void main() {
         }
         roomMgr.update(dt, player, cam);
         cam.update(dt, player.pos, roomMgr.current, player.facing);
+        // v7 mobile: sun shadow-cam follows the player so we can afford a
+        // much smaller frustum without gaps.
+        if (RENDER.shadows) {
+          sunTarget.position.set(player.pos.x, 0, player.pos.z);
+          sun.position.set(player.pos.x + 30, 60, player.pos.z + 20);
+        }
+        __applyRoomCulling(roomMgr.current.key);
         updateTorches(roomMgr.current.key, now2 / 1e3);
         fx.update(dt);
         swordFx.update(dt);

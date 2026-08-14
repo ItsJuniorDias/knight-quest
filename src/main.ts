@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { COLORS, RENDER } from "./config";
+import { COLORS, IS_MOBILE, RENDER } from "./config";
 import { FxSystem, tickFlashes } from "./art/fx";
 import { initAudio, playMusic, sfx, stopMusic } from "./engine/audio";
 import { attachKeyboard, createInputState, endFrame, pollKeyboard } from "./engine/input";
@@ -57,14 +57,30 @@ async function main(): Promise<void> {
   document.addEventListener("gestureend", killGesture, { passive: false });
   document.addEventListener("dblclick", killGesture, { passive: false });
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+  // v7 mobile: renderer options are driven by the RENDER preset, which knows
+  // whether we're on a phone / web-view. Antialias off + pixelRatio 1 on
+  // mobile is the single biggest win (halves fill-rate cost, no fringing on
+  // a flat-shaded look). `stencil:false` and `depth:true` keep the WebGL
+  // context minimal.
+  const renderer = new THREE.WebGLRenderer({
+    antialias: RENDER.antialias,
+    powerPreference: "high-performance",
+    stencil: false,
+    depth: true,
+    alpha: false,
+  });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(COLORS.bg);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   if (RENDER.shadows) {
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = RENDER.softShadows
+      ? THREE.PCFSoftShadowMap
+      : THREE.BasicShadowMap;
+    // Auto-update is on by default; on mobile we render mostly-static geometry,
+    // so we let Three decide when to redraw the shadow map (default) but with
+    // a much smaller frustum below.
   }
   canvasWrap.appendChild(renderer.domElement);
 
@@ -73,20 +89,32 @@ async function main(): Promise<void> {
   scene.fog = new THREE.Fog(COLORS.fog, RENDER.fogNear, RENDER.fogFar);
 
   // lights ------------------------------------------------------------------
-  const ambient = new THREE.AmbientLight(COLORS.ambient, 0.9);
+  // v7: mobile gets slightly brighter ambient to compensate for the missing
+  // shadow contact — the scene doesn't feel washed out without a cast shadow.
+  const ambient = new THREE.AmbientLight(COLORS.ambient, IS_MOBILE ? 1.05 : 0.9);
   scene.add(ambient);
-  const sun = new THREE.DirectionalLight(COLORS.sun, 1.15);
+  const sun = new THREE.DirectionalLight(COLORS.sun, IS_MOBILE ? 1.25 : 1.15);
   sun.position.set(30, 60, 20);
   sun.castShadow = RENDER.shadows;
   sun.shadow.mapSize.set(RENDER.shadowMapSize, RENDER.shadowMapSize);
-  sun.shadow.camera.left = -60;
-  sun.shadow.camera.right = 60;
-  sun.shadow.camera.top = 60;
-  sun.shadow.camera.bottom = -60;
+  // v7: shrink the sun's shadow frustum to roughly one room. The old
+  // 120x120 area meant the 1024² shadow texture had ~14 texels per world
+  // unit; the new 60x60 keeps the same texture density with 4x less
+  // pixels to draw into (and much less geometry inside the frustum).
+  const shadowSpan = IS_MOBILE ? 26 : 40;
+  sun.shadow.camera.left = -shadowSpan;
+  sun.shadow.camera.right = shadowSpan;
+  sun.shadow.camera.top = shadowSpan;
+  sun.shadow.camera.bottom = -shadowSpan;
   sun.shadow.camera.near = 0.5;
-  sun.shadow.camera.far = 200;
+  sun.shadow.camera.far = IS_MOBILE ? 140 : 200;
   sun.shadow.bias = -0.001;
   scene.add(sun);
+  // v7: shadow-cam target follows the player, so the frustum always
+  // covers the current play area even when we shrink it.
+  const sunTarget = new THREE.Object3D();
+  scene.add(sunTarget);
+  sun.target = sunTarget;
 
   // camera + input ----------------------------------------------------------
   const cam = new CameraRig(window.innerWidth / window.innerHeight);
@@ -298,11 +326,90 @@ async function main(): Promise<void> {
     story.onRoomChanged(START_ROOM_KEY);
   }
 
+  // ---------------------------------------------------------------------
+  // v7 mobile perf: room-visibility culling.
+  //
+  // Every room lives in its own THREE.Group. On mobile we hide any room
+  // that isn't the current one or one of its 4-connected neighbours, which
+  // means the renderer skips their draw calls AND their shadow contribution
+  // entirely. `lastCulledKey` is a tiny memo so we only touch the graph
+  // when the room actually changes.
+  // ---------------------------------------------------------------------
+  let lastCulledKey = "";
+  function applyRoomCulling(currentKey: string): void {
+    if (!world || !RENDER.aggressiveRoomCulling) return;
+    if (currentKey === lastCulledKey) return;
+    lastCulledKey = currentKey;
+    const [cx, cy] = currentKey.split(",").map(Number);
+    for (const [key, r] of world.rooms) {
+      const [rx, ry] = key.split(",").map(Number);
+      const dx = Math.abs(rx - cx);
+      const dy = Math.abs(ry - cy);
+      // current + immediate neighbours (Manhattan <= 1) stay visible.
+      // Anything further gets hidden; once the player walks into it,
+      // rooms.ts flips visited/visible back on and this system re-includes it.
+      const shouldShow = r.visited && dx + dy <= 1;
+      // Only override if the room was already discovered. Never REVEAL a
+      // room that hasn't been entered yet (that's rooms.ts's job).
+      if (r.visited) r.group.visible = shouldShow;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // v7 adaptive perf: watch FPS, drop quality if we can't hold target.
+  //
+  // Three tiers of degradation:
+  //   tier 0: as-configured
+  //   tier 1: soft → basic shadow map
+  //   tier 2: shadows off entirely
+  //   tier 3: pixel ratio down to 0.85
+  // We only tick this on mobile (adaptiveTargetFps > 0) and only degrade;
+  // we never automatically re-enable, to avoid oscillating.
+  // ---------------------------------------------------------------------
+  let fpsAccum = 0;
+  let fpsFrames = 0;
+  let lastFpsCheck = performance.now();
+  let perfTier = 0;
+  function tickAdaptive(now: number): void {
+    if (RENDER.adaptiveTargetFps <= 0) return;
+    fpsFrames++;
+    if (now - lastFpsCheck < 1200) return;
+    fpsAccum = (fpsFrames * 1000) / (now - lastFpsCheck);
+    fpsFrames = 0;
+    lastFpsCheck = now;
+    if (fpsAccum >= RENDER.adaptiveTargetFps - 2) return; // healthy
+    if (perfTier === 0 && renderer.shadowMap.enabled && RENDER.softShadows) {
+      renderer.shadowMap.type = THREE.BasicShadowMap;
+      RENDER.softShadows = false;
+      sun.shadow.needsUpdate = true;
+      perfTier = 1;
+    } else if (perfTier === 1 && renderer.shadowMap.enabled) {
+      renderer.shadowMap.enabled = false;
+      sun.castShadow = false;
+      RENDER.shadows = false;
+      perfTier = 2;
+    } else if (perfTier === 2) {
+      const dpr = Math.max(0.75, renderer.getPixelRatio() * 0.85);
+      renderer.setPixelRatio(dpr);
+      perfTier = 3;
+    }
+  }
+
   // game loop ---------------------------------------------------------------
+  // v7: raf-frame-cap. We already Math.min(dt, 0.05); on top of that we
+  // cap incoming frames to ~62fps so a Hz-mismatched 120Hz mobile panel
+  // doesn't waste half its budget re-rendering identical world state.
   let last = performance.now();
+  const minFrameMs = 1000 / 62;
   function tick(now: number): void {
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const elapsed = now - last;
+    if (elapsed < minFrameMs) {
+      requestAnimationFrame(tick);
+      return;
+    }
+    const dt = Math.min(0.05, elapsed / 1000);
     last = now;
+    tickAdaptive(now);
 
     if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && fx && npcs && swordFx) {
       pollKeyboard(input, touchUi.active());
@@ -332,6 +439,14 @@ async function main(): Promise<void> {
 
       roomMgr.update(dt, player, cam);
       cam.update(dt, player.pos, roomMgr.current, player.facing);
+
+      // v7 mobile: keep the sun's shadow-cam centered on the player, so we
+      // can afford a much smaller shadow frustum without gaps.
+      if (RENDER.shadows) {
+        sunTarget.position.set(player.pos.x, 0, player.pos.z);
+        sun.position.set(player.pos.x + 30, 60, player.pos.z + 20);
+      }
+      applyRoomCulling(roomMgr.current.key);
 
       updateTorches(roomMgr.current.key, now / 1000);
       fx.update(dt);

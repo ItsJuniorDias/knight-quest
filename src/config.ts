@@ -16,36 +16,118 @@ export const TILE = 4;
 export const ROOM_W = 15;
 export const ROOM_H = 13;
 
+// ---------------------------------------------------------------------------
+// PERF PROFILE — auto-detect mobile / web-view and pick a preset.
+//
+// Detection order:
+//   1. `?perf=low|med|high` query param — user/QA override, always wins.
+//   2. Touch-only device OR small screen OR mobile UA string → "mobile" preset.
+//   3. Otherwise → "desktop" preset.
+//
+// The preset picks:
+//   • pixelRatio cap (mobile 1.0, desktop 2.0 — huge fill-rate savings)
+//   • shadow strategy (mobile off by default, desktop soft shadows)
+//   • antialias (mobile off — GPU AA is expensive on integrated mobile GPUs)
+//   • fog distance (mobile pulls the far plane in — fewer visible rooms)
+//   • adaptive downgrade (mobile turns itself down further if FPS drops)
+//
+// `RENDER` is intentionally **mutable** so the adaptive system in main.ts
+// can flip `shadows`, `maxPixelRatio`, etc. mid-run without a page reload.
+// ---------------------------------------------------------------------------
+
+export type PerfProfile = "mobile" | "desktop";
+
+function readPerfOverride(): "low" | "med" | "high" | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const p = new URLSearchParams(window.location.search).get("perf");
+    if (p === "low" || p === "med" || p === "high") return p;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/** Best-effort mobile / web-view detection. Runs once at module load. */
+function detectProfile(): PerfProfile {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return "desktop";
+  const override = readPerfOverride();
+  if (override === "high") return "desktop";
+  if (override === "low" || override === "med") return "mobile";
+
+  const ua = navigator.userAgent || "";
+  const mobileUa = /android|iphone|ipad|ipod|iemobile|blackberry|opera mini|mobile safari|webview|wv\)/i.test(ua);
+  const coarsePointer =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches;
+  const noHover =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(hover: none)").matches;
+  const smallScreen = Math.min(window.innerWidth, window.innerHeight) < 820;
+  const touchOnly = "ontouchstart" in window && !window.matchMedia?.("(hover: hover)").matches;
+
+  // Any two signals is enough — avoids false positives on hybrid laptops.
+  const votes = [mobileUa, coarsePointer, noHover, smallScreen, touchOnly].filter(Boolean).length;
+  return votes >= 2 ? "mobile" : "desktop";
+}
+
+export const PERF_PROFILE: PerfProfile = detectProfile();
+export const IS_MOBILE = PERF_PROFILE === "mobile";
+
+// Query overrides so QA can force one preset lower than the auto-detected one.
+const perfOverride = readPerfOverride();
+const forceLow = perfOverride === "low";
+
 export const RENDER = {
   /**
    * Camera: BOTW/OoT-flavored third-person chase cam, fixed to world axes.
-   * Higher FOV + shorter distance + shallower elevation = more of the world
-   * fills the screen and the horizon reads as "ahead of the knight" rather
-   * than "directly overhead".
    */
   camFov: 48,
   camDistance: 22,
-  /** Elevation angle in radians (~42 degrees — clearly behind, not on top). */
   camElevation: 0.74,
-  /** How fast the camera eases toward its target (per-second lerp factor). */
   camLerp: 5,
-  /**
-   * How far AHEAD of the player the camera looks (in the movement direction).
-   * Zelda-like: the player sits in the lower third of the frame so you can
-   * see what's coming.
-   */
   camLookAhead: 3.2,
-  /** Seconds for the room-to-room slide transition. */
   roomSlideTime: 0.55,
-  /** Fog near/far — near matches the room bounds, far hides distant geometry. */
-  fogNear: 34,
-  fogFar: 70,
-  /** Convert glTF PBR materials to cheap Lambert (huge mobile win, flat cute look). */
+
+  // Fog: pull the far plane in on mobile so distant rooms don't cost draws.
+  fogNear: IS_MOBILE ? 26 : 34,
+  fogFar: IS_MOBILE ? 52 : 70,
+
+  /** Convert glTF PBR materials to cheap Lambert (huge mobile win). */
   useLambert: true,
-  shadows: true,
-  shadowMapSize: 1024,
-  maxPixelRatio: 2,
-} as const;
+
+  // Shadows: off on mobile / low-end by default. Adaptive system re-enables
+  // on desktop if fps is comfortable, or downgrades to basic shadow map on
+  // borderline devices.
+  shadows: !IS_MOBILE && !forceLow,
+  shadowMapSize: IS_MOBILE ? 512 : 1024,
+  /** Use PCFSoft (nice, expensive) or Basic (cheap, blocky). */
+  softShadows: !IS_MOBILE,
+
+  // Fill-rate cap. Mobile GPUs choke rendering at native DPR; 1.0 is enough
+  // for a stylized flat-shaded game. Desktop keeps the crisp 2x.
+  maxPixelRatio: IS_MOBILE ? 1 : 2,
+
+  /** MSAA. Expensive on tiled mobile GPUs — off. */
+  antialias: !IS_MOBILE,
+
+  /**
+   * Hide non-neighbouring rooms entirely (visibility + shadow casting).
+   * On desktop we can afford to render everything visited; on mobile we
+   * cull anything the player isn't standing in or adjacent to.
+   */
+  aggressiveRoomCulling: IS_MOBILE,
+
+  /** Skip animation mixer updates for actors that are outside the current room. */
+  freezeDistantMixers: IS_MOBILE,
+
+  /**
+   * Adaptive perf: if the rolling FPS drops below this, the loop drops one
+   * quality tier (soft→basic shadows → shadows off → pixelRatio to 0.85).
+   * 0 disables the system.
+   */
+  adaptiveTargetFps: IS_MOBILE ? 55 : 0,
+};
 
 export const PLAYER = {
   maxHalfHearts: 12, // 6 hearts, Zelda-style half-heart granularity
