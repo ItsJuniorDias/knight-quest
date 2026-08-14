@@ -76,6 +76,81 @@ function doorLineCenter(room: RoomDef, dir: DoorDir): THREE.Vector3 {
   return c;
 }
 
+// ---------------------------------------------------------------------------
+// v7: DOOR MARKERS — obvious visual cue for every passageway.
+//
+// Every door gets two matching pillar posts flanking it plus a floor rune
+// pointing outward. Colors telegraph the door type at a glance:
+//   • open  = warm gold (safe passage)
+//   • locked = crimson (needs a key)
+//
+// The pillar is a slim stone-blue cylinder capped with a glowing gem orb
+// that emits real point light — visible from across the room even in the
+// dark dungeon and against any outdoor biome background.
+// ---------------------------------------------------------------------------
+function addDoorMarker(
+  target: THREE.Object3D,
+  room: RoomDef,
+  dir: DoorDir,
+  kind: "open" | "locked" | "gated",
+): void {
+  const glow = kind === "locked" ? 0xff3355 : 0xffc750;
+  const c = doorLineCenter(room, dir);
+  const horizontal = dir === "n" || dir === "s";
+
+  // Two flanking posts, offset perpendicular to the door line.
+  const offset = TILE * 0.55;
+  const posts: THREE.Vector3[] = horizontal
+    ? [new THREE.Vector3(c.x - offset, 0, c.z), new THREE.Vector3(c.x + offset, 0, c.z)]
+    : [new THREE.Vector3(c.x, 0, c.z - offset), new THREE.Vector3(c.x, 0, c.z + offset)];
+
+  const postGeo = new THREE.CylinderGeometry(0.16, 0.22, 3.0, 8);
+  const postMat = new THREE.MeshLambertMaterial({ color: 0x3a4358 });
+  const capGeo = new THREE.OctahedronGeometry(0.35, 0);
+  const capMat = new THREE.MeshLambertMaterial({
+    color: glow, emissive: glow, emissiveIntensity: 0.9, transparent: true, opacity: 0.95,
+  });
+
+  for (const p of posts) {
+    const post = new THREE.Mesh(postGeo, postMat);
+    post.position.set(p.x, 1.5, p.z);
+    post.castShadow = false; post.receiveShadow = false;
+    target.add(post);
+    // Glowing gem on top
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.position.set(p.x, 3.15, p.z);
+    cap.userData.doorGem = true;
+    target.add(cap);
+    // Halo point light so the marker reads even in the pitch-black dungeon
+    const light = new THREE.PointLight(glow, 0.9, 10, 1.6);
+    light.position.set(p.x, 3.15, p.z);
+    target.add(light);
+  }
+
+  // Flat glowing rune on the floor centered on the door tile — points OUT
+  // of the room. Uses a plane with an emissive material.
+  const rune = new THREE.Mesh(
+    new THREE.RingGeometry(0.65, 1.15, 20, 1, 0, Math.PI),
+    new THREE.MeshBasicMaterial({
+      color: glow, transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+    }),
+  );
+  rune.rotation.x = -Math.PI / 2;
+  // Ring is a half-donut: rotate so the flat edge sits toward the room,
+  // and the arc points outward through the door.
+  const outward: Record<DoorDir, number> = { n: 0, s: Math.PI, e: -Math.PI / 2, w: Math.PI / 2 };
+  rune.rotation.z = outward[dir];
+  const runeC = doorLineCenter(room, dir);
+  // pull the rune slightly INTO the room so it's visible from inside
+  const pull = TILE * 0.35;
+  if (dir === "n") runeC.z += pull;
+  if (dir === "s") runeC.z -= pull;
+  if (dir === "e") runeC.x -= pull;
+  if (dir === "w") runeC.x += pull;
+  rune.position.set(runeC.x, 0.05, runeC.z);
+  target.add(rune);
+}
+
 function addDungeonWall(
   target: THREE.Object3D,
   center: THREE.Vector3,
@@ -1279,6 +1354,9 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
         unlocked: false,
       };
       runtime.doors.push(door);
+      // v7: visible marker so the player can spot the passage from anywhere.
+      // Two glowing pillar-posts flanking the door + a floor rune arc.
+      addDoorMarker(group, def, d.dir, door.kind);
     }
 
     // -------- dungeon-only interior props ----------

@@ -17854,6 +17854,84 @@
       return new _PlaneGeometry(data.width, data.height, data.widthSegments, data.heightSegments);
     }
   };
+  var RingGeometry = class _RingGeometry extends BufferGeometry {
+    /**
+     * Constructs a new ring geometry.
+     *
+     * @param {number} [innerRadius=0.5] - The inner radius of the ring.
+     * @param {number} [outerRadius=1] - The outer radius of the ring.
+     * @param {number} [thetaSegments=32] - Number of segments. A higher number means the ring will be more round. Minimum is `3`.
+     * @param {number} [phiSegments=1] - Number of segments per ring segment. Minimum is `1`.
+     * @param {number} [thetaStart=0] - Starting angle in radians.
+     * @param {number} [thetaLength=Math.PI*2] - Central angle in radians.
+     */
+    constructor(innerRadius = 0.5, outerRadius = 1, thetaSegments = 32, phiSegments = 1, thetaStart = 0, thetaLength = Math.PI * 2) {
+      super();
+      this.type = "RingGeometry";
+      this.parameters = {
+        innerRadius,
+        outerRadius,
+        thetaSegments,
+        phiSegments,
+        thetaStart,
+        thetaLength
+      };
+      thetaSegments = Math.max(3, thetaSegments);
+      phiSegments = Math.max(1, phiSegments);
+      const indices = [];
+      const vertices = [];
+      const normals = [];
+      const uvs = [];
+      let radius = innerRadius;
+      const radiusStep = (outerRadius - innerRadius) / phiSegments;
+      const vertex2 = new Vector3();
+      const uv = new Vector2();
+      for (let j = 0; j <= phiSegments; j++) {
+        for (let i = 0; i <= thetaSegments; i++) {
+          const segment = thetaStart + i / thetaSegments * thetaLength;
+          vertex2.x = radius * Math.cos(segment);
+          vertex2.y = radius * Math.sin(segment);
+          vertices.push(vertex2.x, vertex2.y, vertex2.z);
+          normals.push(0, 0, 1);
+          uv.x = (vertex2.x / outerRadius + 1) / 2;
+          uv.y = (vertex2.y / outerRadius + 1) / 2;
+          uvs.push(uv.x, uv.y);
+        }
+        radius += radiusStep;
+      }
+      for (let j = 0; j < phiSegments; j++) {
+        const thetaSegmentLevel = j * (thetaSegments + 1);
+        for (let i = 0; i < thetaSegments; i++) {
+          const segment = i + thetaSegmentLevel;
+          const a = segment;
+          const b = segment + thetaSegments + 1;
+          const c = segment + thetaSegments + 2;
+          const d = segment + 1;
+          indices.push(a, b, d);
+          indices.push(b, c, d);
+        }
+      }
+      this.setIndex(indices);
+      this.setAttribute("position", new Float32BufferAttribute(vertices, 3));
+      this.setAttribute("normal", new Float32BufferAttribute(normals, 3));
+      this.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
+    }
+    copy(source) {
+      super.copy(source);
+      this.parameters = Object.assign({}, source.parameters);
+      return this;
+    }
+    /**
+     * Factory method for creating an instance of this class from the given
+     * JSON object.
+     *
+     * @param {Object} data - A JSON object representing the serialized geometry.
+     * @return {RingGeometry} A new instance.
+     */
+    static fromJSON(data) {
+      return new _RingGeometry(data.innerRadius, data.outerRadius, data.thetaSegments, data.phiSegments, data.thetaStart, data.thetaLength);
+    }
+  };
   var SphereGeometry = class _SphereGeometry extends BufferGeometry {
     /**
      * Constructs a new sphere geometry.
@@ -42635,6 +42713,57 @@ void main() {
     }
     return c;
   }
+  function addDoorMarker(target, room, dir, kind) {
+    const glow = kind === "locked" ? 16724821 : 16762704;
+    const c = doorLineCenter(room, dir);
+    const horizontal = dir === "n" || dir === "s";
+    const offset = TILE * 0.55;
+    const posts = horizontal ? [new Vector3(c.x - offset, 0, c.z), new Vector3(c.x + offset, 0, c.z)] : [new Vector3(c.x, 0, c.z - offset), new Vector3(c.x, 0, c.z + offset)];
+    const postGeo = new CylinderGeometry(0.16, 0.22, 3, 8);
+    const postMat = new MeshLambertMaterial({ color: 3818328 });
+    const capGeo = new OctahedronGeometry(0.35, 0);
+    const capMat = new MeshLambertMaterial({
+      color: glow,
+      emissive: glow,
+      emissiveIntensity: 0.9,
+      transparent: true,
+      opacity: 0.95
+    });
+    for (const p of posts) {
+      const post = new Mesh(postGeo, postMat);
+      post.position.set(p.x, 1.5, p.z);
+      post.castShadow = false;
+      post.receiveShadow = false;
+      target.add(post);
+      const cap = new Mesh(capGeo, capMat);
+      cap.position.set(p.x, 3.15, p.z);
+      cap.userData.doorGem = true;
+      target.add(cap);
+      const light = new PointLight(glow, 0.9, 10, 1.6);
+      light.position.set(p.x, 3.15, p.z);
+      target.add(light);
+    }
+    const rune = new Mesh(
+      new RingGeometry(0.65, 1.15, 20, 1, 0, Math.PI),
+      new MeshBasicMaterial({
+        color: glow,
+        transparent: true,
+        opacity: 0.55,
+        side: DoubleSide
+      })
+    );
+    rune.rotation.x = -Math.PI / 2;
+    const outward = { n: 0, s: Math.PI, e: -Math.PI / 2, w: Math.PI / 2 };
+    rune.rotation.z = outward[dir];
+    const runeC = doorLineCenter(room, dir);
+    const pull = TILE * 0.35;
+    if (dir === "n") runeC.z += pull;
+    if (dir === "s") runeC.z -= pull;
+    if (dir === "e") runeC.x -= pull;
+    if (dir === "w") runeC.x += pull;
+    rune.position.set(runeC.x, 0.05, runeC.z);
+    target.add(rune);
+  }
   function addDungeonWall(target, center, horizontal, kind) {
     const seg = spawn(kind, { castShadow: true, receiveShadow: true });
     seg.position.copy(center);
@@ -43797,6 +43926,7 @@ void main() {
           unlocked: false
         };
         runtime.doors.push(door);
+        addDoorMarker(group, def, d.dir, door.kind);
       }
       if (def.biome === "dungeon") {
         for (let tz = 0; tz < ROOM_H; tz++) {
