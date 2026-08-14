@@ -40,12 +40,17 @@
 //   N villager   E elder      Q merchant   J guard      Y hermit
 //   G ghost      k king-echo (Throne-room special)      I shopkeeper (v6)
 //
+// v6 boss chars (dungeon-only) — one boss per room (Coliseum wing):
+//   Z skeleton_king (Malric)  V bone_necromancer   4 shadow_reaver
+//   5 iron_warden             6 crystal_golem      7 void_serpent
+//   8 flame_djinn             9 storm_elemental
+//
 // Doors are declared explicitly per room; the map's D cells are validated
 // against them by test/dungeon.test.mjs so the two can never drift apart.
 // ---------------------------------------------------------------------------
 
 import { ROOM_H, ROOM_W } from "../config";
-import type { DoorDir, EnemyKind, NpcKind } from "../types";
+import type { BossKind, DoorDir, EnemyKind, NpcKind } from "../types";
 
 export type RoomBiome =
   | "dungeon"
@@ -515,8 +520,10 @@ export const ROOMS: RoomDef[] = [
     startVisible: false,
     // Throne room — pillars, stalagmites flanking a central aisle,
     // the boss dead center, king echo ghost by the throne base.
+    // v6: added a north door leading into the COLISEUM — the seven-boss
+    // gauntlet. Stays gated while Malric lives; opens on his death.
     map: [
-      "WWWWWWWWWWWWWWW",
+      "WWWWWWWDWWWWWWW",
       "W.p.........p.W",
       "W.A.........A.W",
       "W.............W",
@@ -527,6 +534,212 @@ export const ROOMS: RoomDef[] = [
       "W.p....A....p.W",
       "W.............W",
       "W.A....k....A.W",
+      "W.............W",
+      "WWWWWWWDWWWWWWW",
+    ],
+    doors: [
+      { dir: "s", kind: "open" },
+      { dir: "n", kind: "open" },
+    ],
+  },
+
+  // ============================================================
+  // v6 — THE COLISEUM: seven-boss gauntlet north of the throne
+  // ============================================================
+
+  // (0,-1) — Necromancer's Sanctum. Ring of pillars around the caster.
+  {
+    key: "0,-1",
+    gx: 0,
+    gy: -1,
+    name: "Necromancer's Sanctum",
+    biome: "dungeon",
+    banner: "blue",
+    startVisible: false,
+    map: [
+      "WWWWWWWDWWWWWWW",
+      "W.p.p.....p.p.W",
+      "W.............W",
+      "W..%........p.W",
+      "W....A...A....W",
+      "W......V......W",
+      "D.............D",
+      "W.....&.......W",
+      "W....A...A....W",
+      "W.p.........p.W",
+      "W...%......%..W",
+      "W.p.p.....p.p.W",
+      "WWWWWWWDWWWWWWW",
+    ],
+    doors: [
+      { dir: "n", kind: "open" },
+      { dir: "s", kind: "open" },
+      { dir: "w", kind: "open" },
+      { dir: "e", kind: "open" },
+    ],
+  },
+
+  // (-1,-1) — Reaver's Shadow. Pillars for teleport ambush lanes.
+  {
+    key: "-1,-1",
+    gx: -1,
+    gy: -1,
+    name: "Reaver's Shadow",
+    biome: "dungeon",
+    banner: "blue",
+    startVisible: false,
+    map: [
+      "WWWWWWWWWWWWWWW",
+      "W.p.......p...W",
+      "W...A.....A...W",
+      "W.............W",
+      "W....p...p....W",
+      "W......4......W",
+      "W.............D",
+      "W....p...p....W",
+      "W...A.....A...W",
+      "W.p.......p...W",
+      "W.............W",
+      "W.p.p.....p.p.W",
+      "WWWWWWWWWWWWWWW",
+    ],
+    doors: [{ dir: "e", kind: "open" }],
+  },
+
+  // (1,-1) — Warden's Vault. Weapons/anvil clutter, big central floor.
+  {
+    key: "1,-1",
+    gx: 1,
+    gy: -1,
+    name: "Warden's Vault",
+    biome: "dungeon",
+    banner: "red",
+    startVisible: false,
+    map: [
+      "WWWWWWWWWWWWWWW",
+      "W.p.X.X.X.X.p.W",
+      "W.............W",
+      "W..X.......X..W",
+      "W.............W",
+      "W......5......W",
+      "D.............W",
+      "W..X.......X..W",
+      "W.............W",
+      "W.p.X.X.X.X.p.W",
+      "W.............W",
+      "W.............W",
+      "WWWWWWWWWWWWWWW",
+    ],
+    doors: [{ dir: "w", kind: "open" }],
+  },
+
+  // (0,-2) — Crystal Cavern. Ice/crystal decor everywhere, tall room.
+  {
+    key: "0,-2",
+    gx: 0,
+    gy: -2,
+    name: "Crystal Cavern",
+    biome: "dungeon",
+    banner: "blue",
+    startVisible: false,
+    map: [
+      "WWWWWWWDWWWWWWW",
+      "W.i.i.....i.i.W",
+      "W...A.....A...W",
+      "W.i.........i.W",
+      "W....A...A....W",
+      "W......6......W",
+      "D.............D",
+      "W....A...A....W",
+      "W.i.........i.W",
+      "W...A.....A...W",
+      "W.i.i.....i.i.W",
+      "W.............W",
+      "WWWWWWWDWWWWWWW",
+    ],
+    doors: [
+      { dir: "n", kind: "open" },
+      { dir: "s", kind: "open" },
+      { dir: "w", kind: "open" },
+      { dir: "e", kind: "open" },
+    ],
+  },
+
+  // (-1,-2) — Void Serpent Pit. Dark, columns, potion residue.
+  {
+    key: "-1,-2",
+    gx: -1,
+    gy: -2,
+    name: "Void Serpent Pit",
+    biome: "dungeon",
+    banner: "blue",
+    startVisible: false,
+    map: [
+      "WWWWWWWWWWWWWWW",
+      "W.p.p.....p.p.W",
+      "W.............W",
+      "W...?.....?...W",
+      "W.............W",
+      "W......7......W",
+      "W.............D",
+      "W...?.....?...W",
+      "W.............W",
+      "W.p.p.....p.p.W",
+      "W.............W",
+      "W..?.......?..W",
+      "WWWWWWWWWWWWWWW",
+    ],
+    doors: [{ dir: "e", kind: "open" }],
+  },
+
+  // (1,-2) — Flame Sanctum. Braziers everywhere (books-as-brazier decor).
+  {
+    key: "1,-2",
+    gx: 1,
+    gy: -2,
+    name: "Flame Sanctum",
+    biome: "dungeon",
+    banner: "red",
+    startVisible: false,
+    map: [
+      "WWWWWWWWWWWWWWW",
+      "W.%.%.....%.%.W",
+      "W.............W",
+      "W..A.......A..W",
+      "W.............W",
+      "W......8......W",
+      "D.............W",
+      "W..A.......A..W",
+      "W.............W",
+      "W.%.%.....%.%.W",
+      "W.............W",
+      "W..%.......%..W",
+      "WWWWWWWWWWWWWWW",
+    ],
+    doors: [{ dir: "w", kind: "open" }],
+  },
+
+  // (0,-3) — Storm Peak. Elevated arena with pillars in the corners.
+  {
+    key: "0,-3",
+    gx: 0,
+    gy: -3,
+    name: "Storm Peak",
+    biome: "dungeon",
+    banner: "blue",
+    startVisible: false,
+    map: [
+      "WWWWWWWWWWWWWWW",
+      "W.p.........p.W",
+      "W.............W",
+      "W...A.....A...W",
+      "W.............W",
+      "W......9......W",
+      "W.............W",
+      "W...A.....A...W",
+      "W.............W",
+      "W.p.........p.W",
+      "W..A.......A..W",
       "W.............W",
       "WWWWWWWDWWWWWWW",
     ],
@@ -706,6 +919,21 @@ export const ENEMY_CHARS: Record<string, EnemyKind> = {
   "1": "minion",
   "2": "rogue",
   "3": "mage",
+};
+
+/**
+ * v6: boss spawn markers. Z is the original Malric; V/4/5/6/7/8/9 are the
+ * seven new bosses that live in the Coliseum wing north of Throne of Bones.
+ */
+export const BOSS_CHARS: Record<string, BossKind> = {
+  Z: "skeleton_king",
+  V: "bone_necromancer",
+  "4": "shadow_reaver",
+  "5": "iron_warden",
+  "6": "crystal_golem",
+  "7": "void_serpent",
+  "8": "flame_djinn",
+  "9": "storm_elemental",
 };
 
 // v4: NPC characters. The special "k" (king echo) is a ghost with a

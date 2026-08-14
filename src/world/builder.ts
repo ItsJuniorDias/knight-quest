@@ -3,6 +3,7 @@ import { COLORS, ROOM_H, ROOM_W, TILE } from "../config";
 import { findNode, spawn } from "../engine/loader";
 import type { ChestState, DoorDir, DoorState, RoomRuntime, SpikeState } from "../types";
 import {
+  BOSS_CHARS,
   charAt,
   dirDelta,
   doorTile,
@@ -1140,6 +1141,7 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
       spikes: [],
       enemySpawns: [],
       npcSpawns: [],
+      bossSpawns: [],
       hasBoss: false,
       cleared: def.biome === "village", // villages never lock the player in
       visited: def.startVisible === true,
@@ -1285,6 +1287,35 @@ export function buildWorld(scene: THREE.Scene): BuiltWorld {
             case "Z":
               bossSpawn = c.clone();
               runtime.hasBoss = true;
+              runtime.bossSpawns.push({ kind: "skeleton_king", tx, tz });
+              break;
+            case "V":
+              runtime.hasBoss = true;
+              runtime.bossSpawns.push({ kind: "bone_necromancer", tx, tz });
+              break;
+            case "4":
+              runtime.hasBoss = true;
+              runtime.bossSpawns.push({ kind: "shadow_reaver", tx, tz });
+              break;
+            case "5":
+              runtime.hasBoss = true;
+              runtime.bossSpawns.push({ kind: "iron_warden", tx, tz });
+              break;
+            case "6":
+              runtime.hasBoss = true;
+              runtime.bossSpawns.push({ kind: "crystal_golem", tx, tz });
+              break;
+            case "7":
+              runtime.hasBoss = true;
+              runtime.bossSpawns.push({ kind: "void_serpent", tx, tz });
+              break;
+            case "8":
+              runtime.hasBoss = true;
+              runtime.bossSpawns.push({ kind: "flame_djinn", tx, tz });
+              break;
+            case "9":
+              runtime.hasBoss = true;
+              runtime.bossSpawns.push({ kind: "storm_elemental", tx, tz });
               break;
             case "b":
             case "B": {

@@ -1,4 +1,33 @@
-# Knight Quest — A Magic World Adventure (v4)
+# Knight Quest — A Magic World Adventure (v6)
+
+## v6: the Coliseum wing — 8 bosses
+
+Seven new bosses live north of the Throne of Bones in a new "Coliseum"
+gauntlet. After defeating **Skeleton King Malric** you can push north
+through the newly-opened door and take them on in any order.
+
+| Boss                    | Room                 | Style / signature move            |
+| ----------------------- | -------------------- | --------------------------------- |
+| Skeleton King Malric    | Throne of Bones      | Spin + jump-chop shockwave        |
+| The Bone Necromancer    | Necromancer's Sanctum| Fan of bolts + summons minions    |
+| The Shadow Reaver       | Reaver's Shadow      | Dash + triple stab + teleport     |
+| The Iron Warden         | Warden's Vault       | Tank — block + shockwave slam     |
+| The Crystal Golem       | Crystal Cavern       | Ground slam + rotating laser      |
+| The Void Serpent        | Void Serpent Pit     | Bite lunge + spit + shrinking coil|
+| The Flame Djinn         | Flame Sanctum        | Teleport + fireball + fire ring   |
+| The Storm Elemental     | Storm Peak           | Chain lightning + tornado         |
+
+The four Coliseum bosses at the top of the wing (Crystal Golem, Void
+Serpent, Flame Djinn, Storm Elemental) are **procedural** — their meshes
+are built from three.js primitives at spawn time, so they ship zero extra
+asset bytes but each has a unique silhouette.
+
+The three elite skeleton bosses (Necromancer, Reaver, Warden) reuse the
+KayKit skeleton models with per-instance tinting, a bigger scale, and
+completely new state machines.
+
+## Original description
+
 
 A Zelda-like top-down action game built with three.js. Uses the KayKit
 Dungeon Remastered + Character Packs (dungeon interiors, hero, undead)

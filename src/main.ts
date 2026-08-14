@@ -156,9 +156,9 @@ async function main(): Promise<void> {
       } else if (def?.biome === "dungeon") {
         playMusic("dungeon");
       }
-      if (key === BOSS_ROOM_KEY && boss?.boss?.state === "waiting") {
-        boss.wake();
-      }
+      // v6: any boss whose room the player just entered is roused (Malric
+      // in the Throne of Bones plus every Coliseum boss north of it).
+      boss?.wakeRoom(key);
     },
     onStory: (who, text) => hud?.narrate(who, text),
     onStoryTrigger: (id) => story?.onNpcTrigger(id),
@@ -227,8 +227,16 @@ async function main(): Promise<void> {
     hud.setRoomLabel(startDef?.name ?? "Willowvale Village");
     minimap = new Minimap(hudMount);
 
-    // spawn the boss (dormant) in the throne room; woken by RoomManager
-    boss.spawn(world.bossSpawn);
+    // v6: spawn every boss defined by the room maps (Malric + Coliseum).
+    // Each stays dormant until the player enters its room.
+    for (const [, room] of world.rooms) {
+      for (const s of room.bossSpawns) {
+        boss.spawnKind(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
+      }
+    }
+    // Legacy single-boss fallback if a map somehow had no bossSpawns.
+    if (boss.bosses.length === 0) boss.spawn(world.bossSpawn);
+    boss.bindEnemies(enemies);
 
     // pre-spawn enemies + NPCs for every room so they exist regardless of visit
     for (const [, room] of world.rooms) {

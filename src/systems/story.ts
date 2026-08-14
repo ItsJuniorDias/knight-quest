@@ -110,6 +110,16 @@ export const EVENT_BEATS: Record<string, Beat[]> = {
   "boss:dead": [
     { id: "boss-dead", who: null, text: "The king falls. Bone becomes dust. Dust becomes wind. The valley exhales for the first time in a hundred years." },
   ],
+  "boss:dead:skeleton_king": [
+    { id: "boss-dead-king", who: null, text: "Malric falls. The northern arch groans open — the Coliseum wing awaits the truly foolish." },
+  ],
+  "boss:dead:bone_necromancer": [{ id: "boss-dead-necro", who: null, text: "The Necromancer's runes flicker and die. His summoned dead lie still at last." }],
+  "boss:dead:shadow_reaver": [{ id: "boss-dead-reaver", who: null, text: "The Reaver dissolves. Even shadows can be cut." }],
+  "boss:dead:iron_warden": [{ id: "boss-dead-warden", who: null, text: "The Warden's armor rings like a bell, then goes still." }],
+  "boss:dead:crystal_golem": [{ id: "boss-dead-golem", who: null, text: "The Golem shatters. Its heart-gem rolls to your feet." }],
+  "boss:dead:void_serpent": [{ id: "boss-dead-serpent", who: null, text: "The Serpent's coils unwind into the void from which they came." }],
+  "boss:dead:flame_djinn": [{ id: "boss-dead-djinn", who: null, text: "The Djinn implodes. Where he stood, only warm ash remains." }],
+  "boss:dead:storm_elemental": [{ id: "boss-dead-storm", who: null, text: "The Elemental discharges its final spark. The Coliseum falls silent." }],
   "start:game": [
     { id: "start-game", who: null, text: "You are the knight the village has been waiting for. Whether you know it or not." },
   ],
@@ -149,7 +159,7 @@ export class StoryDirector {
     for (const b of beats) this.fire(b);
   }
 
-  onEvent(key: keyof typeof EVENT_BEATS): void {
+  onEvent(key: string): void {
     const beats = EVENT_BEATS[key];
     if (!beats) return;
     for (const b of beats) this.fire(b);

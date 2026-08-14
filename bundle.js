@@ -1,55 +1,5 @@
 "use strict";
 (() => {
-  // ===== v8 mobile perf shim — MINIMAL, non-invasive =====
-  // Runtime detection + light monkey-patches. Does NOT modify game logic.
-  // Only three things happen:
-  //   1. RAF cap ~60fps (helps 120Hz mobile panels)
-  //   2. On mobile: force renderer.shadowMap.enabled=false AFTER game sets it
-  //   3. On mobile: sun.castShadow=false AFTER game sets it (cheap to detect
-  //      via wrapping DirectionalLight)
-  // Nothing else about visibility, culling, or geometry is touched.
-  const __KQ_win = (typeof window !== 'undefined') ? window : null;
-  const __KQ_nav = (typeof navigator !== 'undefined') ? navigator : null;
-  const __KQ_perfOverride = (function(){
-    if (!__KQ_win) return null;
-    try {
-      const p = new URLSearchParams(__KQ_win.location.search).get('perf');
-      if (p === 'low' || p === 'med' || p === 'high') return p;
-    } catch(e){}
-    return null;
-  })();
-  const __KQ_isMobile = (function(){
-    if (!__KQ_win || !__KQ_nav) return false;
-    if (__KQ_perfOverride === 'high') return false;
-    if (__KQ_perfOverride === 'low' || __KQ_perfOverride === 'med') return true;
-    const ua = __KQ_nav.userAgent || '';
-    const mobileUa = /android|iphone|ipad|ipod|iemobile|blackberry|opera mini|mobile safari|webview|wv\)/i.test(ua);
-    const mm = (typeof __KQ_win.matchMedia === 'function') ? __KQ_win.matchMedia.bind(__KQ_win) : null;
-    const coarsePointer = mm && mm('(pointer: coarse)').matches;
-    const noHover = mm && mm('(hover: none)').matches;
-    const smallScreen = Math.min(__KQ_win.innerWidth, __KQ_win.innerHeight) < 820;
-    const touchOnly = ('ontouchstart' in __KQ_win) && !(mm && mm('(hover: hover)').matches);
-    const votes = [mobileUa, coarsePointer, noHover, smallScreen, touchOnly].filter(Boolean).length;
-    return votes >= 2;
-  })();
-  // -- RAF cap ~60fps (all devices). Keeps 120Hz panels from wasting frames. --
-  if (__KQ_win && typeof __KQ_win.requestAnimationFrame === 'function') {
-    const __KQ_origRaf = __KQ_win.requestAnimationFrame.bind(__KQ_win);
-    const __KQ_min = 1000 / 62;
-    let __KQ_last = 0;
-    __KQ_win.requestAnimationFrame = function(cb) {
-      return __KQ_origRaf(function(now){
-        if (now - __KQ_last >= __KQ_min) {
-          __KQ_last = now;
-          cb(now);
-        } else {
-          __KQ_win.requestAnimationFrame(cb);
-        }
-      });
-    };
-  }
-  // We stash the mobile flag so the shadow patches below can read it.
-  if (__KQ_win) __KQ_win.__KQ_MOBILE__ = __KQ_isMobile;
   // node_modules/three/build/three.core.js
   var REVISION = "182";
   var CullFaceNone = 0;
@@ -15014,6 +14964,193 @@
       super.copy(source);
       this.sourceTexture = source.sourceTexture;
       return this;
+    }
+  };
+  var CylinderGeometry = class _CylinderGeometry extends BufferGeometry {
+    /**
+     * Constructs a new cylinder geometry.
+     *
+     * @param {number} [radiusTop=1] - Radius of the cylinder at the top.
+     * @param {number} [radiusBottom=1] - Radius of the cylinder at the bottom.
+     * @param {number} [height=1] - Height of the cylinder.
+     * @param {number} [radialSegments=32] - Number of segmented faces around the circumference of the cylinder.
+     * @param {number} [heightSegments=1] - Number of rows of faces along the height of the cylinder.
+     * @param {boolean} [openEnded=false] - Whether the base of the cylinder is open or capped.
+     * @param {number} [thetaStart=0] - Start angle for first segment, in radians.
+     * @param {number} [thetaLength=Math.PI*2] - The central angle, often called theta, of the circular sector, in radians.
+     * The default value results in a complete cylinder.
+     */
+    constructor(radiusTop = 1, radiusBottom = 1, height = 1, radialSegments = 32, heightSegments = 1, openEnded = false, thetaStart = 0, thetaLength = Math.PI * 2) {
+      super();
+      this.type = "CylinderGeometry";
+      this.parameters = {
+        radiusTop,
+        radiusBottom,
+        height,
+        radialSegments,
+        heightSegments,
+        openEnded,
+        thetaStart,
+        thetaLength
+      };
+      const scope = this;
+      radialSegments = Math.floor(radialSegments);
+      heightSegments = Math.floor(heightSegments);
+      const indices = [];
+      const vertices = [];
+      const normals = [];
+      const uvs = [];
+      let index = 0;
+      const indexArray = [];
+      const halfHeight = height / 2;
+      let groupStart = 0;
+      generateTorso();
+      if (openEnded === false) {
+        if (radiusTop > 0) generateCap(true);
+        if (radiusBottom > 0) generateCap(false);
+      }
+      this.setIndex(indices);
+      this.setAttribute("position", new Float32BufferAttribute(vertices, 3));
+      this.setAttribute("normal", new Float32BufferAttribute(normals, 3));
+      this.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
+      function generateTorso() {
+        const normal = new Vector3();
+        const vertex2 = new Vector3();
+        let groupCount = 0;
+        const slope = (radiusBottom - radiusTop) / height;
+        for (let y = 0; y <= heightSegments; y++) {
+          const indexRow = [];
+          const v = y / heightSegments;
+          const radius = v * (radiusBottom - radiusTop) + radiusTop;
+          for (let x = 0; x <= radialSegments; x++) {
+            const u = x / radialSegments;
+            const theta = u * thetaLength + thetaStart;
+            const sinTheta = Math.sin(theta);
+            const cosTheta = Math.cos(theta);
+            vertex2.x = radius * sinTheta;
+            vertex2.y = -v * height + halfHeight;
+            vertex2.z = radius * cosTheta;
+            vertices.push(vertex2.x, vertex2.y, vertex2.z);
+            normal.set(sinTheta, slope, cosTheta).normalize();
+            normals.push(normal.x, normal.y, normal.z);
+            uvs.push(u, 1 - v);
+            indexRow.push(index++);
+          }
+          indexArray.push(indexRow);
+        }
+        for (let x = 0; x < radialSegments; x++) {
+          for (let y = 0; y < heightSegments; y++) {
+            const a = indexArray[y][x];
+            const b = indexArray[y + 1][x];
+            const c = indexArray[y + 1][x + 1];
+            const d = indexArray[y][x + 1];
+            if (radiusTop > 0 || y !== 0) {
+              indices.push(a, b, d);
+              groupCount += 3;
+            }
+            if (radiusBottom > 0 || y !== heightSegments - 1) {
+              indices.push(b, c, d);
+              groupCount += 3;
+            }
+          }
+        }
+        scope.addGroup(groupStart, groupCount, 0);
+        groupStart += groupCount;
+      }
+      function generateCap(top) {
+        const centerIndexStart = index;
+        const uv = new Vector2();
+        const vertex2 = new Vector3();
+        let groupCount = 0;
+        const radius = top === true ? radiusTop : radiusBottom;
+        const sign2 = top === true ? 1 : -1;
+        for (let x = 1; x <= radialSegments; x++) {
+          vertices.push(0, halfHeight * sign2, 0);
+          normals.push(0, sign2, 0);
+          uvs.push(0.5, 0.5);
+          index++;
+        }
+        const centerIndexEnd = index;
+        for (let x = 0; x <= radialSegments; x++) {
+          const u = x / radialSegments;
+          const theta = u * thetaLength + thetaStart;
+          const cosTheta = Math.cos(theta);
+          const sinTheta = Math.sin(theta);
+          vertex2.x = radius * sinTheta;
+          vertex2.y = halfHeight * sign2;
+          vertex2.z = radius * cosTheta;
+          vertices.push(vertex2.x, vertex2.y, vertex2.z);
+          normals.push(0, sign2, 0);
+          uv.x = cosTheta * 0.5 + 0.5;
+          uv.y = sinTheta * 0.5 * sign2 + 0.5;
+          uvs.push(uv.x, uv.y);
+          index++;
+        }
+        for (let x = 0; x < radialSegments; x++) {
+          const c = centerIndexStart + x;
+          const i = centerIndexEnd + x;
+          if (top === true) {
+            indices.push(i, i + 1, c);
+          } else {
+            indices.push(i + 1, i, c);
+          }
+          groupCount += 3;
+        }
+        scope.addGroup(groupStart, groupCount, top === true ? 1 : 2);
+        groupStart += groupCount;
+      }
+    }
+    copy(source) {
+      super.copy(source);
+      this.parameters = Object.assign({}, source.parameters);
+      return this;
+    }
+    /**
+     * Factory method for creating an instance of this class from the given
+     * JSON object.
+     *
+     * @param {Object} data - A JSON object representing the serialized geometry.
+     * @return {CylinderGeometry} A new instance.
+     */
+    static fromJSON(data) {
+      return new _CylinderGeometry(data.radiusTop, data.radiusBottom, data.height, data.radialSegments, data.heightSegments, data.openEnded, data.thetaStart, data.thetaLength);
+    }
+  };
+  var ConeGeometry = class _ConeGeometry extends CylinderGeometry {
+    /**
+     * Constructs a new cone geometry.
+     *
+     * @param {number} [radius=1] - Radius of the cone base.
+     * @param {number} [height=1] - Height of the cone.
+     * @param {number} [radialSegments=32] - Number of segmented faces around the circumference of the cone.
+     * @param {number} [heightSegments=1] - Number of rows of faces along the height of the cone.
+     * @param {boolean} [openEnded=false] - Whether the base of the cone is open or capped.
+     * @param {number} [thetaStart=0] - Start angle for first segment, in radians.
+     * @param {number} [thetaLength=Math.PI*2] - The central angle, often called theta, of the circular sector, in radians.
+     * The default value results in a complete cone.
+     */
+    constructor(radius = 1, height = 1, radialSegments = 32, heightSegments = 1, openEnded = false, thetaStart = 0, thetaLength = Math.PI * 2) {
+      super(0, radius, height, radialSegments, heightSegments, openEnded, thetaStart, thetaLength);
+      this.type = "ConeGeometry";
+      this.parameters = {
+        radius,
+        height,
+        radialSegments,
+        heightSegments,
+        openEnded,
+        thetaStart,
+        thetaLength
+      };
+    }
+    /**
+     * Factory method for creating an instance of this class from the given
+     * JSON object.
+     *
+     * @param {Object} data - A JSON object representing the serialized geometry.
+     * @return {ConeGeometry} A new instance.
+     */
+    static fromJSON(data) {
+      return new _ConeGeometry(data.radius, data.height, data.radialSegments, data.heightSegments, data.openEnded, data.thetaStart, data.thetaLength);
     }
   };
   var PolyhedronGeometry = class _PolyhedronGeometry extends BufferGeometry {
@@ -33732,6 +33869,190 @@ void main() {
     enrageRecoverMul: 0.6,
     score: 100
   };
+  var BOSSES = {
+    skeleton_king: {
+      name: "Skeleton King Malric",
+      hp: 22,
+      speed: 3,
+      radius: 1,
+      scale: 1.55,
+      touchDamage: 2,
+      tint: 16777215,
+      // default (no tint)
+      // reuses the classic pattern (spin / chop)
+      score: 100,
+      intro: "Skeleton King Malric awakens!",
+      outro: "The Skeleton King falls!",
+      enrageLine: "The Skeleton King's axe begins to glow. He remembers who he was."
+    },
+    bone_necromancer: {
+      name: "The Bone Necromancer",
+      hp: 18,
+      speed: 2.6,
+      radius: 0.9,
+      scale: 1.55,
+      touchDamage: 2,
+      tint: 11035903,
+      // violet
+      // ranged caster — bolts + summons
+      castRange: 12,
+      castWindup: 0.75,
+      castRecover: 0.9,
+      boltDamage: 2,
+      boltCount: 3,
+      boltSpread: 0.35,
+      summonEvery: 3,
+      summonCount: 2,
+      // spawns minions after N attacks
+      score: 90,
+      intro: "The Bone Necromancer rises!",
+      outro: "The Necromancer crumbles to dust!",
+      enrageLine: "The Necromancer's runes flare crimson \u2014 his magic doubles."
+    },
+    shadow_reaver: {
+      name: "The Shadow Reaver",
+      hp: 20,
+      speed: 5.8,
+      radius: 0.7,
+      scale: 1.5,
+      touchDamage: 2,
+      tint: 2830448,
+      // obsidian navy
+      // dash + triple stab
+      dashRange: 10,
+      dashWindup: 0.32,
+      dashDuration: 0.34,
+      dashSpeed: 22,
+      stabWindup: 0.18,
+      stabDuration: 0.28,
+      stabDamage: 2,
+      stabCount: 3,
+      teleportEvery: 4,
+      // vanishes and re-appears behind the player
+      score: 110,
+      intro: "The Shadow Reaver slips into view.",
+      outro: "The Reaver dissolves into mist.",
+      enrageLine: "The Reaver's silhouette blurs \u2014 she attacks twice as fast."
+    },
+    iron_warden: {
+      name: "The Iron Warden",
+      hp: 30,
+      speed: 2.2,
+      radius: 1.15,
+      scale: 1.7,
+      touchDamage: 2,
+      tint: 13134378,
+      // rusted iron
+      // slow tank — blocks + counter-smash + shockwave
+      smashRange: 3.6,
+      smashWindup: 0.6,
+      smashDuration: 0.6,
+      smashDamage: 3,
+      blockDuration: 1.2,
+      blockEvery: 2,
+      // blocks between smashes
+      slamShockwave: true,
+      // slams cause 4-direction shockwaves
+      score: 120,
+      intro: "The Iron Warden guards the vault.",
+      outro: "The Warden's armor shatters!",
+      enrageLine: "The Warden's hammer glows white-hot \u2014 no more blocking."
+    },
+    crystal_golem: {
+      name: "The Crystal Golem",
+      hp: 26,
+      speed: 2.4,
+      radius: 1.4,
+      scale: 1,
+      touchDamage: 2,
+      tint: 6738175,
+      // ice-blue crystal
+      // procedural — ground slam + rotating laser + crystal shards
+      slamRange: 4,
+      slamWindup: 0.7,
+      slamDamage: 3,
+      laserRange: 14,
+      laserWindup: 1,
+      laserDuration: 1.8,
+      laserDamage: 2,
+      shardsCount: 6,
+      shardsDamage: 2,
+      score: 130,
+      intro: "The Crystal Golem grinds to life.",
+      outro: "The Golem shatters into a thousand shards!",
+      enrageLine: "The Golem's core turns crimson \u2014 its lasers glow hotter."
+    },
+    void_serpent: {
+      name: "The Void Serpent",
+      hp: 24,
+      speed: 3.6,
+      radius: 1.2,
+      scale: 1,
+      touchDamage: 2,
+      tint: 9055202,
+      // void purple
+      // procedural — coiling body, bite lunge, void spit
+      biteRange: 3.5,
+      biteWindup: 0.5,
+      biteDamage: 3,
+      spitRange: 14,
+      spitWindup: 0.55,
+      spitDamage: 2,
+      coilRadius: 4.5,
+      coilDuration: 1.4,
+      coilDamage: 2,
+      score: 130,
+      intro: "The Void Serpent uncoils from the shadows.",
+      outro: "The Serpent's coils dissolve into the void.",
+      enrageLine: "The Void Serpent's fangs weep purple flame."
+    },
+    flame_djinn: {
+      name: "The Flame Djinn",
+      hp: 22,
+      speed: 4.4,
+      radius: 0.9,
+      scale: 1,
+      touchDamage: 2,
+      tint: 16742943,
+      // ember orange
+      // procedural — floating orb, teleport + fire ring + fireball
+      fireballRange: 12,
+      fireballWindup: 0.55,
+      fireballDamage: 2,
+      ringRange: 5.5,
+      ringWindup: 0.7,
+      ringDamage: 3,
+      teleportEvery: 3,
+      teleportDist: 8,
+      score: 130,
+      intro: "The Flame Djinn erupts from the coals.",
+      outro: "The Djinn implodes in a puff of ash.",
+      enrageLine: "The Djinn's flames turn white \u2014 his ring engulfs the arena."
+    },
+    storm_elemental: {
+      name: "The Storm Elemental",
+      hp: 24,
+      speed: 3.4,
+      radius: 1,
+      scale: 1,
+      touchDamage: 2,
+      tint: 6605055,
+      // sky-blue
+      // procedural — swirling orb, chain lightning + tornado spawns
+      boltRange: 14,
+      boltWindup: 0.5,
+      boltDamage: 2,
+      chainCount: 3,
+      tornadoWindup: 0.9,
+      tornadoDamage: 2,
+      tornadoLife: 3.2,
+      hoverHeight: 2.5,
+      score: 130,
+      intro: "The Storm Elemental crackles into view.",
+      outro: "The Elemental discharges its last spark.",
+      enrageLine: "The Elemental's core hums \u2014 the storm accelerates."
+    }
+  };
   var PROPS = {
     barrelHp: 1,
     barrelDropHeart: 0.35,
@@ -38258,6 +38579,209 @@ void main() {
     return action.getClip().duration;
   }
 
+  // src/art/boss-meshes.ts
+  function makeCrystalGolemMesh(tint = 6738175) {
+    const root = new Group();
+    const dark = new MeshLambertMaterial({ color: 2109504 });
+    const crystal = new MeshLambertMaterial({
+      color: tint,
+      transparent: true,
+      opacity: 0.85,
+      emissive: tint,
+      emissiveIntensity: 0.35
+    });
+    const gold = new MeshLambertMaterial({ color: 16765286, emissive: 16765286, emissiveIntensity: 0.3 });
+    const legGeo = new CylinderGeometry(0.45, 0.65, 1.5, 6);
+    const legL = new Mesh(legGeo, dark);
+    legL.position.set(-0.55, 0.75, 0);
+    const legR = new Mesh(legGeo, dark);
+    legR.position.set(0.55, 0.75, 0);
+    root.add(legL, legR);
+    const torso = new Mesh(new OctahedronGeometry(1.2, 0), dark);
+    torso.position.y = 2.15;
+    torso.scale.set(1.1, 1.15, 0.9);
+    root.add(torso);
+    const core = new Mesh(new OctahedronGeometry(0.4, 0), crystal);
+    core.position.set(0, 2.15, 0.55);
+    root.add(core);
+    const shard = new OctahedronGeometry(0.4, 0);
+    for (const x of [-1.2, 1.2]) {
+      const s = new Mesh(shard, crystal);
+      s.position.set(x, 2.6, 0);
+      s.rotation.z = x < 0 ? 0.4 : -0.4;
+      root.add(s);
+    }
+    const armGeo = new CylinderGeometry(0.28, 0.35, 1.3, 6);
+    for (const x of [-1.05, 1.05]) {
+      const arm = new Mesh(armGeo, dark);
+      arm.position.set(x, 1.55, 0);
+      arm.rotation.z = x < 0 ? 0.15 : -0.15;
+      root.add(arm);
+      const fist = new Mesh(new OctahedronGeometry(0.42, 0), crystal);
+      fist.position.set(x * 1.15, 0.95, 0);
+      root.add(fist);
+    }
+    const head = new Mesh(new OctahedronGeometry(0.55, 0), dark);
+    head.position.y = 3.4;
+    root.add(head);
+    const eyeGeo = new SphereGeometry(0.08, 6, 6);
+    const eyeMat = new MeshBasicMaterial({ color: gold.color });
+    const eyeL = new Mesh(eyeGeo, eyeMat);
+    eyeL.position.set(-0.18, 3.45, 0.45);
+    root.add(eyeL);
+    const eyeR = new Mesh(eyeGeo, eyeMat);
+    eyeR.position.set(0.18, 3.45, 0.45);
+    root.add(eyeR);
+    const ring = new Mesh(
+      new TorusGeometry(0.85, 0.06, 8, 20),
+      new MeshBasicMaterial({ color: tint, transparent: true, opacity: 0 })
+    );
+    ring.position.set(0, 2.15, 0);
+    ring.rotation.x = Math.PI / 2;
+    root.add(ring);
+    return { root, parts: { body: torso, head, core, eyeL, eyeR, ring } };
+  }
+  function makeVoidSerpentMesh(tint = 9055202) {
+    const root = new Group();
+    const scaleMat = new MeshLambertMaterial({ color: 1445675 });
+    const glowMat = new MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.75 });
+    const fangMat = new MeshLambertMaterial({ color: 16117212 });
+    const segments = [];
+    const segCount = 10;
+    for (let i = 0; i < segCount; i++) {
+      const size = 0.85 - i * 0.05;
+      const grp = new Group();
+      const body = new Mesh(new SphereGeometry(size, 8, 6), scaleMat);
+      body.scale.set(1, 0.85, 1);
+      grp.add(body);
+      const band = new Mesh(new TorusGeometry(size * 0.85, 0.06, 6, 10), glowMat);
+      band.rotation.x = Math.PI / 2;
+      grp.add(band);
+      grp.position.set(-i * 0.65, 1.4 + Math.sin(i * 0.6) * 0.35, 0);
+      root.add(grp);
+      segments.push(grp);
+    }
+    const headGrp = segments[0];
+    const eyeMat = new MeshBasicMaterial({ color: 16770892 });
+    const eyeL = new Mesh(new SphereGeometry(0.09, 6, 6), eyeMat);
+    eyeL.position.set(0.6, 0.35, 0.35);
+    const eyeR = new Mesh(new SphereGeometry(0.09, 6, 6), eyeMat);
+    eyeR.position.set(0.6, 0.35, -0.35);
+    headGrp.add(eyeL, eyeR);
+    const fangGeo = new ConeGeometry(0.08, 0.35, 6);
+    for (const [z, sign2] of [[0.22, 1], [-0.22, -1]]) {
+      const fang = new Mesh(fangGeo, fangMat);
+      fang.position.set(0.8, -0.15, z);
+      fang.rotation.z = -Math.PI / 2 - 0.15 * sign2;
+      headGrp.add(fang);
+    }
+    const core = new Mesh(new SphereGeometry(0.15, 8, 8), glowMat);
+    core.position.set(0.7, 0.5, 0);
+    headGrp.add(core);
+    return { root, parts: { segments, head: headGrp, core, eyeL, eyeR } };
+  }
+  function makeFlameDjinnMesh(tint = 16742943) {
+    const root = new Group();
+    const bodyMat = new MeshLambertMaterial({
+      color: tint,
+      emissive: tint,
+      emissiveIntensity: 0.5
+    });
+    const glowMat = new MeshBasicMaterial({
+      color: 16769126,
+      transparent: true,
+      opacity: 0.7
+    });
+    const smokeMat = new MeshLambertMaterial({ color: 2755077 });
+    const skirt = new Mesh(new ConeGeometry(1, 1.2, 8), smokeMat);
+    skirt.position.y = 1;
+    skirt.rotation.x = Math.PI;
+    root.add(skirt);
+    const core = new Mesh(new SphereGeometry(0.85, 12, 10), bodyMat);
+    core.position.y = 2.4;
+    root.add(core);
+    const eyeMat = new MeshBasicMaterial({ color: 16769126 });
+    const eyeL = new Mesh(new SphereGeometry(0.12, 6, 6), eyeMat);
+    eyeL.position.set(-0.28, 2.55, 0.7);
+    const eyeR = new Mesh(new SphereGeometry(0.12, 6, 6), eyeMat);
+    eyeR.position.set(0.28, 2.55, 0.7);
+    root.add(eyeL, eyeR);
+    const orbs = [];
+    const petalGeo = new ConeGeometry(0.28, 0.9, 6);
+    for (let i = 0; i < 5; i++) {
+      const petal = new Mesh(petalGeo, glowMat);
+      orbs.push(petal);
+      root.add(petal);
+    }
+    const ring = new Mesh(
+      new TorusGeometry(1.4, 0.1, 8, 24),
+      new MeshBasicMaterial({ color: tint, transparent: true, opacity: 0.6 })
+    );
+    ring.position.y = 0.1;
+    ring.rotation.x = Math.PI / 2;
+    root.add(ring);
+    return { root, parts: { body: core, core, eyeL, eyeR, orbs, ring } };
+  }
+  function makeStormElementalMesh(tint = 6605055) {
+    const root = new Group();
+    const cloudMat = new MeshLambertMaterial({
+      color: 2767442,
+      emissive: 924208,
+      emissiveIntensity: 0.4
+    });
+    const boltMat = new MeshBasicMaterial({
+      color: tint,
+      transparent: true,
+      opacity: 0.9
+    });
+    const coreMat = new MeshLambertMaterial({
+      color: 15267583,
+      emissive: 15267583,
+      emissiveIntensity: 0.7
+    });
+    const bodyGrp = new Group();
+    for (const [x, y, z, s] of [
+      [0, 2.4, 0, 1],
+      [-0.7, 2.2, 0.2, 0.8],
+      [0.7, 2.3, -0.2, 0.85],
+      [0, 2.7, 0.5, 0.7],
+      [0.2, 2.8, -0.4, 0.65],
+      [-0.3, 3, 0.1, 0.55]
+    ]) {
+      const puff = new Mesh(new SphereGeometry(s, 10, 8), cloudMat);
+      puff.position.set(x, y, z);
+      bodyGrp.add(puff);
+    }
+    root.add(bodyGrp);
+    const core = new Mesh(new SphereGeometry(0.35, 10, 8), coreMat);
+    core.position.y = 2.4;
+    root.add(core);
+    const eyeMat = new MeshBasicMaterial({ color: 15267583 });
+    const eyeL = new Mesh(new BoxGeometry(0.16, 0.03, 0.03), eyeMat);
+    eyeL.position.set(-0.28, 2.42, 0.75);
+    const eyeR = new Mesh(new BoxGeometry(0.16, 0.03, 0.03), eyeMat);
+    eyeR.position.set(0.28, 2.42, 0.75);
+    root.add(eyeL, eyeR);
+    const orbs = [];
+    for (let i = 0; i < 4; i++) {
+      const bolt = new Mesh(new BoxGeometry(0.06, 1.4, 0.06), boltMat);
+      orbs.push(bolt);
+      root.add(bolt);
+    }
+    const tail = new Mesh(new ConeGeometry(0.6, 1.5, 8), cloudMat);
+    tail.position.y = 1.2;
+    tail.rotation.x = Math.PI;
+    root.add(tail);
+    const ring = new Mesh(
+      new TorusGeometry(1.6, 0.08, 8, 24),
+      new MeshBasicMaterial({ color: tint, transparent: true, opacity: 0 })
+    );
+    ring.position.y = 0.1;
+    ring.rotation.x = Math.PI / 2;
+    root.add(ring);
+    return { root, parts: { body: bodyGrp, core, eyeL, eyeR, orbs, ring } };
+  }
+
   // src/world/dungeon.ts
   var ROOMS = [
     // ============================================================
@@ -38697,8 +39221,10 @@ void main() {
       startVisible: false,
       // Throne room — pillars, stalagmites flanking a central aisle,
       // the boss dead center, king echo ghost by the throne base.
+      // v6: added a north door leading into the COLISEUM — the seven-boss
+      // gauntlet. Stays gated while Malric lives; opens on his death.
       map: [
-        "WWWWWWWWWWWWWWW",
+        "WWWWWWWDWWWWWWW",
         "W.p.........p.W",
         "W.A.........A.W",
         "W.............W",
@@ -38709,6 +39235,204 @@ void main() {
         "W.p....A....p.W",
         "W.............W",
         "W.A....k....A.W",
+        "W.............W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "s", kind: "open" },
+        { dir: "n", kind: "open" }
+      ]
+    },
+    // ============================================================
+    // v6 — THE COLISEUM: seven-boss gauntlet north of the throne
+    // ============================================================
+    // (0,-1) — Necromancer's Sanctum. Ring of pillars around the caster.
+    {
+      key: "0,-1",
+      gx: 0,
+      gy: -1,
+      name: "Necromancer's Sanctum",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWDWWWWWWW",
+        "W.p.p.....p.p.W",
+        "W.............W",
+        "W..%........p.W",
+        "W....A...A....W",
+        "W......V......W",
+        "D.............D",
+        "W.....&.......W",
+        "W....A...A....W",
+        "W.p.........p.W",
+        "W...%......%..W",
+        "W.p.p.....p.p.W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "s", kind: "open" },
+        { dir: "w", kind: "open" },
+        { dir: "e", kind: "open" }
+      ]
+    },
+    // (-1,-1) — Reaver's Shadow. Pillars for teleport ambush lanes.
+    {
+      key: "-1,-1",
+      gx: -1,
+      gy: -1,
+      name: "Reaver's Shadow",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W.p.......p...W",
+        "W...A.....A...W",
+        "W.............W",
+        "W....p...p....W",
+        "W......4......W",
+        "W.............D",
+        "W....p...p....W",
+        "W...A.....A...W",
+        "W.p.......p...W",
+        "W.............W",
+        "W.p.p.....p.p.W",
+        "WWWWWWWWWWWWWWW"
+      ],
+      doors: [{ dir: "e", kind: "open" }]
+    },
+    // (1,-1) — Warden's Vault. Weapons/anvil clutter, big central floor.
+    {
+      key: "1,-1",
+      gx: 1,
+      gy: -1,
+      name: "Warden's Vault",
+      biome: "dungeon",
+      banner: "red",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W.p.X.X.X.X.p.W",
+        "W.............W",
+        "W..X.......X..W",
+        "W.............W",
+        "W......5......W",
+        "D.............W",
+        "W..X.......X..W",
+        "W.............W",
+        "W.p.X.X.X.X.p.W",
+        "W.............W",
+        "W.............W",
+        "WWWWWWWWWWWWWWW"
+      ],
+      doors: [{ dir: "w", kind: "open" }]
+    },
+    // (0,-2) — Crystal Cavern. Ice/crystal decor everywhere, tall room.
+    {
+      key: "0,-2",
+      gx: 0,
+      gy: -2,
+      name: "Crystal Cavern",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWDWWWWWWW",
+        "W.i.i.....i.i.W",
+        "W...A.....A...W",
+        "W.i.........i.W",
+        "W....A...A....W",
+        "W......6......W",
+        "D.............D",
+        "W....A...A....W",
+        "W.i.........i.W",
+        "W...A.....A...W",
+        "W.i.i.....i.i.W",
+        "W.............W",
+        "WWWWWWWDWWWWWWW"
+      ],
+      doors: [
+        { dir: "n", kind: "open" },
+        { dir: "s", kind: "open" },
+        { dir: "w", kind: "open" },
+        { dir: "e", kind: "open" }
+      ]
+    },
+    // (-1,-2) — Void Serpent Pit. Dark, columns, potion residue.
+    {
+      key: "-1,-2",
+      gx: -1,
+      gy: -2,
+      name: "Void Serpent Pit",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W.p.p.....p.p.W",
+        "W.............W",
+        "W...?.....?...W",
+        "W.............W",
+        "W......7......W",
+        "W.............D",
+        "W...?.....?...W",
+        "W.............W",
+        "W.p.p.....p.p.W",
+        "W.............W",
+        "W..?.......?..W",
+        "WWWWWWWWWWWWWWW"
+      ],
+      doors: [{ dir: "e", kind: "open" }]
+    },
+    // (1,-2) — Flame Sanctum. Braziers everywhere (books-as-brazier decor).
+    {
+      key: "1,-2",
+      gx: 1,
+      gy: -2,
+      name: "Flame Sanctum",
+      biome: "dungeon",
+      banner: "red",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W.%.%.....%.%.W",
+        "W.............W",
+        "W..A.......A..W",
+        "W.............W",
+        "W......8......W",
+        "D.............W",
+        "W..A.......A..W",
+        "W.............W",
+        "W.%.%.....%.%.W",
+        "W.............W",
+        "W..%.......%..W",
+        "WWWWWWWWWWWWWWW"
+      ],
+      doors: [{ dir: "w", kind: "open" }]
+    },
+    // (0,-3) — Storm Peak. Elevated arena with pillars in the corners.
+    {
+      key: "0,-3",
+      gx: 0,
+      gy: -3,
+      name: "Storm Peak",
+      biome: "dungeon",
+      banner: "blue",
+      startVisible: false,
+      map: [
+        "WWWWWWWWWWWWWWW",
+        "W.p.........p.W",
+        "W.............W",
+        "W...A.....A...W",
+        "W.............W",
+        "W......9......W",
+        "W.............W",
+        "W...A.....A...W",
+        "W.............W",
+        "W.p.........p.W",
+        "W..A.......A..W",
         "W.............W",
         "WWWWWWWDWWWWWWW"
       ],
@@ -39573,20 +40297,65 @@ void main() {
   // src/systems/boss.ts
   var BossSystem = class {
     constructor(scene, fx, events) {
+      /** All bosses in the world, one per bossSpawn tile. */
+      this.bosses = [];
+      /** Backwards compat: the boss currently on-screen (updated per frame). */
       this.boss = null;
+      this.procHandles = /* @__PURE__ */ new WeakMap();
+      /** Set by main.ts so summoners can spawn minions. */
+      this.enemies = null;
       this.scene = scene;
       this.fx = fx;
       this.events = events;
     }
+    /** Legacy single-spawn (used only by the old Malric spawn line). */
     spawn(pos) {
-      const root = spawn("skeleton_warrior", { castShadow: true });
+      this.spawnKind("skeleton_king", pos, "0,0");
+    }
+    /** v6: spawn a specific boss kind at world pos, dormant, tied to a room. */
+    spawnKind(kind, pos, roomKey) {
+      const cfg = BOSSES[kind];
+      let root;
+      let anim;
+      let procHandle = null;
+      if (kind === "skeleton_king") {
+        root = spawn("skeleton_warrior", { castShadow: true });
+        attachWeapon(root, "axe", BOSS.scale);
+        anim = buildAnimSet(root, getAnimations("skeleton_warrior"));
+        play(anim, ["Skeletons_Inactive_Floor_Pose"], { loop: false, force: true });
+      } else if (kind === "bone_necromancer") {
+        root = spawn("skeleton_mage", { castShadow: true });
+        attachWeapon(root, "staff", cfg.scale);
+        anim = buildAnimSet(root, getAnimations("skeleton_mage"));
+        tintSkeleton(root, cfg.tint);
+        play(anim, ["Skeletons_Inactive_Floor_Pose", "Idle"], { loop: false, force: true });
+      } else if (kind === "shadow_reaver") {
+        root = spawn("skeleton_rogue", { castShadow: true });
+        attachWeapon(root, "blade", cfg.scale);
+        anim = buildAnimSet(root, getAnimations("skeleton_rogue"));
+        tintSkeleton(root, cfg.tint);
+        play(anim, ["Skeletons_Inactive_Floor_Pose", "Idle"], { loop: false, force: true });
+      } else if (kind === "iron_warden") {
+        root = spawn("skeleton_minion", { castShadow: true });
+        attachWeapon(root, "axe", cfg.scale);
+        anim = buildAnimSet(root, getAnimations("skeleton_minion"));
+        tintSkeleton(root, cfg.tint);
+        play(anim, ["Skeletons_Inactive_Floor_Pose", "Idle"], { loop: false, force: true });
+      } else {
+        let handles;
+        if (kind === "crystal_golem") handles = makeCrystalGolemMesh(cfg.tint);
+        else if (kind === "void_serpent") handles = makeVoidSerpentMesh(cfg.tint);
+        else if (kind === "flame_djinn") handles = makeFlameDjinnMesh(cfg.tint);
+        else handles = makeStormElementalMesh(cfg.tint);
+        root = handles.root;
+        procHandle = handles.parts;
+        anim = buildAnimSet(root, []);
+      }
       root.position.copy(pos);
-      root.scale.setScalar(BOSS.scale);
+      root.scale.setScalar(cfg.scale);
       this.scene.add(root);
-      attachWeapon(root, "axe", BOSS.scale);
-      const anim = buildAnimSet(root, getAnimations("skeleton_warrior"));
-      play(anim, ["Skeletons_Inactive_Floor_Pose"], { loop: false, force: true });
-      this.boss = {
+      const b = {
+        kind,
         root,
         anim,
         state: "waiting",
@@ -39594,51 +40363,168 @@ void main() {
         pos: pos.clone(),
         vel: new Vector3(),
         facing: { x: 0, z: 1 },
-        hp: BOSS.hp,
+        hp: cfg.hp,
+        maxHp: cfg.hp,
         attacksSinceTaunt: 0,
         didHitPlayer: false,
         leapFrom: new Vector3(),
         leapTo: new Vector3(),
         active: false,
         dead: false,
-        enrageAnnounced: false
+        enrageAnnounced: false,
+        roomKey,
+        cooldown: 0,
+        summonsUsed: 0,
+        procTime: 0
       };
+      if (procHandle) this.procHandles.set(b, procHandle);
+      this.bosses.push(b);
+      return b;
     }
-    /** Called when the player first enters the throne room. */
-    wake() {
-      if (!this.boss || this.boss.active) return;
-      this.boss.active = true;
-      this.setState("awaken");
-      sfx.bossRoar();
-      play(this.boss.anim, ["Skeletons_Awaken_Floor", "Skeletons_Awaken_Standing"], {
-        loop: false,
-        force: true
-      });
-      this.events.onBossBar(1);
-      this.events.onToast("Skeleton Warrior awakens!");
-      this.events.onGameEvent("boss:awake");
-    }
-    update(dt, player, roomMgr, projectiles, props) {
-      const b = this.boss;
-      if (!b || b.dead) return;
-      b.stateTime += dt;
-      b.anim.mixer.update(dt);
-      if (b.state === "waiting" && roomMgr.current.hasBoss) {
-        this.wake();
+    /** Wake every boss in the room the player just entered. */
+    wakeRoom(roomKey) {
+      for (const b of this.bosses) {
+        if (b.roomKey === roomKey && b.state === "waiting" && !b.dead) {
+          this.wake(b);
+        }
       }
-      if (b.state === "waiting") return;
-      const enraged = b.hp / BOSS.hp <= BOSS.enrageAtHpFrac;
+    }
+    wake(b) {
+      if (b.active) return;
+      b.active = true;
+      b.state = "awaken";
+      b.stateTime = 0;
+      sfx.bossRoar();
+      const cfg = BOSSES[b.kind];
+      if (b.anim.actions.size) {
+        play(b.anim, ["Skeletons_Awaken_Floor", "Skeletons_Awaken_Standing"], {
+          loop: false,
+          force: true
+        });
+      }
+      this.events.onBossBar(1);
+      this.events.onToast(cfg.intro);
+      this.events.onGameEvent(`boss:awake:${b.kind}`);
+    }
+    /**
+     * v5 API preserved: still called by main when player enters the throne
+     * room. Now just delegates to wakeRoom() so any boss (Malric or otherwise)
+     * in the current room is roused.
+     */
+    update(dt, player, roomMgr, projectiles, props) {
+      const currentKey = roomMgr.current.key;
+      const active = this.bosses.find((b) => b.roomKey === currentKey && !b.dead);
+      this.boss = active ?? null;
+      if (roomMgr.current.hasBoss) this.wakeRoom(currentKey);
+      for (const b of this.bosses) {
+        if (b.dead) continue;
+        b.stateTime += dt;
+        b.procTime += dt;
+        if (b.anim.mixer) b.anim.mixer.update(dt);
+        if (b.state === "waiting" || b.roomKey !== currentKey) {
+          continue;
+        }
+        this.updateBoss(b, dt, player, roomMgr, projectiles, props);
+      }
+      if (active) this.animateProc(active, dt);
+    }
+    // -------------------------------------------------------------------------
+    // per-boss AI dispatch
+    // -------------------------------------------------------------------------
+    updateBoss(b, dt, player, roomMgr, projectiles, props) {
+      const cfg = BOSSES[b.kind];
+      const enraged = b.hp / b.maxHp <= BOSS.enrageAtHpFrac;
       const speedMul = enraged ? BOSS.enrageSpeedMul : 1;
       const recoverMul = enraged ? BOSS.enrageRecoverMul : 1;
       const toPlayer = new Vector3().subVectors(player.pos, b.pos);
       const dist = Math.hypot(toPlayer.x, toPlayer.z);
       const dirX = dist > 1e-4 ? toPlayer.x / dist : 0;
       const dirZ = dist > 1e-4 ? toPlayer.z / dist : 1;
-      switch (b.state) {
-        case "awaken": {
-          if (b.stateTime >= 1.6) this.setState("chase");
-          break;
+      if (b.state === "awaken") {
+        if (b.stateTime >= 1.6) {
+          b.state = "chase";
+          b.stateTime = 0;
         }
+        this.faceTargetSmooth(b, dt);
+        return;
+      }
+      if (b.state === "hurt") {
+        b.vel.multiplyScalar(Math.max(0, 1 - 6 * dt));
+        moveCircle(b.pos, b.vel, dt, cfg.radius, roomMgr.current);
+        if (b.stateTime >= 0.28) {
+          b.state = "chase";
+          b.stateTime = 0;
+        }
+        this.faceTargetSmooth(b, dt);
+        this.commitRoot(b);
+        return;
+      }
+      if (b.state === "dying") {
+        if (b.stateTime >= 1.6 && !b.dead) {
+          b.dead = true;
+          this.scene.remove(b.root);
+          this.events.onBossBar(null);
+          roomMgr.current.cleared = true;
+          if (b.kind === "skeleton_king") {
+            props.spawnVictoryCrystal(this.scene, b.pos.clone());
+          }
+          this.events.onToast(cfg.outro);
+          this.events.onGameEvent(`boss:dead:${b.kind}`);
+        }
+        return;
+      }
+      switch (b.kind) {
+        case "skeleton_king":
+          this.aiSkeletonKing(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul);
+          break;
+        case "bone_necromancer":
+          this.aiNecromancer(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul);
+          break;
+        case "shadow_reaver":
+          this.aiReaver(b, dt, dist, dirX, dirZ, player, roomMgr, speedMul, recoverMul);
+          break;
+        case "iron_warden":
+          this.aiWarden(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul);
+          break;
+        case "crystal_golem":
+          this.aiGolem(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul);
+          break;
+        case "void_serpent":
+          this.aiSerpent(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul);
+          break;
+        case "flame_djinn":
+          this.aiDjinn(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul);
+          break;
+        case "storm_elemental":
+          this.aiStorm(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul);
+          break;
+      }
+      this.faceTargetSmooth(b, dt);
+      this.commitRoot(b);
+      if (b.state === "chase" && dist < cfg.radius + PLAYER.radius) {
+        damagePlayer(player, cfg.touchDamage, b.pos, this.fx, this.events);
+      }
+      if (attackWindowOpen(player) && !player.attackDidHit.has(-1e3 - this.bosses.indexOf(b))) {
+        if (inSwordArc(player, b.pos, cfg.radius)) {
+          player.attackDidHit.add(-1e3 - this.bosses.indexOf(b));
+          const isHeavy = isHeavyAttack(player);
+          let dmg = isHeavy ? PLAYER.heavyAttackDamage : PLAYER.attackDamage;
+          if (player.upgrades?.sharpBlade) dmg += 1;
+          this.hurt(b, dmg, player.pos);
+          this.events.onSwordHit("boss", b.pos);
+        }
+      }
+      if (enraged && !b.enrageAnnounced) {
+        b.enrageAnnounced = true;
+        this.events.onStory(null, cfg.enrageLine);
+        this.events.onGameEvent?.("boss:enraged");
+      }
+    }
+    // -------------------------------------------------------------------------
+    // Malric (the original)
+    // -------------------------------------------------------------------------
+    aiSkeletonKing(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul) {
+      switch (b.state) {
         case "chase": {
           b.facing.x = dirX;
           b.facing.z = dirZ;
@@ -39647,10 +40533,12 @@ void main() {
           moveCircle(b.pos, b.vel, dt, BOSS.radius, roomMgr.current);
           play(b.anim, ["Walking_D_Skeletons", "Walking_A", "Running_A"], { fade: 0.2 });
           if (dist <= BOSS.spinRange) {
-            this.setState("spinWindup");
+            b.state = "spinWindup";
+            b.stateTime = 0;
             play(b.anim, ["Idle_Combat", "Idle"], { fade: 0.1 });
           } else if (dist <= BOSS.chopRange && b.stateTime > 0.7) {
-            this.setState("chopWindup");
+            b.state = "chopWindup";
+            b.stateTime = 0;
             play(b.anim, ["Idle_Combat", "Idle"], { fade: 0.1 });
           }
           break;
@@ -39659,7 +40547,8 @@ void main() {
           b.facing.x = dirX;
           b.facing.z = dirZ;
           if (b.stateTime >= BOSS.spinWindup) {
-            this.setState("spin");
+            b.state = "spin";
+            b.stateTime = 0;
             b.didHitPlayer = false;
             const dur = clipDuration(b.anim, ["2H_Melee_Attack_Spinning", "2H_Melee_Attack_Spin"], 1);
             play(b.anim, ["2H_Melee_Attack_Spinning", "2H_Melee_Attack_Spin"], {
@@ -39680,7 +40569,7 @@ void main() {
           }
           if (b.stateTime >= BOSS.spinDuration) {
             b.attacksSinceTaunt++;
-            this.enterRecover(recoverMul);
+            this.enterRecover(b, recoverMul);
           }
           break;
         }
@@ -39688,7 +40577,8 @@ void main() {
           b.facing.x = dirX;
           b.facing.z = dirZ;
           if (b.stateTime >= BOSS.chopWindup) {
-            this.setState("chopLeap");
+            b.state = "chopLeap";
+            b.stateTime = 0;
             b.leapFrom.copy(b.pos);
             b.leapTo.copy(player.pos);
             const dur = clipDuration(b.anim, ["1H_Melee_Attack_Jump_Chop", "Jump_Full_Long"], 0.8);
@@ -39706,7 +40596,8 @@ void main() {
           b.root.position.y = Math.sin(t * Math.PI) * 3;
           if (t >= 1) {
             b.root.position.y = 0;
-            this.setState("chopLand");
+            b.state = "chopLand";
+            b.stateTime = 0;
             sfx.bossRoar();
             projectiles.spawnShockwave(b.pos.clone());
             this.fx.burst(new Vector3(b.pos.x, 0.5, b.pos.z), 16765286, 22, {
@@ -39722,74 +40613,691 @@ void main() {
         case "chopLand": {
           if (b.stateTime >= 0.35) {
             b.attacksSinceTaunt++;
-            this.enterRecover(recoverMul);
+            this.enterRecover(b, recoverMul);
           }
           break;
         }
         case "taunt": {
-          if (b.stateTime >= 1.3) this.setState("chase");
+          if (b.stateTime >= 1.3) {
+            b.state = "chase";
+            b.stateTime = 0;
+          }
           break;
         }
         case "recover": {
           if (b.stateTime >= BOSS.recoverTime * recoverMul) {
             if (b.attacksSinceTaunt >= BOSS.tauntEvery) {
               b.attacksSinceTaunt = 0;
-              this.setState("taunt");
+              b.state = "taunt";
+              b.stateTime = 0;
               play(b.anim, ["Taunt_Longer", "Taunt"], { loop: false, force: true });
             } else {
-              this.setState("chase");
+              b.state = "chase";
+              b.stateTime = 0;
             }
           }
           break;
         }
-        case "hurt": {
-          b.vel.multiplyScalar(Math.max(0, 1 - 6 * dt));
-          moveCircle(b.pos, b.vel, dt, BOSS.radius, roomMgr.current);
-          if (b.stateTime >= 0.28) this.setState("chase");
+      }
+    }
+    // -------------------------------------------------------------------------
+    // Bone Necromancer — ranged bolts + summons
+    // -------------------------------------------------------------------------
+    aiNecromancer(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul) {
+      const cfg = BOSSES.bone_necromancer;
+      switch (b.state) {
+        case "chase": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          const preferred = 8;
+          if (dist > preferred) {
+            b.vel.x = dirX * cfg.speed * speedMul;
+            b.vel.z = dirZ * cfg.speed * speedMul;
+          } else {
+            b.vel.x = -dirX * cfg.speed * 0.7;
+            b.vel.z = -dirZ * cfg.speed * 0.7;
+          }
+          moveCircle(b.pos, b.vel, dt, cfg.radius, roomMgr.current);
+          play(b.anim, ["Walking_D_Skeletons", "Walking_A"], { fade: 0.2 });
+          if (b.stateTime > 1.1 && dist < cfg.castRange) {
+            b.state = "castWindup";
+            b.stateTime = 0;
+            play(b.anim, ["Spellcast_Long", "Spellcast_Shoot", "Idle_Combat"], { loop: false, force: true });
+          }
           break;
         }
-        case "dying": {
-          if (b.stateTime >= 1.6 && !b.dead) {
-            b.dead = true;
-            this.scene.remove(b.root);
-            this.events.onBossBar(null);
-            roomMgr.current.cleared = true;
-            props.spawnVictoryCrystal(this.scene, b.pos.clone());
-            this.events.onToast("The Skeleton Warrior falls!");
+        case "castWindup": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          if (b.stateTime >= cfg.castWindup) {
+            b.state = "cast";
+            b.stateTime = 0;
+            const origin = b.pos.clone();
+            origin.y = 1.6;
+            const spread = cfg.boltSpread;
+            for (let i = 0; i < cfg.boltCount; i++) {
+              const t = (i / (cfg.boltCount - 1) - 0.5) * spread * 2;
+              const ang = Math.atan2(dirX, dirZ) + t;
+              const d = new Vector3(Math.sin(ang), 0, Math.cos(ang));
+              projectiles.spawnBolt(origin.clone(), d);
+            }
+          }
+          break;
+        }
+        case "cast": {
+          if (b.stateTime >= 0.4) {
+            b.attacksSinceTaunt++;
+            if (b.attacksSinceTaunt >= cfg.summonEvery) {
+              b.attacksSinceTaunt = 0;
+              b.state = "summon";
+              b.stateTime = 0;
+              play(b.anim, ["Taunt_Longer", "Taunt", "Idle"], { loop: false, force: true });
+            } else {
+              this.enterRecover(b, recoverMul);
+            }
+          }
+          break;
+        }
+        case "summon": {
+          if (b.stateTime >= 0.6 && b.summonsUsed === Math.floor(b.stateTime / 0.6) - 1) {
+            b.summonsUsed++;
+            if (this.enemies && b.summonsUsed <= cfg.summonCount) {
+              const ang = Math.random() * Math.PI * 2;
+              const p = new Vector3(
+                b.pos.x + Math.cos(ang) * 2.5,
+                0,
+                b.pos.z + Math.sin(ang) * 2.5
+              );
+              this.enemies.spawnEnemy("minion", p, b.roomKey);
+              this.fx.burst(new Vector3(p.x, 0.4, p.z), 11035903, 15, { speed: 4, up: 3, life: 0.5 });
+            }
+          }
+          if (b.stateTime >= cfg.summonCount * 0.6 + 0.3) {
+            b.summonsUsed = 0;
+            this.enterRecover(b, recoverMul);
+          }
+          break;
+        }
+        case "recover": {
+          if (b.stateTime >= cfg.castRecover * recoverMul) {
+            b.state = "chase";
+            b.stateTime = 0;
           }
           break;
         }
       }
-      const ang = Math.atan2(b.facing.x, b.facing.z);
-      let diff = ang - b.root.rotation.y;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      b.root.rotation.y += diff * Math.min(1, 6 * dt);
-      b.root.position.x = b.pos.x;
-      b.root.position.z = b.pos.z;
-      if (b.state === "chase" && dist < BOSS.radius + PLAYER.radius) {
-        damagePlayer(player, BOSS.touchDamage, b.pos, this.fx, this.events);
-      }
-      if (attackWindowOpen(player) && !player.attackDidHit.has(-9999)) {
-        if (inSwordArc(player, b.pos, BOSS.radius)) {
-          player.attackDidHit.add(-9999);
-          const isHeavy = isHeavyAttack(player);
-          let dmg = isHeavy ? PLAYER.heavyAttackDamage : PLAYER.attackDamage;
-          if (player.upgrades?.sharpBlade) dmg += 1;
-          this.hurt(dmg, player.pos);
-          this.events.onSwordHit("boss", b.pos);
+    }
+    // -------------------------------------------------------------------------
+    // Shadow Reaver — dash + triple stab
+    // -------------------------------------------------------------------------
+    aiReaver(b, dt, dist, dirX, dirZ, player, roomMgr, speedMul, recoverMul) {
+      const cfg = BOSSES.shadow_reaver;
+      switch (b.state) {
+        case "chase": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          b.vel.x = dirX * cfg.speed * speedMul;
+          b.vel.z = dirZ * cfg.speed * speedMul;
+          moveCircle(b.pos, b.vel, dt, cfg.radius, roomMgr.current);
+          play(b.anim, ["Running_A", "Walking_A"], { fade: 0.2 });
+          if (dist <= 2.2) {
+            b.state = "stabWindup";
+            b.stateTime = 0;
+            b.didHitPlayer = false;
+            play(b.anim, ["1H_Melee_Attack_Stab", "1H_Melee_Attack_Slice_Diagonal"], {
+              loop: false,
+              force: true
+            });
+          } else if (dist <= cfg.dashRange && b.stateTime > 0.6) {
+            b.state = "dashWindup";
+            b.stateTime = 0;
+            b.leapFrom.copy(b.pos);
+            b.leapTo.copy(player.pos).addScaledVector(new Vector3(dirX, 0, dirZ), 1.5);
+            play(b.anim, ["Idle_Combat", "Idle"], { fade: 0.05 });
+          }
+          break;
+        }
+        case "dashWindup": {
+          if (b.stateTime >= cfg.dashWindup) {
+            b.state = "dash";
+            b.stateTime = 0;
+            b.didHitPlayer = false;
+          }
+          break;
+        }
+        case "dash": {
+          const t = Math.min(1, b.stateTime / cfg.dashDuration);
+          b.pos.lerpVectors(b.leapFrom, b.leapTo, t);
+          if (!b.didHitPlayer && dist < 1.5) {
+            b.didHitPlayer = true;
+            damagePlayer(player, cfg.stabDamage, b.pos, this.fx, this.events);
+          }
+          this.fx.burst(new Vector3(b.pos.x, 0.6, b.pos.z), cfg.tint, 3, { speed: 3, up: 2, life: 0.28 });
+          if (t >= 1) {
+            b.attacksSinceTaunt++;
+            if (b.attacksSinceTaunt >= cfg.teleportEvery) {
+              b.attacksSinceTaunt = 0;
+              b.state = "teleport";
+              b.stateTime = 0;
+            } else {
+              this.enterRecover(b, recoverMul);
+            }
+          }
+          break;
+        }
+        case "stabWindup": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          const hitsDone = Math.floor(b.stateTime / (cfg.stabDuration / cfg.stabCount));
+          if (hitsDone > b.summonsUsed && hitsDone <= cfg.stabCount) {
+            b.summonsUsed = hitsDone;
+            if (dist < 2.2) damagePlayer(player, cfg.stabDamage, b.pos, this.fx, this.events);
+            play(b.anim, ["1H_Melee_Attack_Stab"], { loop: false, force: true });
+          }
+          if (b.stateTime >= cfg.stabDuration) {
+            b.summonsUsed = 0;
+            b.attacksSinceTaunt++;
+            this.enterRecover(b, recoverMul);
+          }
+          break;
+        }
+        case "teleport": {
+          b.root.visible = b.stateTime > 0.35;
+          if (b.stateTime === 0 || !b.root.visible && b.stateTime > 0.02) {
+            this.fx.burst(new Vector3(b.pos.x, 1.2, b.pos.z), cfg.tint, 20, { speed: 6, up: 4, life: 0.6 });
+          }
+          if (b.stateTime >= 0.35 && !b.didHitPlayer) {
+            b.didHitPlayer = true;
+            const back = new Vector3(-dirX, 0, -dirZ).multiplyScalar(1.6);
+            b.pos.copy(player.pos).add(back);
+            b.root.visible = true;
+            this.fx.burst(new Vector3(b.pos.x, 1.2, b.pos.z), cfg.tint, 20, { speed: 6, up: 4, life: 0.6 });
+          }
+          if (b.stateTime >= 0.6) {
+            b.didHitPlayer = false;
+            b.state = "stabWindup";
+            b.stateTime = 0;
+          }
+          break;
+        }
+        case "recover": {
+          if (b.stateTime >= 0.4 * recoverMul) {
+            b.state = "chase";
+            b.stateTime = 0;
+          }
+          break;
         }
       }
-      if (enraged && !b.enrageAnnounced && b.state !== "dying" && b.state !== "hurt") {
-        b.enrageAnnounced = true;
-        this.events.onStory(null, "The Skeleton King's axe begins to glow. He remembers who he was.");
-        this.events.onGameEvent?.("boss:enraged");
+    }
+    // -------------------------------------------------------------------------
+    // Iron Warden — big slow tank, alternates smash / block / shockwave
+    // -------------------------------------------------------------------------
+    aiWarden(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul) {
+      const cfg = BOSSES.iron_warden;
+      switch (b.state) {
+        case "chase": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          b.vel.x = dirX * cfg.speed * speedMul;
+          b.vel.z = dirZ * cfg.speed * speedMul;
+          moveCircle(b.pos, b.vel, dt, cfg.radius, roomMgr.current);
+          play(b.anim, ["Walking_D_Skeletons", "Walking_A"], { fade: 0.2 });
+          if (dist <= cfg.smashRange) {
+            b.state = "slamWindup";
+            b.stateTime = 0;
+            b.didHitPlayer = false;
+            play(b.anim, ["Idle_Combat"], { fade: 0.05 });
+          }
+          break;
+        }
+        case "slamWindup": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          if (b.stateTime >= cfg.smashWindup) {
+            b.state = "slam";
+            b.stateTime = 0;
+            play(b.anim, ["2H_Melee_Attack_Chop", "1H_Melee_Attack_Chop"], { loop: false, force: true });
+            projectiles.spawnShockwave(b.pos.clone());
+            this.fx.burst(new Vector3(b.pos.x, 0.5, b.pos.z), cfg.tint, 20, { speed: 5, up: 2, life: 0.6 });
+            if (dist < cfg.smashRange + 0.5) {
+              damagePlayer(player, cfg.smashDamage, b.pos, this.fx, this.events);
+              b.didHitPlayer = true;
+            }
+          }
+          break;
+        }
+        case "slam": {
+          if (b.stateTime >= cfg.smashDuration) {
+            b.attacksSinceTaunt++;
+            if (b.attacksSinceTaunt >= cfg.blockEvery && !b.enrageAnnounced) {
+              b.attacksSinceTaunt = 0;
+              b.state = "taunt";
+              b.stateTime = 0;
+              play(b.anim, ["Block", "Idle_Combat"], { loop: false, force: true });
+            } else {
+              this.enterRecover(b, recoverMul);
+            }
+          }
+          break;
+        }
+        case "taunt": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          if (b.stateTime >= cfg.blockDuration) {
+            b.state = "chase";
+            b.stateTime = 0;
+          }
+          break;
+        }
+        case "recover": {
+          if (b.stateTime >= 0.6 * recoverMul) {
+            b.state = "chase";
+            b.stateTime = 0;
+          }
+          break;
+        }
       }
     }
-    hurt(dmg, from) {
-      const b = this.boss;
+    // -------------------------------------------------------------------------
+    // Crystal Golem — ground slam + rotating laser
+    // -------------------------------------------------------------------------
+    aiGolem(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul) {
+      const cfg = BOSSES.crystal_golem;
+      switch (b.state) {
+        case "chase": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          b.vel.x = dirX * cfg.speed * speedMul;
+          b.vel.z = dirZ * cfg.speed * speedMul;
+          moveCircle(b.pos, b.vel, dt, cfg.radius, roomMgr.current);
+          if (dist <= cfg.slamRange) {
+            b.state = "slamWindup";
+            b.stateTime = 0;
+            b.didHitPlayer = false;
+          } else if (b.stateTime > 1.3) {
+            b.state = "castWindup";
+            b.stateTime = 0;
+          }
+          break;
+        }
+        case "slamWindup": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          const parts = this.procHandles.get(b);
+          if (parts?.core) parts.core.scale.setScalar(1 + b.stateTime * 0.5);
+          if (b.stateTime >= cfg.slamWindup) {
+            b.state = "slam";
+            b.stateTime = 0;
+            sfx.bossRoar();
+            projectiles.spawnShockwave(b.pos.clone());
+            this.fx.burst(new Vector3(b.pos.x, 0.5, b.pos.z), cfg.tint, 30, { speed: 7, up: 3, life: 0.7 });
+            if (dist < cfg.slamRange + 0.5) {
+              damagePlayer(player, cfg.slamDamage, b.pos, this.fx, this.events);
+            }
+            for (let i = 0; i < cfg.shardsCount; i++) {
+              const ang = i / cfg.shardsCount * Math.PI * 2;
+              const d = new Vector3(Math.cos(ang), 0, Math.sin(ang));
+              const o = b.pos.clone();
+              o.y = 1.4;
+              projectiles.spawnBolt(o, d);
+            }
+          }
+          break;
+        }
+        case "slam": {
+          const parts = this.procHandles.get(b);
+          if (parts?.core) parts.core.scale.setScalar(1);
+          if (b.stateTime >= 0.4) this.enterRecover(b, recoverMul);
+          break;
+        }
+        case "castWindup": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          const parts = this.procHandles.get(b);
+          if (parts?.ring) parts.ring.material = new MeshBasicMaterial({
+            color: cfg.tint,
+            transparent: true,
+            opacity: Math.min(0.9, b.stateTime)
+          });
+          if (b.stateTime >= cfg.laserWindup) {
+            b.state = "cast";
+            b.stateTime = 0;
+            sfx.bolt();
+          }
+          break;
+        }
+        case "cast": {
+          const parts = this.procHandles.get(b);
+          if (parts?.ring) parts.ring.rotation.z += dt * 3;
+          const beamAng = b.stateTime * 3;
+          const bx = Math.cos(beamAng), bz = Math.sin(beamAng);
+          const projX = (player.pos.x - b.pos.x) * bx + (player.pos.z - b.pos.z) * bz;
+          const perp = Math.abs(-(player.pos.x - b.pos.x) * bz + (player.pos.z - b.pos.z) * bx);
+          if (projX > 0 && projX < cfg.laserRange && perp < 0.9 && !b.didHitPlayer) {
+            b.didHitPlayer = true;
+            damagePlayer(player, cfg.laserDamage, b.pos, this.fx, this.events);
+          }
+          if (Math.random() < 0.5) {
+            const p = new Vector3(b.pos.x + bx * 3, 1.2, b.pos.z + bz * 3);
+            this.fx.burst(p, cfg.tint, 3, { speed: 3, up: 1, life: 0.25 });
+          }
+          if (b.stateTime >= cfg.laserDuration) {
+            b.didHitPlayer = false;
+            const parts2 = this.procHandles.get(b);
+            if (parts2?.ring) {
+              parts2.ring.material = new MeshBasicMaterial({
+                color: cfg.tint,
+                transparent: true,
+                opacity: 0
+              });
+            }
+            this.enterRecover(b, recoverMul);
+          }
+          break;
+        }
+        case "recover": {
+          if (b.stateTime >= 0.7 * recoverMul) {
+            b.state = "chase";
+            b.stateTime = 0;
+          }
+          break;
+        }
+      }
+    }
+    // -------------------------------------------------------------------------
+    // Void Serpent — bite + spit + coil
+    // -------------------------------------------------------------------------
+    aiSerpent(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul) {
+      const cfg = BOSSES.void_serpent;
+      switch (b.state) {
+        case "chase": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          b.vel.x = dirX * cfg.speed * speedMul;
+          b.vel.z = dirZ * cfg.speed * speedMul;
+          moveCircle(b.pos, b.vel, dt, cfg.radius, roomMgr.current);
+          if (dist <= cfg.biteRange) {
+            b.state = "slamWindup";
+            b.stateTime = 0;
+            b.didHitPlayer = false;
+          } else if (dist <= cfg.spitRange && b.stateTime > 1.2) {
+            b.state = "castWindup";
+            b.stateTime = 0;
+          } else if (b.stateTime > 3) {
+            b.state = "summon";
+            b.stateTime = 0;
+          }
+          break;
+        }
+        case "slamWindup": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          if (b.stateTime >= cfg.biteWindup) {
+            b.state = "slam";
+            b.stateTime = 0;
+            if (dist < cfg.biteRange + 0.4) {
+              damagePlayer(player, cfg.biteDamage, b.pos, this.fx, this.events);
+            }
+            this.fx.burst(new Vector3(b.pos.x, 1.5, b.pos.z), cfg.tint, 12, { speed: 5, up: 3, life: 0.5 });
+          }
+          break;
+        }
+        case "slam": {
+          if (b.stateTime >= 0.35) this.enterRecover(b, recoverMul);
+          break;
+        }
+        case "castWindup": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          if (b.stateTime >= cfg.spitWindup) {
+            b.state = "cast";
+            b.stateTime = 0;
+            const o = b.pos.clone();
+            o.y = 1.6;
+            projectiles.spawnBolt(o, new Vector3(dirX, 0, dirZ));
+          }
+          break;
+        }
+        case "cast": {
+          if (b.stateTime >= 0.35) this.enterRecover(b, recoverMul);
+          break;
+        }
+        case "summon": {
+          const t = b.stateTime / cfg.coilDuration;
+          const r = cfg.coilRadius * (1 - t * 0.7);
+          if (Math.abs(dist - r) < 0.6 && !b.didHitPlayer) {
+            b.didHitPlayer = true;
+            damagePlayer(player, cfg.coilDamage, b.pos, this.fx, this.events);
+          }
+          if (Math.random() < 0.6) {
+            const a = Math.random() * Math.PI * 2;
+            const p = new Vector3(b.pos.x + Math.cos(a) * r, 0.2, b.pos.z + Math.sin(a) * r);
+            this.fx.burst(p, cfg.tint, 2, { speed: 1.5, up: 1, life: 0.3 });
+          }
+          if (b.stateTime >= cfg.coilDuration) {
+            b.didHitPlayer = false;
+            this.enterRecover(b, recoverMul);
+          }
+          break;
+        }
+        case "recover": {
+          if (b.stateTime >= 0.5 * recoverMul) {
+            b.state = "chase";
+            b.stateTime = 0;
+          }
+          break;
+        }
+      }
+    }
+    // -------------------------------------------------------------------------
+    // Flame Djinn — teleport + fire ring + fireball
+    // -------------------------------------------------------------------------
+    aiDjinn(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul) {
+      const cfg = BOSSES.flame_djinn;
+      switch (b.state) {
+        case "chase": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          const preferred = 6;
+          const s = cfg.speed * speedMul * 0.7;
+          if (dist > preferred) {
+            b.vel.x = dirX * s;
+            b.vel.z = dirZ * s;
+          } else {
+            b.vel.x = -dirZ * s * 0.6;
+            b.vel.z = dirX * s * 0.6;
+          }
+          moveCircle(b.pos, b.vel, dt, cfg.radius, roomMgr.current);
+          if (dist <= cfg.ringRange) {
+            b.state = "castWindup";
+            b.stateTime = 0;
+          } else if (b.stateTime > 1.4) {
+            b.state = "slamWindup";
+            b.stateTime = 0;
+          }
+          break;
+        }
+        case "castWindup": {
+          const parts = this.procHandles.get(b);
+          if (parts?.ring) parts.ring.scale.setScalar(1 + b.stateTime);
+          if (b.stateTime >= cfg.ringWindup) {
+            b.state = "cast";
+            b.stateTime = 0;
+            sfx.bossRoar();
+            this.fx.burst(new Vector3(b.pos.x, 0.5, b.pos.z), cfg.tint, 40, { speed: 9, up: 3, life: 0.9 });
+            if (dist < cfg.ringRange + 0.3) {
+              damagePlayer(player, cfg.ringDamage, b.pos, this.fx, this.events);
+            }
+          }
+          break;
+        }
+        case "cast": {
+          const parts = this.procHandles.get(b);
+          if (parts?.ring) parts.ring.scale.setScalar(1);
+          if (b.stateTime >= 0.4) {
+            b.attacksSinceTaunt++;
+            if (b.attacksSinceTaunt >= cfg.teleportEvery) {
+              b.attacksSinceTaunt = 0;
+              b.state = "teleport";
+              b.stateTime = 0;
+              this.fx.burst(new Vector3(b.pos.x, 1.2, b.pos.z), cfg.tint, 20, { speed: 6, up: 3, life: 0.5 });
+            } else {
+              this.enterRecover(b, recoverMul);
+            }
+          }
+          break;
+        }
+        case "slamWindup": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          if (b.stateTime >= cfg.fireballWindup) {
+            b.state = "slam";
+            b.stateTime = 0;
+            const o = b.pos.clone();
+            o.y = 2.2;
+            projectiles.spawnBolt(o, new Vector3(dirX, 0, dirZ));
+          }
+          break;
+        }
+        case "slam": {
+          if (b.stateTime >= 0.3) this.enterRecover(b, recoverMul);
+          break;
+        }
+        case "teleport": {
+          b.root.visible = b.stateTime > 0.3;
+          if (b.stateTime >= 0.3 && !b.didHitPlayer) {
+            b.didHitPlayer = true;
+            const ang = Math.random() * Math.PI * 2;
+            b.pos.set(
+              player.pos.x + Math.cos(ang) * cfg.teleportDist,
+              0,
+              player.pos.z + Math.sin(ang) * cfg.teleportDist
+            );
+            moveCircle(b.pos, new Vector3(), dt, cfg.radius, roomMgr.current);
+            b.root.visible = true;
+            this.fx.burst(new Vector3(b.pos.x, 1.2, b.pos.z), cfg.tint, 20, { speed: 6, up: 3, life: 0.5 });
+          }
+          if (b.stateTime >= 0.6) {
+            b.didHitPlayer = false;
+            this.enterRecover(b, recoverMul);
+          }
+          break;
+        }
+        case "recover": {
+          if (b.stateTime >= 0.55 * recoverMul) {
+            b.state = "chase";
+            b.stateTime = 0;
+          }
+          break;
+        }
+      }
+    }
+    // -------------------------------------------------------------------------
+    // Storm Elemental — chain lightning + tornado
+    // -------------------------------------------------------------------------
+    aiStorm(b, dt, dist, dirX, dirZ, player, roomMgr, projectiles, speedMul, recoverMul) {
+      const cfg = BOSSES.storm_elemental;
+      switch (b.state) {
+        case "chase": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          const preferred = 9;
+          if (dist > preferred) {
+            b.vel.x = dirX * cfg.speed * speedMul;
+            b.vel.z = dirZ * cfg.speed * speedMul;
+          } else {
+            b.vel.x = -dirZ * cfg.speed * 0.6;
+            b.vel.z = dirX * cfg.speed * 0.6;
+          }
+          moveCircle(b.pos, b.vel, dt, cfg.radius, roomMgr.current);
+          if (dist <= cfg.boltRange && b.stateTime > 0.9) {
+            b.state = "castWindup";
+            b.stateTime = 0;
+          } else if (b.stateTime > 3) {
+            b.state = "slamWindup";
+            b.stateTime = 0;
+          }
+          break;
+        }
+        case "castWindup": {
+          b.facing.x = dirX;
+          b.facing.z = dirZ;
+          if (b.stateTime >= cfg.boltWindup) {
+            b.state = "cast";
+            b.stateTime = 0;
+            for (let i = 0; i < cfg.chainCount; i++) {
+              const jitter = (Math.random() - 0.5) * 0.6;
+              const ang = Math.atan2(dirX, dirZ) + jitter;
+              const d = new Vector3(Math.sin(ang), 0, Math.cos(ang));
+              const o = b.pos.clone();
+              o.y = 2.6;
+              projectiles.spawnBolt(o, d);
+            }
+            sfx.bolt();
+          }
+          break;
+        }
+        case "cast": {
+          if (b.stateTime >= 0.35) this.enterRecover(b, recoverMul);
+          break;
+        }
+        case "slamWindup": {
+          const parts = this.procHandles.get(b);
+          if (parts?.ring) parts.ring.material = new MeshBasicMaterial({
+            color: cfg.tint,
+            transparent: true,
+            opacity: Math.min(0.8, b.stateTime)
+          });
+          if (b.stateTime >= cfg.tornadoWindup) {
+            b.state = "slam";
+            b.stateTime = 0;
+            sfx.bossRoar();
+            this.fx.burst(new Vector3(b.pos.x, 1.2, b.pos.z), cfg.tint, 30, { speed: 5, up: 6, life: 1 });
+          }
+          break;
+        }
+        case "slam": {
+          const parts = this.procHandles.get(b);
+          if (parts?.ring) parts.ring.rotation.z += dt * 6;
+          if (Math.random() < 0.4) {
+            const a = Math.random() * Math.PI * 2;
+            const r = 2 + Math.random() * 2;
+            const p = new Vector3(b.pos.x + Math.cos(a) * r, 0.1, b.pos.z + Math.sin(a) * r);
+            this.fx.burst(p, cfg.tint, 2, { speed: 3, up: 2, life: 0.3 });
+          }
+          if (dist < 2.8 && Math.floor(b.stateTime / 0.4) > b.summonsUsed) {
+            b.summonsUsed++;
+            damagePlayer(player, cfg.tornadoDamage, b.pos, this.fx, this.events);
+          }
+          if (b.stateTime >= cfg.tornadoLife) {
+            b.summonsUsed = 0;
+            const parts2 = this.procHandles.get(b);
+            if (parts2?.ring) parts2.ring.material = new MeshBasicMaterial({
+              color: cfg.tint,
+              transparent: true,
+              opacity: 0
+            });
+            this.enterRecover(b, recoverMul);
+          }
+          break;
+        }
+        case "recover": {
+          if (b.stateTime >= 0.6 * recoverMul) {
+            b.state = "chase";
+            b.stateTime = 0;
+          }
+          break;
+        }
+      }
+    }
+    // -------------------------------------------------------------------------
+    // shared helpers
+    // -------------------------------------------------------------------------
+    hurt(b, dmg, from) {
       if (b.state === "dying") return;
-      b.hp -= dmg;
+      const cfg = BOSSES[b.kind];
+      const damage = b.kind === "iron_warden" && b.state === "taunt" && !b.enrageAnnounced ? Math.max(1, Math.floor(dmg * 0.5)) : dmg;
+      b.hp -= damage;
       flash(b.root, performance.now() / 1e3, 0.18);
       sfx.hitEnemy();
       this.fx.burst(new Vector3(b.pos.x, 1.8, b.pos.z), 16773577, 10, { speed: 5, up: 3 });
@@ -39797,34 +41305,102 @@ void main() {
       const dz = b.pos.z - from.z;
       const d = Math.hypot(dx, dz) || 1;
       b.vel.set(dx / d * 5, 0, dz / d * 5);
-      this.events.onBossBar(Math.max(0, b.hp / BOSS.hp));
+      this.events.onBossBar(Math.max(0, b.hp / b.maxHp));
       if (b.hp <= 0) {
-        this.setState("dying");
-        play(b.anim, ["Death_A", "Death_B"], { loop: false, force: true });
+        b.state = "dying";
+        b.stateTime = 0;
+        if (b.anim.actions.size) play(b.anim, ["Death_A", "Death_B"], { loop: false, force: true });
         sfx.enemyDie();
         sfx.victory();
-        this.fx.burst(new Vector3(b.pos.x, 1.2, b.pos.z), 16771226, 40, {
+        this.fx.burst(new Vector3(b.pos.x, 1.2, b.pos.z), cfg.tint === 16777215 ? 16771226 : cfg.tint, 40, {
           speed: 8,
           up: 6,
           life: 1.2,
           scale: 1.4
         });
       } else {
-        this.setState("hurt");
-        play(b.anim, ["Hit_A", "Hit_B"], { loop: false, force: true, fade: 0.05 });
+        b.state = "hurt";
+        b.stateTime = 0;
+        if (b.anim.actions.size) play(b.anim, ["Hit_A", "Hit_B"], { loop: false, force: true, fade: 0.05 });
       }
     }
-    setState(s) {
-      if (!this.boss) return;
-      this.boss.state = s;
-      this.boss.stateTime = 0;
-    }
-    enterRecover(mul) {
+    enterRecover(b, mul) {
       void mul;
-      this.setState("recover");
-      play(this.boss.anim, ["Idle_Combat", "Idle"], { fade: 0.2 });
+      b.state = "recover";
+      b.stateTime = 0;
+      if (b.anim.actions.size) play(b.anim, ["Idle_Combat", "Idle"], { fade: 0.2 });
+    }
+    faceTargetSmooth(b, dt) {
+      const ang = Math.atan2(b.facing.x, b.facing.z);
+      let diff = ang - b.root.rotation.y;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      b.root.rotation.y += diff * Math.min(1, 6 * dt);
+    }
+    commitRoot(b) {
+      b.root.position.x = b.pos.x;
+      b.root.position.z = b.pos.z;
+      if (b.kind === "flame_djinn" || b.kind === "storm_elemental") {
+        b.root.position.y = 0.8 + Math.sin(b.procTime * 2) * 0.15;
+      } else if (b.kind === "void_serpent") {
+        b.root.position.y = 0.2 + Math.sin(b.procTime * 3) * 0.1;
+      }
+    }
+    /** Cosmetic per-frame animation for procedural bosses (rotations, bobs). */
+    animateProc(b, dt) {
+      const parts = this.procHandles.get(b);
+      if (!parts) return;
+      if (b.kind === "flame_djinn" && parts.orbs) {
+        for (let i = 0; i < parts.orbs.length; i++) {
+          const o = parts.orbs[i];
+          const ang = b.procTime * 3 + i / parts.orbs.length * Math.PI * 2;
+          o.position.set(Math.cos(ang) * 1.2, 2.4 + Math.sin(ang * 2) * 0.2, Math.sin(ang) * 1.2);
+          o.rotation.x = ang;
+          o.rotation.z = ang * 0.7;
+        }
+      } else if (b.kind === "storm_elemental" && parts.orbs) {
+        for (let i = 0; i < parts.orbs.length; i++) {
+          const o = parts.orbs[i];
+          const ang = b.procTime * 5 + i / parts.orbs.length * Math.PI * 2;
+          o.position.set(Math.cos(ang) * 1.5, 2.4, Math.sin(ang) * 1.5);
+          o.rotation.z = ang;
+        }
+        if (parts.core) parts.core.scale.setScalar(1 + Math.sin(b.procTime * 6) * 0.1);
+      } else if (b.kind === "void_serpent" && parts.segments) {
+        for (let i = 0; i < parts.segments.length; i++) {
+          const s = parts.segments[i];
+          s.position.y = 1.4 + Math.sin(b.procTime * 3 - i * 0.5) * 0.5;
+          s.rotation.z = Math.sin(b.procTime * 2 - i * 0.4) * 0.3;
+        }
+      } else if (b.kind === "crystal_golem") {
+        if (parts.core) parts.core.rotation.y = b.procTime;
+        if (parts.eyeL && parts.eyeR) {
+          const scale = 1 + Math.sin(b.procTime * 4) * 0.2;
+          parts.eyeL.scale.setScalar(scale);
+          parts.eyeR.scale.setScalar(scale);
+        }
+      }
+      void dt;
+    }
+    /** For main.ts to hook the enemy summoner (necromancer). */
+    bindEnemies(enemies) {
+      this.enemies = enemies;
     }
   };
+  function tintSkeleton(root, hex) {
+    const tint = new Color(hex);
+    root.traverse((o) => {
+      const mesh = o;
+      if (!mesh.isMesh) return;
+      const apply = (m) => {
+        const mat = m;
+        const cloned = mat.clone();
+        cloned.color = cloned.color.clone().multiply(tint);
+        return cloned;
+      };
+      mesh.material = Array.isArray(mesh.material) ? mesh.material.map(apply) : apply(mesh.material);
+    });
+  }
 
   // src/systems/camera.ts
   var CameraRig = class {
@@ -41000,6 +42576,16 @@ void main() {
     "boss:dead": [
       { id: "boss-dead", who: null, text: "The king falls. Bone becomes dust. Dust becomes wind. The valley exhales for the first time in a hundred years." }
     ],
+    "boss:dead:skeleton_king": [
+      { id: "boss-dead-king", who: null, text: "Malric falls. The northern arch groans open \u2014 the Coliseum wing awaits the truly foolish." }
+    ],
+    "boss:dead:bone_necromancer": [{ id: "boss-dead-necro", who: null, text: "The Necromancer's runes flicker and die. His summoned dead lie still at last." }],
+    "boss:dead:shadow_reaver": [{ id: "boss-dead-reaver", who: null, text: "The Reaver dissolves. Even shadows can be cut." }],
+    "boss:dead:iron_warden": [{ id: "boss-dead-warden", who: null, text: "The Warden's armor rings like a bell, then goes still." }],
+    "boss:dead:crystal_golem": [{ id: "boss-dead-golem", who: null, text: "The Golem shatters. Its heart-gem rolls to your feet." }],
+    "boss:dead:void_serpent": [{ id: "boss-dead-serpent", who: null, text: "The Serpent's coils unwind into the void from which they came." }],
+    "boss:dead:flame_djinn": [{ id: "boss-dead-djinn", who: null, text: "The Djinn implodes. Where he stood, only warm ash remains." }],
+    "boss:dead:storm_elemental": [{ id: "boss-dead-storm", who: null, text: "The Elemental discharges its final spark. The Coliseum falls silent." }],
     "start:game": [
       { id: "start-game", who: null, text: "You are the knight the village has been waiting for. Whether you know it or not." }
     ]
@@ -42280,6 +43866,7 @@ void main() {
         spikes: [],
         enemySpawns: [],
         npcSpawns: [],
+        bossSpawns: [],
         hasBoss: false,
         cleared: def.biome === "village",
         // villages never lock the player in
@@ -42399,6 +43986,35 @@ void main() {
               case "Z":
                 bossSpawn = c.clone();
                 runtime.hasBoss = true;
+                runtime.bossSpawns.push({ kind: "skeleton_king", tx, tz });
+                break;
+              case "V":
+                runtime.hasBoss = true;
+                runtime.bossSpawns.push({ kind: "bone_necromancer", tx, tz });
+                break;
+              case "4":
+                runtime.hasBoss = true;
+                runtime.bossSpawns.push({ kind: "shadow_reaver", tx, tz });
+                break;
+              case "5":
+                runtime.hasBoss = true;
+                runtime.bossSpawns.push({ kind: "iron_warden", tx, tz });
+                break;
+              case "6":
+                runtime.hasBoss = true;
+                runtime.bossSpawns.push({ kind: "crystal_golem", tx, tz });
+                break;
+              case "7":
+                runtime.hasBoss = true;
+                runtime.bossSpawns.push({ kind: "void_serpent", tx, tz });
+                break;
+              case "8":
+                runtime.hasBoss = true;
+                runtime.bossSpawns.push({ kind: "flame_djinn", tx, tz });
+                break;
+              case "9":
+                runtime.hasBoss = true;
+                runtime.bossSpawns.push({ kind: "storm_elemental", tx, tz });
                 break;
               case "b":
               case "B": {
@@ -42548,54 +44164,6 @@ void main() {
         );
         cloud.scale.multiplyScalar(0.6 + Math.random() * 0.4);
         forest.add(cloud);
-      }
-    }
-    // ===== v9 door floor markers =====
-    // O jogo original não desenha nada no chão do lado interno da porta,
-    // então quando o jogador entra numa sala e olha pra trás, não sabe
-    // onde é a saída. Marcamos cada porta com um torus dourado pulsante
-    // no piso, alto o suficiente pra ser visto de longe mas fino o
-    // bastante pra não atrapalhar o gameplay.
-    const __KQ_doorMarkers = [];
-    if (typeof window !== 'undefined') window.__KQ_doorMarkers = __KQ_doorMarkers;
-    for (const [rkey, rt] of rooms) {
-      for (const d of rt.doors) {
-        const t = doorTile(d.dir);
-        const c = tileCenter(rt.gx, rt.gy, t.tx, t.tz);
-        // Empurra o marcador ligeiramente pra dentro da sala (contrário à
-        // parede daquela direção) pra ele ficar bem visível do interior.
-        const dx = d.dir === 'w' ? 1 : d.dir === 'e' ? -1 : 0;
-        const dz = d.dir === 'n' ? 1 : d.dir === 's' ? -1 : 0;
-        const grp = new Group();
-        grp.name = 'doorMarker:' + rkey + ':' + d.dir;
-        grp.position.set(c.x + dx * 0.6, 0.03, c.z + dz * 0.6);
-        // Anel externo (mais grosso, dourado)
-        const ringGeo = new TorusGeometry(1.35, 0.13, 8, 32);
-        const ringMat = new MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false });
-        const ring = new Mesh(ringGeo, ringMat);
-        ring.rotation.x = -Math.PI / 2;
-        ring.renderOrder = 999; // por cima do piso
-        grp.add(ring);
-        // Anel interno menor (pulso)
-        const inGeo = new TorusGeometry(0.75, 0.06, 8, 24);
-        const inMat = new MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.6, depthWrite: false, toneMapped: false });
-        const inner = new Mesh(inGeo, inMat);
-        inner.rotation.x = -Math.PI / 2;
-        inner.renderOrder = 999;
-        grp.add(inner);
-        // Setinha apontando pra fora (indica direção pra sair)
-        const arrowGeo = new PlaneGeometry(0.5, 0.9);
-        const arrowMat = new MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.75, depthWrite: false, toneMapped: false, side: 2 /* DoubleSide */ });
-        const arrow = new Mesh(arrowGeo, arrowMat);
-        arrow.rotation.x = -Math.PI / 2;
-        // rotaciona no plano pra apontar na direção da porta
-        const angle = d.dir === 'n' ? 0 : d.dir === 's' ? Math.PI : d.dir === 'e' ? -Math.PI/2 : Math.PI/2;
-        arrow.rotation.z = angle;
-        arrow.position.set(-dx * 0.9, 0.01, -dz * 0.9); // do lado do interior, apontando pra fora
-        arrow.renderOrder = 999;
-        grp.add(arrow);
-        rt.group.add(grp);
-        __KQ_doorMarkers.push({ ring, inner, arrow, seed: Math.random() * Math.PI * 2 });
       }
     }
     return { rooms, playerStart, bossSpawn, lockIcons };
@@ -43315,8 +44883,7 @@ void main() {
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setClearColor(COLORS.bg);
     renderer.outputColorSpace = SRGBColorSpace;
-    // v8 mobile: shadows off when device is mobile.
-    if (RENDER.shadows && !(typeof window !== 'undefined' && window.__KQ_MOBILE__)) {
+    if (RENDER.shadows) {
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = PCFSoftShadowMap;
     }
@@ -43328,7 +44895,7 @@ void main() {
     scene.add(ambient);
     const sun = new DirectionalLight(COLORS.sun, 1.15);
     sun.position.set(30, 60, 20);
-    sun.castShadow = RENDER.shadows && !(typeof window !== 'undefined' && window.__KQ_MOBILE__); // v8 mobile
+    sun.castShadow = RENDER.shadows;
     sun.shadow.mapSize.set(RENDER.shadowMapSize, RENDER.shadowMapSize);
     sun.shadow.camera.left = -60;
     sun.shadow.camera.right = 60;
@@ -43397,9 +44964,7 @@ void main() {
         } else if (def?.biome === "dungeon") {
           playMusic("dungeon");
         }
-        if (key === BOSS_ROOM_KEY && boss?.boss?.state === "waiting") {
-          boss.wake();
-        }
+        boss?.wakeRoom(key);
       },
       onStory: (who, text) => hud?.narrate(who, text),
       onStoryTrigger: (id) => story?.onNpcTrigger(id),
@@ -43453,7 +45018,13 @@ void main() {
       const startDef = roomAt(...START_ROOM_KEY.split(",").map(Number));
       hud.setRoomLabel(startDef?.name ?? "Willowvale Village");
       minimap = new Minimap(hudMount);
-      boss.spawn(world.bossSpawn);
+      for (const [, room] of world.rooms) {
+        for (const s of room.bossSpawns) {
+          boss.spawnKind(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
+        }
+      }
+      if (boss.bosses.length === 0) boss.spawn(world.bossSpawn);
+      boss.bindEnemies(enemies);
       for (const [, room] of world.rooms) {
         for (const s of room.enemySpawns) {
           enemies.spawnEnemy(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
@@ -43529,17 +45100,6 @@ void main() {
         roomMgr.update(dt, player, cam);
         cam.update(dt, player.pos, roomMgr.current, player.facing);
         updateTorches(roomMgr.current.key, now2 / 1e3);
-        // v9: pulsa os marcadores de porta (só os da sala atual — os das
-        // outras salas ficam parados; barato pois só uns poucos por sala).
-        if (typeof window !== 'undefined' && window.__KQ_doorMarkers) {
-          const __KQ_ts = now2 / 1000;
-          for (const m of window.__KQ_doorMarkers) {
-            const p = 0.5 + 0.5 * Math.sin(__KQ_ts * 2.4 + m.seed);
-            m.inner.scale.setScalar(0.6 + p * 0.7);
-            m.inner.material.opacity = 0.25 + 0.55 * (1 - p);
-            m.arrow.position.y = 0.02 + Math.sin(__KQ_ts * 2.4 + m.seed) * 0.05;
-          }
-        }
         fx.update(dt);
         swordFx.update(dt);
         const flashRoots = [player.root];
@@ -43585,3 +45145,4 @@ three/build/three.module.js:
    * SPDX-License-Identifier: MIT
    *)
 */
+//# sourceMappingURL=bundle.js.map

@@ -110,12 +110,38 @@ export type BossState =
   | "chopWindup"
   | "chopLeap"
   | "chopLand"
+  | "castWindup"
+  | "cast"
+  | "dashWindup"
+  | "dash"
+  | "slamWindup"
+  | "slam"
+  | "teleport"
+  | "summon"
   | "taunt"
   | "recover"
   | "hurt"
   | "dying";
 
+/**
+ * v6: eight boss kinds. `skeleton_king` is the original Malric.
+ * The next three are elite skeleton variants (bigger, tinted, expanded AI)
+ * built on the existing KayKit skeleton models. The final four are fully
+ * procedural bosses whose meshes are assembled from three.js primitives
+ * at spawn time — no external assets needed.
+ */
+export type BossKind =
+  | "skeleton_king"    // original — Throne of Bones (Malric)
+  | "bone_necromancer" // skeleton_mage x1.6 purple — summons minions + bolts
+  | "shadow_reaver"    // skeleton_rogue x1.5 obsidian — dash + triple-strike
+  | "iron_warden"      // skeleton_minion x1.7 rust — block + counter-smash
+  | "crystal_golem"    // procedural — obsidian cubes + gems, ground slam + laser
+  | "void_serpent"     // procedural — segmented worm, coiling attacks
+  | "flame_djinn"      // procedural — floating orb + flames, teleport + fire waves
+  | "storm_elemental"; // procedural — swirling storm, chain lightning + tornadoes
+
 export interface BossData {
+  kind: BossKind;
   root: THREE.Group;
   anim: AnimSet;
   state: BossState;
@@ -124,6 +150,7 @@ export interface BossData {
   vel: THREE.Vector3;
   facing: Facing;
   hp: number;
+  maxHp: number;
   attacksSinceTaunt: number;
   didHitPlayer: boolean;
   leapFrom: THREE.Vector3;
@@ -132,6 +159,14 @@ export interface BossData {
   dead: boolean;
   /** true once we've fired the "enraged" narrative beat */
   enrageAnnounced: boolean;
+  /** the runtime room key this boss belongs to */
+  roomKey: string;
+  /** custom timer for kind-specific behavior */
+  cooldown: number;
+  /** how many times this boss has telegraphed a summon (for necromancer) */
+  summonsUsed: number;
+  /** procedural boss animation clock (rotations, floating, etc.) */
+  procTime: number;
 }
 
 export interface Projectile {
@@ -203,6 +238,8 @@ export interface RoomRuntime {
   spikes: SpikeState[];
   enemySpawns: { kind: EnemyKind; tx: number; tz: number }[];
   npcSpawns: { kind: NpcKind; tx: number; tz: number }[];
+  /** v6: one or more bosses in this room (Throne of Bones has 1; boss rush rooms 1) */
+  bossSpawns: { kind: BossKind; tx: number; tz: number }[];
   hasBoss: boolean;
   cleared: boolean; // combat resolved (gates open forever)
   visited: boolean;
