@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { COLORS, RENDER } from "./config";
+import { COLORS, DESKTOP_RENDER, MOBILE_RENDER, RENDER, detectMobile } from "./config";
 import { FxSystem, tickFlashes } from "./art/fx";
 import { initAudio, playMusic, sfx, stopMusic } from "./engine/audio";
 import { attachKeyboard, createInputState, endFrame, pollKeyboard } from "./engine/input";
@@ -58,20 +58,33 @@ async function main(): Promise<void> {
   document.addEventListener("gestureend", killGesture, { passive: false });
   document.addEventListener("dblclick", killGesture, { passive: false });
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio));
+  // v11: pick the right render profile before creating the renderer.
+  // Mobile = touch device with narrow screen → hard shadows, ×1 pixel ratio,
+  // smaller shadow map, no procedural door lights.
+  // Desktop = ×1.5 max pixel ratio (4K screens don't need ×3), soft shadows.
+  const isMobile = detectMobile();
+  const profile = isMobile ? MOBILE_RENDER : DESKTOP_RENDER;
+  // expose so builder.ts can gate the doorway PointLights
+  (window as unknown as { KQ_USE_DOOR_LIGHTS: boolean }).KQ_USE_DOOR_LIGHTS = profile.useDoorLights;
+  (window as unknown as { KQ_IS_MOBILE: boolean }).KQ_IS_MOBILE = isMobile;
+
+  const renderer = new THREE.WebGLRenderer({
+    antialias: !isMobile, // native MSAA is a killer on integrated GPUs
+    powerPreference: "high-performance",
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(COLORS.bg);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   if (RENDER.shadows) {
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = profile.shadowFilterHard ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
   }
   canvasWrap.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(COLORS.bg);
-  scene.fog = new THREE.Fog(COLORS.fog, RENDER.fogNear, RENDER.fogFar);
+  scene.fog = new THREE.Fog(COLORS.fog, RENDER.fogNear, profile.fogFar);
 
   // lights ------------------------------------------------------------------
   const ambient = new THREE.AmbientLight(COLORS.ambient, 0.9);
@@ -79,7 +92,7 @@ async function main(): Promise<void> {
   const sun = new THREE.DirectionalLight(COLORS.sun, 1.15);
   sun.position.set(30, 60, 20);
   sun.castShadow = RENDER.shadows;
-  sun.shadow.mapSize.set(RENDER.shadowMapSize, RENDER.shadowMapSize);
+  sun.shadow.mapSize.set(profile.shadowMapSize, profile.shadowMapSize);
   sun.shadow.camera.left = -60;
   sun.shadow.camera.right = 60;
   sun.shadow.camera.top = 60;

@@ -484,10 +484,12 @@ export class NpcSystem {
     let bestDist = Infinity;
 
     for (const npc of this.npcs) {
+      // v11: skip mixer for NPCs in other rooms — they're invisible, ticking
+      // their skinned-mesh mixer just eats CPU. When the player returns they
+      // resume from the current pose (idle) which is fine.
+      if (npc.roomKey !== room.key) continue;
       npc.stateTime += dt;
       npc.anim.mixer.update(dt);
-      // NPCs only "live" (animate + wander) while their room is on-camera.
-      if (npc.roomKey !== room.key) continue;
 
       const d = Math.hypot(player.pos.x - npc.pos.x, player.pos.z - npc.pos.z);
 

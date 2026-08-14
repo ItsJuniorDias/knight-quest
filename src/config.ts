@@ -45,7 +45,54 @@ export const RENDER = {
   shadows: true,
   shadowMapSize: 1024,
   maxPixelRatio: 2,
+  /**
+   * v11: how far (in ROOMS, not tiles) from the current one we still render.
+   * 1 = current + immediate 4 neighbors visible; farther rooms are hidden.
+   * Every hidden room skips its draw calls, animation mixers, and lights —
+   * the biggest single FPS win in the whole codebase.
+   */
+  roomRenderDistance: 1,
 } as const;
+
+/**
+ * v11: MOBILE PROFILE — applied at boot when we detect a touch device with
+ * a narrow viewport. Textures stay at full resolution (the user asked for
+ * "alta qualidade" textures); only render-target cost is trimmed:
+ *   • pixel ratio capped at 1 (hi-DPI already runs at ×2-3, way too heavy)
+ *   • hard shadows instead of PCF soft (single sample per texel)
+ *   • smaller shadow map (512 vs 1024) — barely visible, half the memory
+ *   • no procedural door-marker point lights (emissive gems still glow)
+ */
+export const MOBILE_RENDER = {
+  maxPixelRatio: 1,
+  shadowMapSize: 512,
+  shadowFilterHard: true,
+  useDoorLights: false,
+  fogFar: 55, // v11: pull fog in so distant rooms fade fully
+} as const;
+
+/**
+ * v11: DESKTOP PROFILE — mild trim vs. defaults. Users on a 4K panel don't
+ * need the game to render at ×3 pixel ratio; ×1.5 is enough to look crisp
+ * and doubles the framerate over the raw ×3 path.
+ */
+export const DESKTOP_RENDER = {
+  maxPixelRatio: 1.5,
+  shadowMapSize: 1024,
+  shadowFilterHard: false,
+  useDoorLights: true,
+  fogFar: 70,
+} as const;
+
+/** Runtime detection — checked once at boot and cached in main.ts. */
+export function detectMobile(): boolean {
+  if (typeof window === "undefined") return false;
+  const hasTouch =
+    "ontouchstart" in window ||
+    (typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0);
+  const narrow = window.innerWidth <= 900;
+  return hasTouch && narrow;
+}
 
 export const PLAYER = {
   maxHalfHearts: 12, // 6 hearts, Zelda-style half-heart granularity

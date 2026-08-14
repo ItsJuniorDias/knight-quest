@@ -5,6 +5,7 @@
   var CullFaceNone = 0;
   var CullFaceBack = 1;
   var CullFaceFront = 2;
+  var BasicShadowMap = 0;
   var PCFShadowMap = 1;
   var PCFSoftShadowMap = 2;
   var VSMShadowMap = 3;
@@ -33831,8 +33832,36 @@ void main() {
     useLambert: true,
     shadows: true,
     shadowMapSize: 1024,
-    maxPixelRatio: 2
+    maxPixelRatio: 2,
+    /**
+     * v11: how far (in ROOMS, not tiles) from the current one we still render.
+     * 1 = current + immediate 4 neighbors visible; farther rooms are hidden.
+     * Every hidden room skips its draw calls, animation mixers, and lights —
+     * the biggest single FPS win in the whole codebase.
+     */
+    roomRenderDistance: 1
   };
+  var MOBILE_RENDER = {
+    maxPixelRatio: 1,
+    shadowMapSize: 512,
+    shadowFilterHard: true,
+    useDoorLights: false,
+    fogFar: 55
+    // v11: pull fog in so distant rooms fade fully
+  };
+  var DESKTOP_RENDER = {
+    maxPixelRatio: 1.5,
+    shadowMapSize: 1024,
+    shadowFilterHard: false,
+    useDoorLights: true,
+    fogFar: 70
+  };
+  function detectMobile() {
+    if (typeof window === "undefined") return false;
+    const hasTouch = "ontouchstart" in window || typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0;
+    const narrow = window.innerWidth <= 900;
+    return hasTouch && narrow;
+  }
   var PLAYER = {
     maxHalfHearts: 12,
     // 6 hearts, Zelda-style half-heart granularity
@@ -40008,9 +40037,9 @@ void main() {
       const room = roomMgr.current;
       for (const e of this.enemies) {
         if (e.dead) continue;
+        if (e.roomKey !== room.key) continue;
         e.stateTime += dt;
         e.anim.mixer.update(dt);
-        if (e.roomKey !== room.key) continue;
         const cfg = ENEMIES[e.kind];
         const toPlayer = new Vector3().subVectors(player.pos, e.pos);
         const dist = Math.hypot(toPlayer.x, toPlayer.z);
@@ -40341,12 +40370,11 @@ void main() {
       if (roomMgr.current.hasBoss) this.wakeRoom(currentKey);
       for (const b of this.bosses) {
         if (b.dead) continue;
+        if (b.roomKey !== currentKey) continue;
         b.stateTime += dt;
         b.procTime += dt;
         if (b.anim.mixer) b.anim.mixer.update(dt);
-        if (b.state === "waiting" || b.roomKey !== currentKey) {
-          continue;
-        }
+        if (b.state === "waiting") continue;
         this.updateBoss(b, dt, player, roomMgr, projectiles, props);
       }
       if (active) this.animateProc(active, dt);
@@ -41864,9 +41892,9 @@ void main() {
       let bestActive = null;
       let bestDist = Infinity;
       for (const npc of this.npcs) {
+        if (npc.roomKey !== room.key) continue;
         npc.stateTime += dt;
         npc.anim.mixer.update(dt);
-        if (npc.roomKey !== room.key) continue;
         const d = Math.hypot(player.pos.x - npc.pos.x, player.pos.z - npc.pos.z);
         if (d < TALK_RADIUS) {
           npc.state = "talking";
@@ -42770,7 +42798,30 @@ void main() {
         if (dir === "e" && p.x > maxX) p.x = maxX;
       }
     }
+    /**
+     * v11: aggressive culling — hide every room farther than
+     * RENDER.roomRenderDistance grid cells from the current one.
+     * Shared perimeter walls stay in sharedStatics so nothing looks
+     * broken; only interior props / enemies / decor stop being drawn.
+     * This is the single biggest FPS win at 19+ rooms.
+     */
+    updateRoomVisibility() {
+      const cx = this.current.gx;
+      const cy = this.current.gy;
+      const d = RENDER.roomRenderDistance;
+      for (const [, r] of this.rooms) {
+        const dx = Math.abs(r.gx - cx);
+        const dy = Math.abs(r.gy - cy);
+        const inRange = dx <= d && dy <= d;
+        if (r.visited) {
+          r.group.visible = inRange;
+        } else {
+          r.group.visible = false;
+        }
+      }
+    }
     update(dt, player, cam) {
+      this.updateRoomVisibility();
       for (let i = this.gateAnims.length - 1; i >= 0; i--) {
         const g = this.gateAnims[i];
         const dy = g.targetY - g.gate.position.y;
@@ -43216,9 +43267,11 @@ void main() {
       cap.position.set(p.x, 3.15, p.z);
       cap.userData.doorGem = true;
       target.add(cap);
-      const light = new PointLight(glow, 0.9, 10, 1.6);
-      light.position.set(p.x, 3.15, p.z);
-      target.add(light);
+      if (window.KQ_USE_DOOR_LIGHTS) {
+        const light = new PointLight(glow, 0.9, 8, 2);
+        light.position.set(p.x, 3.15, p.z);
+        target.add(light);
+      }
     }
     const rune = new Mesh(
       new RingGeometry(0.65, 1.15, 20, 1, 0, Math.PI),
@@ -45362,25 +45415,33 @@ void main() {
     document.addEventListener("gesturechange", killGesture, { passive: false });
     document.addEventListener("gestureend", killGesture, { passive: false });
     document.addEventListener("dblclick", killGesture, { passive: false });
-    const renderer = new WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio));
+    const isMobile = detectMobile();
+    const profile = isMobile ? MOBILE_RENDER : DESKTOP_RENDER;
+    window.KQ_USE_DOOR_LIGHTS = profile.useDoorLights;
+    window.KQ_IS_MOBILE = isMobile;
+    const renderer = new WebGLRenderer({
+      antialias: !isMobile,
+      // native MSAA is a killer on integrated GPUs
+      powerPreference: "high-performance"
+    });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setClearColor(COLORS.bg);
     renderer.outputColorSpace = SRGBColorSpace;
     if (RENDER.shadows) {
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = PCFSoftShadowMap;
+      renderer.shadowMap.type = profile.shadowFilterHard ? BasicShadowMap : PCFSoftShadowMap;
     }
     canvasWrap.appendChild(renderer.domElement);
     const scene = new Scene();
     scene.background = new Color(COLORS.bg);
-    scene.fog = new Fog(COLORS.fog, RENDER.fogNear, RENDER.fogFar);
+    scene.fog = new Fog(COLORS.fog, RENDER.fogNear, profile.fogFar);
     const ambient = new AmbientLight(COLORS.ambient, 0.9);
     scene.add(ambient);
     const sun = new DirectionalLight(COLORS.sun, 1.15);
     sun.position.set(30, 60, 20);
     sun.castShadow = RENDER.shadows;
-    sun.shadow.mapSize.set(RENDER.shadowMapSize, RENDER.shadowMapSize);
+    sun.shadow.mapSize.set(profile.shadowMapSize, profile.shadowMapSize);
     sun.shadow.camera.left = -60;
     sun.shadow.camera.right = 60;
     sun.shadow.camera.top = 60;

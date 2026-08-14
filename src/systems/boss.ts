@@ -181,13 +181,15 @@ export class BossSystem {
 
     for (const b of this.bosses) {
       if (b.dead) continue;
+      // v11: don't even tick mixer/state for bosses in other rooms.
+      // A dormant boss in a room the player hasn't entered still needs to
+      // hold its "inactive floor pose" — which it does purely via the anim
+      // action's clamp, no mixer ticks required.
+      if (b.roomKey !== currentKey) continue;
       b.stateTime += dt;
       b.procTime += dt;
       if (b.anim.mixer) b.anim.mixer.update(dt);
-      // dormant / off-screen bosses only tick the mixer
-      if (b.state === "waiting" || b.roomKey !== currentKey) {
-        continue;
-      }
+      if (b.state === "waiting") continue;
       this.updateBoss(b, dt, player, roomMgr, projectiles, props);
     }
     // procedural cosmetics for the active boss (rotations, bobbing…)

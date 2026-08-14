@@ -121,10 +121,16 @@ function addDoorMarker(
     cap.position.set(p.x, 3.15, p.z);
     cap.userData.doorGem = true;
     target.add(cap);
-    // Halo point light so the marker reads even in the pitch-black dungeon
-    const light = new THREE.PointLight(glow, 0.9, 10, 1.6);
-    light.position.set(p.x, 3.15, p.z);
-    target.add(light);
+    // v11: PointLights removed by default — with 8 doors × 26 rooms that's
+    // 150+ live lights, which kills fragment perf even with distance
+    // falloff. The emissive gem material still reads brightly on its own,
+    // and the door TORCHES on dungeon walls already illuminate the area.
+    // Desktop still opts in via the window flag set in main.ts.
+    if ((window as unknown as { KQ_USE_DOOR_LIGHTS?: boolean }).KQ_USE_DOOR_LIGHTS) {
+      const light = new THREE.PointLight(glow, 0.9, 8, 2);
+      light.position.set(p.x, 3.15, p.z);
+      target.add(light);
+    }
   }
 
   // Flat glowing rune on the floor centered on the door tile — points OUT

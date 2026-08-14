@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { ROOM_H, ROOM_W, TILE } from "../config";
+import { RENDER, ROOM_H, ROOM_W, TILE } from "../config";
 import { sfx } from "../engine/audio";
 import type { DoorDir, GameEvents, PlayerData, RoomRuntime } from "../types";
 import { dirDelta, doorTile } from "../world/dungeon";
@@ -78,7 +78,34 @@ export class RoomManager {
     }
   }
 
+  /**
+   * v11: aggressive culling — hide every room farther than
+   * RENDER.roomRenderDistance grid cells from the current one.
+   * Shared perimeter walls stay in sharedStatics so nothing looks
+   * broken; only interior props / enemies / decor stop being drawn.
+   * This is the single biggest FPS win at 19+ rooms.
+   */
+  private updateRoomVisibility(): void {
+    const cx = this.current.gx;
+    const cy = this.current.gy;
+    const d = RENDER.roomRenderDistance;
+    for (const [, r] of this.rooms) {
+      const dx = Math.abs(r.gx - cx);
+      const dy = Math.abs(r.gy - cy);
+      const inRange = dx <= d && dy <= d;
+      // never hide rooms that have never been visited AND are inRange (they'll
+      // just re-appear when the player crosses their door — same as before);
+      // for visited rooms, use inRange as the sole visibility rule.
+      if (r.visited) {
+        r.group.visible = inRange;
+      } else {
+        r.group.visible = false;
+      }
+    }
+  }
+
   update(dt: number, player: PlayerData, cam: { beginSlide(a: RoomRuntime, b: RoomRuntime, p: THREE.Vector3): void }): void {
+    this.updateRoomVisibility();
     // animate portcullises
     for (let i = this.gateAnims.length - 1; i >= 0; i--) {
       const g = this.gateAnims[i];

@@ -120,9 +120,12 @@ export class EnemySystem {
     const room = roomMgr.current;
     for (const e of this.enemies) {
       if (e.dead) continue;
+      // v11: skip mixer/state update entirely when the enemy is in another
+      // room. They're invisible via the room-visibility cull anyway, so
+      // ticking their skeleton mixer just burns CPU for no gain.
+      if (e.roomKey !== room.key) continue;
       e.stateTime += dt;
       e.anim.mixer.update(dt);
-      if (e.roomKey !== room.key) continue; // dormant in other rooms
 
       const cfg = ENEMIES[e.kind];
       const toPlayer = new THREE.Vector3().subVectors(player.pos, e.pos);
