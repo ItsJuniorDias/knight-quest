@@ -82,6 +82,9 @@ const fileTried = new Set<MusicTrack>();
 export function initAudio(): void {
   if (ctx) {
     if (ctx.state === "suspended") void ctx.resume();
+    // v7: still re-prime in case previously deferred (e.g. audio was init'd
+    // before the first tap on a resumed page). Cheap no-op if already done.
+    primeMusicFiles();
     return;
   }
   const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -93,6 +96,72 @@ export function initAudio(): void {
   musicGain = ctx.createGain();
   musicGain.gain.value = 0.34;
   musicGain.connect(master);
+
+  // v7 iOS Safari fix: eagerly create and "prime" every music <audio>
+  // element during THIS user gesture. Otherwise iOS silently blocks
+  // .play() on any element that wasn't unlocked in a gesture — only
+  // title.mp3 works because it's the first track and gets played inside
+  // the Start-button click, while village/forest/dungeon are triggered
+  // later from onRoomChanged (no active gesture) and iOS drops them.
+  primeMusicFiles();
+}
+
+// --------------------------------------------------------------------------
+// v7 iOS unlock: create every music element up-front and touch play()+pause()
+// so future non-gesture playback works. Called from initAudio() which itself
+// runs inside a user-gesture callback (start-button click / first touch).
+// --------------------------------------------------------------------------
+let primed = false;
+function primeMusicFiles(): void {
+  if (!ctx || !musicGain) return;
+  if (primed) return;
+  primed = true;
+
+  for (const track of Object.keys(MUSIC_FILES) as MusicTrack[]) {
+    const spec = MUSIC_FILES[track];
+    if (!spec || spec.element) continue;
+
+    const el = document.createElement("audio");
+    el.src = spec.url;
+    el.loop = spec.loop;
+    el.crossOrigin = "anonymous";
+    el.preload = "auto";
+    el.style.display = "none";
+    document.body.appendChild(el);
+    spec.element = el;
+
+    // Route through Web Audio so we can crossfade with per-track gain.
+    // createMediaElementSource throws if called twice on the same element,
+    // but each element here is brand-new so we're safe.
+    try {
+      const src = ctx.createMediaElementSource(el);
+      const g = ctx.createGain();
+      g.gain.value = 0; // silent until this track becomes active
+      src.connect(g).connect(musicGain);
+      spec.source = src;
+      spec.trackGain = g;
+    } catch { /* ignore */ }
+
+    // The iOS unlock trick: play() must be called synchronously in the
+    // gesture callstack; iOS then marks this element as unlockable for the
+    // rest of the session. We pause() immediately so the user doesn't hear
+    // 7 tracks jammed together. Missing files (404) reject harmlessly and
+    // fall back to procedural.
+    const p = el.play();
+    if (p && typeof p.then === "function") {
+      p.then(() => {
+        el.pause();
+        el.currentTime = 0;
+      }).catch((err) => {
+        console.warn(`[audio] prime failed for ${track}, using procedural`, err);
+        spec.element = undefined;
+        spec.source = undefined;
+        spec.trackGain = undefined;
+        el.remove();
+        fileTried.add(track);
+      });
+    }
+  }
 }
 
 export function setMuted(m: boolean): void {
@@ -493,12 +562,17 @@ async function tryLoadMusicFile(track: MusicTrack): Promise<HTMLAudioElement | n
   if (!ctx || !musicGain) return null;
   const spec = MUSIC_FILES[track];
   if (!spec) return null;
+  // v7: primeMusicFiles() (called from initAudio during gesture) creates the
+  // element upfront. Return it immediately if primed — this is the mobile
+  // happy path. If missing files pruned the element, fileTried is set so we
+  // stop trying.
   if (spec.element) return spec.element;
   if (fileTried.has(track)) return null;
   fileTried.add(track);
 
-  // HEAD-check the URL so we don't create an <audio> element for a 404 —
-  // that would spam the console and log a spurious playback error.
+  // Fallback for the rare case initAudio wasn't yet called (e.g. the game
+  // starts music from something other than the Start button). HEAD-check
+  // first so we don't spam the console with a 404.
   try {
     const head = await fetch(spec.url, { method: "HEAD" });
     if (!head.ok) return null;
@@ -511,17 +585,18 @@ async function tryLoadMusicFile(track: MusicTrack): Promise<HTMLAudioElement | n
   el.loop = spec.loop;
   el.crossOrigin = "anonymous";
   el.preload = "auto";
-  // Add to DOM (some browsers won't decode until it is)
   el.style.display = "none";
   document.body.appendChild(el);
   spec.element = el;
 
-  const src = ctx.createMediaElementSource(el);
-  const g = ctx.createGain();
-  g.gain.value = 0; // silent until this track becomes active
-  src.connect(g).connect(musicGain);
-  spec.source = src;
-  spec.trackGain = g;
+  try {
+    const src = ctx.createMediaElementSource(el);
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    src.connect(g).connect(musicGain);
+    spec.source = src;
+    spec.trackGain = g;
+  } catch { /* ignore duplicate source errors */ }
 
   return el;
 }
@@ -555,7 +630,13 @@ function fadeInFile(track: MusicTrack, fadeSeconds = 0.5): void {
   spec.trackGain.gain.linearRampToValueAtTime(spec.gain, t + fadeSeconds);
   spec.element.currentTime = spec.element.currentTime; // touch to prevent glitch on some browsers
   const p = spec.element.play();
-  if (p && typeof p.catch === "function") p.catch(() => {/* ignore autoplay reject */});
+  if (p && typeof p.catch === "function") {
+    p.catch((err) => {
+      // v7: no longer silently swallow. If iOS blocks playback we want to
+      // know so the fallback logic can kick in (or so we can debug).
+      console.warn(`[audio] play() rejected for ${track}:`, err?.name ?? err);
+    });
+  }
   activeFileTrack = track;
 }
 

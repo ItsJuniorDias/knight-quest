@@ -33904,6 +33904,7 @@ void main() {
   function initAudio() {
     if (ctx) {
       if (ctx.state === "suspended") void ctx.resume();
+      primeMusicFiles();
       return;
     }
     const AC = window.AudioContext ?? window.webkitAudioContext;
@@ -33915,6 +33916,48 @@ void main() {
     musicGain = ctx.createGain();
     musicGain.gain.value = 0.34;
     musicGain.connect(master);
+    primeMusicFiles();
+  }
+  var primed = false;
+  function primeMusicFiles() {
+    if (!ctx || !musicGain) return;
+    if (primed) return;
+    primed = true;
+    for (const track of Object.keys(MUSIC_FILES)) {
+      const spec = MUSIC_FILES[track];
+      if (!spec || spec.element) continue;
+      const el = document.createElement("audio");
+      el.src = spec.url;
+      el.loop = spec.loop;
+      el.crossOrigin = "anonymous";
+      el.preload = "auto";
+      el.style.display = "none";
+      document.body.appendChild(el);
+      spec.element = el;
+      try {
+        const src = ctx.createMediaElementSource(el);
+        const g = ctx.createGain();
+        g.gain.value = 0;
+        src.connect(g).connect(musicGain);
+        spec.source = src;
+        spec.trackGain = g;
+      } catch {
+      }
+      const p = el.play();
+      if (p && typeof p.then === "function") {
+        p.then(() => {
+          el.pause();
+          el.currentTime = 0;
+        }).catch((err) => {
+          console.warn(`[audio] prime failed for ${track}, using procedural`, err);
+          spec.element = void 0;
+          spec.source = void 0;
+          spec.trackGain = void 0;
+          el.remove();
+          fileTried.add(track);
+        });
+      }
+    }
   }
   function now() {
     return ctx ? ctx.currentTime : 0;
@@ -34251,12 +34294,15 @@ void main() {
     el.style.display = "none";
     document.body.appendChild(el);
     spec.element = el;
-    const src = ctx.createMediaElementSource(el);
-    const g = ctx.createGain();
-    g.gain.value = 0;
-    src.connect(g).connect(musicGain);
-    spec.source = src;
-    spec.trackGain = g;
+    try {
+      const src = ctx.createMediaElementSource(el);
+      const g = ctx.createGain();
+      g.gain.value = 0;
+      src.connect(g).connect(musicGain);
+      spec.source = src;
+      spec.trackGain = g;
+    } catch {
+    }
     return el;
   }
   function fadeOutActiveFile(fadeSeconds = 0.5) {
@@ -34283,8 +34329,11 @@ void main() {
     spec.trackGain.gain.linearRampToValueAtTime(spec.gain, t + fadeSeconds);
     spec.element.currentTime = spec.element.currentTime;
     const p = spec.element.play();
-    if (p && typeof p.catch === "function") p.catch(() => {
-    });
+    if (p && typeof p.catch === "function") {
+      p.catch((err) => {
+        console.warn(`[audio] play() rejected for ${track}:`, err?.name ?? err);
+      });
+    }
     activeFileTrack = track;
   }
   function stopProcedural() {
@@ -39072,6 +39121,8 @@ void main() {
     p.root.rotation.y = cur + diff * Math.min(1, PLAYER.turnLerp * dt);
     p.root.visible = p.invuln <= 0 || Math.floor(p.stateTime * 18) % 2 === 0;
     p.root.position.copy(p.pos);
+    void fx;
+    void events;
   }
   function startAttack(p, index) {
     p.state = "attack";
@@ -39434,6 +39485,7 @@ void main() {
         }
       }
       moveCircle(e.pos, e.vel, dt, cfg.radius, room, barrels);
+      void player;
     }
     setState(e, s) {
       e.state = s;
@@ -39718,6 +39770,7 @@ void main() {
       this.boss.stateTime = 0;
     }
     enterRecover(mul) {
+      void mul;
       this.setState("recover");
       play(this.boss.anim, ["Idle_Combat", "Idle"], { fade: 0.2 });
     }
@@ -39804,6 +39857,7 @@ void main() {
       }
       this.shakeAmp *= Math.exp(-6 * dt);
       if (this.shakeAmp < 5e-3) this.shakeAmp = 0;
+      void room;
       this.place();
     }
     place() {
@@ -43022,6 +43076,7 @@ void main() {
           handler();
         };
       });
+      void PLAYER;
     }
     buy(id) {
       const p = this.player;
@@ -43413,12 +43468,6 @@ void main() {
 /*! Bundled license information:
 
 three/build/three.core.js:
-  (**
-   * @license
-   * Copyright 2010-2025 Three.js Authors
-   * SPDX-License-Identifier: MIT
-   *)
-
 three/build/three.module.js:
   (**
    * @license
@@ -43426,4 +43475,3 @@ three/build/three.module.js:
    * SPDX-License-Identifier: MIT
    *)
 */
-//# sourceMappingURL=bundle.js.map
