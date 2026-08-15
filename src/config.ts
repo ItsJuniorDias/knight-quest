@@ -58,7 +58,7 @@ export const RENDER = {
    * battery for no visible benefit. The main loop uses a min-interval guard
    * on `requestAnimationFrame` to enforce this without stuttering.
    */
-  targetFps: 60,
+  targetFps: 120,
 } as const;
 
 /**
@@ -127,20 +127,20 @@ export const PLAYER = {
   turnLerp: 14,
 
   attackDuration: 0.42,
-  attackHitStart: 0.10, // seconds into the swing when the hitbox goes live
-  attackHitEnd: 0.30,
+  attackHitStart: 0.1, // seconds into the swing when the hitbox goes live
+  attackHitEnd: 0.3,
   attackRange: 2.5,
   attackArc: Math.PI * 0.85, // radians of the frontal arc
   attackDamage: 1,
   comboWindow: 0.26, // seconds after a swing where a 2nd press chains the combo
 
   // v5: heavy / charged attack — hold attack for `chargeTime` then release
-  chargeTime: 0.55,          // seconds of hold before the strike is "ready"
+  chargeTime: 0.55, // seconds of hold before the strike is "ready"
   heavyAttackDuration: 0.72, // longer swing, sells the weight
   heavyAttackHitStart: 0.22,
   heavyAttackHitEnd: 0.52,
-  heavyAttackDamage: 3,      // vs light=1 (or 2 with sharpBlade upgrade)
-  heavyKnockbackMul: 2.0,    // multiplies enemy knockback
+  heavyAttackDamage: 3, // vs light=1 (or 2 with sharpBlade upgrade)
+  heavyKnockbackMul: 2.0, // multiplies enemy knockback
 
   rollDuration: 0.46,
   rollSpeed: 13.5,
@@ -156,34 +156,76 @@ export const PLAYER = {
 
 export const ENEMIES = {
   minion: {
-    hp: 3, speed: 3.4, radius: 0.6, aggroRange: 11, attackRange: 1.9,
-    attackWindup: 0.38, attackDuration: 0.55, attackDamage: 2, // half-hearts
-    hitStart: 0.12, hitEnd: 0.34, touchDamage: 1, score: 5,
+    hp: 3,
+    speed: 3.4,
+    radius: 0.6,
+    aggroRange: 11,
+    attackRange: 1.9,
+    attackWindup: 0.38,
+    attackDuration: 0.55,
+    attackDamage: 2, // half-hearts
+    hitStart: 0.12,
+    hitEnd: 0.34,
+    touchDamage: 1,
+    score: 5,
   },
   rogue: {
-    hp: 2, speed: 5.2, radius: 0.55, aggroRange: 12, attackRange: 1.7,
-    attackWindup: 0.22, attackDuration: 0.42, attackDamage: 1,
-    hitStart: 0.08, hitEnd: 0.26, touchDamage: 1, retreatTime: 0.9, score: 8,
+    hp: 2,
+    speed: 5.2,
+    radius: 0.55,
+    aggroRange: 12,
+    attackRange: 1.7,
+    attackWindup: 0.22,
+    attackDuration: 0.42,
+    attackDamage: 1,
+    hitStart: 0.08,
+    hitEnd: 0.26,
+    touchDamage: 1,
+    retreatTime: 0.9,
+    score: 8,
   },
   mage: {
-    hp: 2, speed: 2.6, radius: 0.55, aggroRange: 14, preferredRange: 8.5,
-    castTime: 1.1, castCooldown: 2.2, boltSpeed: 9.5, boltDamage: 2,
-    boltRadius: 0.35, touchDamage: 1, score: 10,
+    hp: 2,
+    speed: 2.6,
+    radius: 0.55,
+    aggroRange: 14,
+    preferredRange: 8.5,
+    castTime: 1.1,
+    castCooldown: 2.2,
+    boltSpeed: 9.5,
+    boltDamage: 2,
+    boltRadius: 0.35,
+    touchDamage: 1,
+    score: 10,
   },
   /** Awaken-from-the-floor intro (Stalfos style). Player is safe during it. */
   awakenTime: 1.35,
 } as const;
 
 export const BOSS = {
-  hp: 22, speed: 3.0, radius: 1.0, scale: 1.55,
+  hp: 22,
+  speed: 3.0,
+  radius: 1.0,
+  scale: 1.55,
   touchDamage: 2,
   // Pattern: chase -> (near) spin attack | (far) jump chop with shockwave
-  spinRange: 3.2, spinWindup: 0.55, spinDuration: 1.15, spinDamage: 3, spinRadius: 3.6,
-  chopRange: 9, chopWindup: 0.5, chopLeapTime: 0.55, chopDamage: 2,
-  shockwaveSpeed: 10, shockwaveWidth: 1.1, shockwaveDamage: 2,
+  spinRange: 3.2,
+  spinWindup: 0.55,
+  spinDuration: 1.15,
+  spinDamage: 3,
+  spinRadius: 3.6,
+  chopRange: 9,
+  chopWindup: 0.5,
+  chopLeapTime: 0.55,
+  chopDamage: 2,
+  shockwaveSpeed: 10,
+  shockwaveWidth: 1.1,
+  shockwaveDamage: 2,
   recoverTime: 0.9,
   tauntEvery: 3, // taunts after every N attacks (opening to punish)
-  enrageAtHpFrac: 0.45, enrageSpeedMul: 1.35, enrageRecoverMul: 0.6,
+  enrageAtHpFrac: 0.45,
+  enrageSpeedMul: 1.35,
+  enrageRecoverMul: 0.6,
   score: 100,
 } as const;
 
@@ -201,22 +243,36 @@ export const BOSS = {
 export const BOSSES = {
   skeleton_king: {
     name: "Skeleton King Malric",
-    hp: 22, speed: 3.0, radius: 1.0, scale: 1.55, touchDamage: 2,
+    hp: 22,
+    speed: 3.0,
+    radius: 1.0,
+    scale: 1.55,
+    touchDamage: 2,
     tint: 0xffffff, // default (no tint)
     // reuses the classic pattern (spin / chop)
     score: 100,
     intro: "Skeleton King Malric awakens!",
     outro: "The Skeleton King falls!",
-    enrageLine: "The Skeleton King's axe begins to glow. He remembers who he was.",
+    enrageLine:
+      "The Skeleton King's axe begins to glow. He remembers who he was.",
   },
   bone_necromancer: {
     name: "The Bone Necromancer",
-    hp: 18, speed: 2.6, radius: 0.9, scale: 1.55, touchDamage: 2,
+    hp: 18,
+    speed: 2.6,
+    radius: 0.9,
+    scale: 1.55,
+    touchDamage: 2,
     tint: 0xa864ff, // violet
     // ranged caster — bolts + summons
-    castRange: 12, castWindup: 0.75, castRecover: 0.9,
-    boltDamage: 2, boltCount: 3, boltSpread: 0.35,
-    summonEvery: 3, summonCount: 2, // spawns minions after N attacks
+    castRange: 12,
+    castWindup: 0.75,
+    castRecover: 0.9,
+    boltDamage: 2,
+    boltCount: 3,
+    boltSpread: 0.35,
+    summonEvery: 3,
+    summonCount: 2, // spawns minions after N attacks
     score: 90,
     intro: "The Bone Necromancer rises!",
     outro: "The Necromancer crumbles to dust!",
@@ -224,11 +280,21 @@ export const BOSSES = {
   },
   shadow_reaver: {
     name: "The Shadow Reaver",
-    hp: 20, speed: 5.8, radius: 0.7, scale: 1.5, touchDamage: 2,
+    hp: 20,
+    speed: 5.8,
+    radius: 0.7,
+    scale: 1.5,
+    touchDamage: 2,
     tint: 0x2b3070, // obsidian navy
     // dash + triple stab
-    dashRange: 10, dashWindup: 0.32, dashDuration: 0.34, dashSpeed: 22,
-    stabWindup: 0.18, stabDuration: 0.28, stabDamage: 2, stabCount: 3,
+    dashRange: 10,
+    dashWindup: 0.32,
+    dashDuration: 0.34,
+    dashSpeed: 22,
+    stabWindup: 0.18,
+    stabDuration: 0.28,
+    stabDamage: 2,
+    stabCount: 3,
     teleportEvery: 4, // vanishes and re-appears behind the player
     score: 110,
     intro: "The Shadow Reaver slips into view.",
@@ -237,11 +303,19 @@ export const BOSSES = {
   },
   iron_warden: {
     name: "The Iron Warden",
-    hp: 30, speed: 2.2, radius: 1.15, scale: 1.7, touchDamage: 2,
+    hp: 30,
+    speed: 2.2,
+    radius: 1.15,
+    scale: 1.7,
+    touchDamage: 2,
     tint: 0xc86a2a, // rusted iron
     // slow tank — blocks + counter-smash + shockwave
-    smashRange: 3.6, smashWindup: 0.6, smashDuration: 0.6, smashDamage: 3,
-    blockDuration: 1.2, blockEvery: 2, // blocks between smashes
+    smashRange: 3.6,
+    smashWindup: 0.6,
+    smashDuration: 0.6,
+    smashDamage: 3,
+    blockDuration: 1.2,
+    blockEvery: 2, // blocks between smashes
     slamShockwave: true, // slams cause 4-direction shockwaves
     score: 120,
     intro: "The Iron Warden guards the vault.",
@@ -250,12 +324,22 @@ export const BOSSES = {
   },
   crystal_golem: {
     name: "The Crystal Golem",
-    hp: 26, speed: 2.4, radius: 1.4, scale: 1.0, touchDamage: 2,
+    hp: 26,
+    speed: 2.4,
+    radius: 1.4,
+    scale: 1.0,
+    touchDamage: 2,
     tint: 0x66d0ff, // ice-blue crystal
     // procedural — ground slam + rotating laser + crystal shards
-    slamRange: 4.0, slamWindup: 0.7, slamDamage: 3,
-    laserRange: 14, laserWindup: 1.0, laserDuration: 1.8, laserDamage: 2,
-    shardsCount: 6, shardsDamage: 2,
+    slamRange: 4.0,
+    slamWindup: 0.7,
+    slamDamage: 3,
+    laserRange: 14,
+    laserWindup: 1.0,
+    laserDuration: 1.8,
+    laserDamage: 2,
+    shardsCount: 6,
+    shardsDamage: 2,
     score: 130,
     intro: "The Crystal Golem grinds to life.",
     outro: "The Golem shatters into a thousand shards!",
@@ -263,12 +347,22 @@ export const BOSSES = {
   },
   void_serpent: {
     name: "The Void Serpent",
-    hp: 24, speed: 3.6, radius: 1.2, scale: 1.0, touchDamage: 2,
+    hp: 24,
+    speed: 3.6,
+    radius: 1.2,
+    scale: 1.0,
+    touchDamage: 2,
     tint: 0x8a2be2, // void purple
     // procedural — coiling body, bite lunge, void spit
-    biteRange: 3.5, biteWindup: 0.5, biteDamage: 3,
-    spitRange: 14, spitWindup: 0.55, spitDamage: 2,
-    coilRadius: 4.5, coilDuration: 1.4, coilDamage: 2,
+    biteRange: 3.5,
+    biteWindup: 0.5,
+    biteDamage: 3,
+    spitRange: 14,
+    spitWindup: 0.55,
+    spitDamage: 2,
+    coilRadius: 4.5,
+    coilDuration: 1.4,
+    coilDamage: 2,
     score: 130,
     intro: "The Void Serpent uncoils from the shadows.",
     outro: "The Serpent's coils dissolve into the void.",
@@ -276,12 +370,21 @@ export const BOSSES = {
   },
   flame_djinn: {
     name: "The Flame Djinn",
-    hp: 22, speed: 4.4, radius: 0.9, scale: 1.0, touchDamage: 2,
+    hp: 22,
+    speed: 4.4,
+    radius: 0.9,
+    scale: 1.0,
+    touchDamage: 2,
     tint: 0xff7a1f, // ember orange
     // procedural — floating orb, teleport + fire ring + fireball
-    fireballRange: 12, fireballWindup: 0.55, fireballDamage: 2,
-    ringRange: 5.5, ringWindup: 0.7, ringDamage: 3,
-    teleportEvery: 3, teleportDist: 8,
+    fireballRange: 12,
+    fireballWindup: 0.55,
+    fireballDamage: 2,
+    ringRange: 5.5,
+    ringWindup: 0.7,
+    ringDamage: 3,
+    teleportEvery: 3,
+    teleportDist: 8,
     score: 130,
     intro: "The Flame Djinn erupts from the coals.",
     outro: "The Djinn implodes in a puff of ash.",
@@ -289,11 +392,20 @@ export const BOSSES = {
   },
   storm_elemental: {
     name: "The Storm Elemental",
-    hp: 24, speed: 3.4, radius: 1.0, scale: 1.0, touchDamage: 2,
+    hp: 24,
+    speed: 3.4,
+    radius: 1.0,
+    scale: 1.0,
+    touchDamage: 2,
     tint: 0x64c8ff, // sky-blue
     // procedural — swirling orb, chain lightning + tornado spawns
-    boltRange: 14, boltWindup: 0.5, boltDamage: 2, chainCount: 3,
-    tornadoWindup: 0.9, tornadoDamage: 2, tornadoLife: 3.2,
+    boltRange: 14,
+    boltWindup: 0.5,
+    boltDamage: 2,
+    chainCount: 3,
+    tornadoWindup: 0.9,
+    tornadoDamage: 2,
+    tornadoLife: 3.2,
     hoverHeight: 2.5,
     score: 130,
     intro: "The Storm Elemental crackles into view.",
