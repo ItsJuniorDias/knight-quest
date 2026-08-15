@@ -34,11 +34,7 @@ export class RoomManager {
    */
   private lastVisibilityRoom: string | null = null;
 
-  constructor(
-    rooms: Map<string, RoomRuntime>,
-    startKey: string,
-    events: GameEvents,
-  ) {
+  constructor(rooms: Map<string, RoomRuntime>, startKey: string, events: GameEvents) {
     this.rooms = rooms;
     const start = rooms.get(startKey);
     if (!start) throw new Error(`missing start room ${startKey}`);
@@ -119,11 +115,7 @@ export class RoomManager {
     }
   }
 
-  update(
-    dt: number,
-    player: PlayerData,
-    cam: { beginSlide(a: RoomRuntime, b: RoomRuntime, p: THREE.Vector3): void },
-  ): void {
+  update(dt: number, player: PlayerData, cam: { beginSlide(a: RoomRuntime, b: RoomRuntime, p: THREE.Vector3): void }): void {
     this.updateRoomVisibility();
     // animate portcullises
     for (let i = this.gateAnims.length - 1; i >= 0; i--) {
@@ -155,9 +147,7 @@ export class RoomManager {
     const crossed = this.crossedDoor(player.pos);
     if (crossed) {
       const d = dirDelta(crossed);
-      const next = this.rooms.get(
-        `${this.current.gx + d.dx},${this.current.gy + d.dy}`,
-      );
+      const next = this.rooms.get(`${this.current.gx + d.dx},${this.current.gy + d.dy}`);
       if (!next) {
         // safety: shove back inside
         player.pos.x -= d.dx * 0.5;
@@ -173,10 +163,7 @@ export class RoomManager {
       cam.beginSlide(prev, next, player.pos);
       this.transitionLock = 0.62;
       this.autoWalkDir = { x: d.dx, z: d.dy };
-      this.pendingSpawn =
-        !next.cleared && (next.enemySpawns.length > 0 || next.hasBoss)
-          ? next
-          : null;
+      this.pendingSpawn = !next.cleared && (next.enemySpawns.length > 0 || next.hasBoss) ? next : null;
       this.events.onRoomChanged(next.key);
     }
   }

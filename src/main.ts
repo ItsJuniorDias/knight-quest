@@ -1,32 +1,17 @@
 import * as THREE from "three";
 import { WebGPURenderer } from "three/webgpu";
-import {
-  COLORS,
-  DESKTOP_RENDER,
-  MOBILE_RENDER,
-  RENDER,
-  detectMobile,
-} from "./config";
+import { COLORS, DESKTOP_RENDER, MOBILE_RENDER, RENDER, detectMobile } from "./config";
 import { FxSystem, tickFlashes } from "./art/fx";
 import { initAudio, playMusic, sfx, stopMusic } from "./engine/audio";
-import {
-  attachKeyboard,
-  createInputState,
-  endFrame,
-  pollKeyboard,
-} from "./engine/input";
+import { attachKeyboard, createInputState, endFrame, pollKeyboard } from "./engine/input";
 import { loadAll, setMaxAnisotropy } from "./engine/loader";
+import { applySave, clearSave, hasSave, loadGame, saveGame } from "./engine/persistence";
 import { BossSystem } from "./systems/boss";
 import { CameraRig } from "./systems/camera";
 import { EnemySystem, preloadWeapons } from "./systems/enemies";
 import { NpcSystem } from "./systems/npcs";
 import { PickupSystem } from "./systems/pickups";
-import {
-  createPlayer,
-  playerCheer,
-  reviveAtStart,
-  updatePlayer,
-} from "./systems/player";
+import { createPlayer, playerCheer, reviveAtStart, updatePlayer } from "./systems/player";
 import { ProjectileSystem } from "./systems/projectiles";
 import { SpellSystem } from "./systems/spells";
 import { PropsSystem } from "./systems/props";
@@ -82,8 +67,7 @@ async function main(): Promise<void> {
   const isMobile = detectMobile();
   const profile = isMobile ? MOBILE_RENDER : DESKTOP_RENDER;
   // expose so builder.ts can gate the doorway PointLights
-  (window as unknown as { KQ_USE_DOOR_LIGHTS: boolean }).KQ_USE_DOOR_LIGHTS =
-    profile.useDoorLights;
+  (window as unknown as { KQ_USE_DOOR_LIGHTS: boolean }).KQ_USE_DOOR_LIGHTS = profile.useDoorLights;
   (window as unknown as { KQ_IS_MOBILE: boolean }).KQ_IS_MOBILE = isMobile;
 
   // v13: WebGPU FIRST, WebGL FALLBACK.
@@ -92,8 +76,7 @@ async function main(): Promise<void> {
   // and skips the WebGL driver overhead. Available in Chrome/Edge desktop
   // + Android, Safari 18+, and iOS 18+ Safari. Non-supporting browsers
   // (older Safari, Firefox stable) automatically fall back to WebGLRenderer.
-  const supportsWebGPU =
-    typeof (navigator as { gpu?: unknown }).gpu !== "undefined";
+  const supportsWebGPU = typeof (navigator as { gpu?: unknown }).gpu !== "undefined";
   // v12: antialiasing is now ON everywhere. On WebGPU the MSAA cost on
   // modern mobile GPUs (Adreno 6xx+, Mali G7x+, Apple A12+) is negligible
   // and it's the only real cure for `serrilhado` edges. WebGL falls back
@@ -111,59 +94,44 @@ async function main(): Promise<void> {
   // Both renderer classes share the subset of methods we call: setSize,
   // setPixelRatio, render, setClearColor, and .shadowMap.{enabled,type}
   // plus a WebGL-style `.domElement`. Alias as a union for type safety.
-  type SharedRenderer =
-    | THREE.WebGLRenderer
-    | InstanceType<typeof WebGPURenderer>;
+  type SharedRenderer = THREE.WebGLRenderer | InstanceType<typeof WebGPURenderer>;
   let renderer: SharedRenderer;
   if (supportsWebGPU) {
-    const gpu = new WebGPURenderer(
-      rendererOpts as ConstructorParameters<typeof WebGPURenderer>[0],
-    );
+    const gpu = new WebGPURenderer(rendererOpts as ConstructorParameters<typeof WebGPURenderer>[0]);
     // WebGPURenderer's init is async — device request + shader compile.
     try {
       await gpu.init();
       console.log("[knight-quest] using WebGPU renderer");
       renderer = gpu;
     } catch (err) {
-      console.warn(
-        "[knight-quest] WebGPU init failed, falling back to WebGL:",
-        err,
-      );
+      console.warn("[knight-quest] WebGPU init failed, falling back to WebGL:", err);
       renderer = new THREE.WebGLRenderer(rendererOpts);
     }
   } else {
     console.log("[knight-quest] WebGPU not supported, using WebGL");
     renderer = new THREE.WebGLRenderer(rendererOpts);
   }
-  renderer.setPixelRatio(
-    Math.min(window.devicePixelRatio, profile.maxPixelRatio),
-  );
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.maxPixelRatio));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(COLORS.bg);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   if (RENDER.shadows) {
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = profile.shadowFilterHard
-      ? THREE.BasicShadowMap
-      : THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = profile.shadowFilterHard ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
     // v12: only rebuild the shadow map when we ask for it. On mobile we
     // trigger a redraw every `updateShadowInterval` frames (~10Hz at 60fps),
     // which is invisible for a directional sun but saves ~2ms/frame.
     // The WebGL shadowMap exposes .autoUpdate / .needsUpdate; the WebGPU
     // one doesn't yet (the API is stubbed), so we cast + guard.
     const smap = renderer.shadowMap as unknown as { autoUpdate?: boolean };
-    if ("autoUpdate" in smap)
-      smap.autoUpdate = profile.updateShadowInterval <= 1;
+    if ("autoUpdate" in smap) smap.autoUpdate = profile.updateShadowInterval <= 1;
   }
   // v12: fetch the GPU's max anisotropy and push it into the asset loader
   // so every texture (atlas + KayKit) samples cleanly at oblique angles.
   if (profile.useAnisotropy) {
-    const maxAniso =
-      "capabilities" in renderer && renderer.capabilities
-        ? ((
-            renderer as THREE.WebGLRenderer
-          ).capabilities.getMaxAnisotropy?.() ?? 8)
-        : 8;
+    const maxAniso = "capabilities" in renderer && renderer.capabilities
+      ? (renderer as THREE.WebGLRenderer).capabilities.getMaxAnisotropy?.() ?? 8
+      : 8;
     setMaxAnisotropy(Math.min(16, maxAniso));
   }
   canvasWrap.appendChild(renderer.domElement as HTMLCanvasElement);
@@ -198,11 +166,14 @@ async function main(): Promise<void> {
   });
 
   // screens + first user gesture starts audio -------------------------------
+  // v13: startGame takes a flag now — true = load existing save if present,
+  // false = wipe save + start fresh. The title screen surfaces a "Continue"
+  // button when a save exists so returning players don't lose progress.
   const screens = new Screens(uiMount, {
-    onStart: () => startGame(),
+    onStart: (loadSaved) => startGame(loadSaved),
     onRestart: () => restartGame(),
   });
-  screens.showTitle();
+  screens.showTitle(hasSave());
 
   const touchUi = new TouchUi(touchMount, input);
 
@@ -230,11 +201,16 @@ async function main(): Promise<void> {
     onBossBar: (frac) => hud?.setBossBar(frac),
     onGameOver: () => {
       running = false;
+      // v13: wipe the save on death so "Continue" doesn't reload a corpse.
+      clearSave();
       playMusic("gameover");
       window.setTimeout(() => screens.showGameOver(player?.coins ?? 0), 900);
     },
     onVictory: () => {
       running = false;
+      // v13: wipe the save on victory — beating the last boss ends the run,
+      // returning players should get a fresh New Game next time.
+      clearSave();
       if (player) playerCheer(player);
       story?.onEvent("boss:dead");
       playMusic("victory");
@@ -250,17 +226,9 @@ async function main(): Promise<void> {
       // meadow reuses village for its bright pastoral feel.
       if (key === BOSS_ROOM_KEY) {
         playMusic("boss");
-      } else if (
-        def?.biome === "village" ||
-        def?.biome === "snow" ||
-        def?.biome === "meadow"
-      ) {
+      } else if (def?.biome === "village" || def?.biome === "snow" || def?.biome === "meadow") {
         playMusic("village");
-      } else if (
-        def?.biome === "forest" ||
-        def?.biome === "pine" ||
-        def?.biome === "wetland"
-      ) {
+      } else if (def?.biome === "forest" || def?.biome === "pine" || def?.biome === "wetland") {
         playMusic("forest");
       } else if (def?.biome === "dungeon") {
         playMusic("dungeon");
@@ -304,7 +272,47 @@ async function main(): Promise<void> {
     onCloseShop: () => shop?.close(),
   };
 
-  async function startGame(): Promise<void> {
+  // v13: debounced auto-save. Any subsystem can call `scheduleSave()` after
+  // a meaningful change (coin/heart pickup, boss kill, room clear, etc.);
+  // we coalesce those into at most one localStorage write every 400ms so
+  // we never touch storage from inside the render loop.
+  let saveTimer: number | null = null;
+  function scheduleSave(): void {
+    if (!player || !world || !roomMgr) return;
+    if (saveTimer !== null) return;
+    saveTimer = window.setTimeout(() => {
+      saveTimer = null;
+      if (player && world && roomMgr) {
+        saveGame(player, world.rooms, roomMgr.current.key, boss);
+      }
+    }, 400);
+  }
+  // Wrap the game-event callbacks so state-changing events also snapshot.
+  // (Doing it here keeps every original handler intact and lets us add the
+  // hook without threading `scheduleSave` through every subsystem.)
+  const originalHudDirty = events.onHudDirty;
+  events.onHudDirty = (): void => { originalHudDirty(); scheduleSave(); };
+  const originalRoomChanged = events.onRoomChanged;
+  events.onRoomChanged = (k): void => { originalRoomChanged(k); scheduleSave(); };
+  const originalGameEvent = events.onGameEvent;
+  events.onGameEvent = (k): void => {
+    originalGameEvent(k);
+    // Boss defeats / boss-key pickups / door unlocks all matter for save.
+    if (k.startsWith("boss:dead") || k.startsWith("got:") || k.startsWith("unlocked:")) {
+      scheduleSave();
+    }
+  };
+  // Flush any pending save when the page is about to unload (mobile tab
+  // swap, back-button, home-screen swipe). Best-effort — some browsers
+  // block sync writes during unload, but localStorage on the main thread
+  // still lands the vast majority of the time.
+  window.addEventListener("pagehide", () => {
+    if (player && world && roomMgr) {
+      saveGame(player, world.rooms, roomMgr.current.key, boss);
+    }
+  });
+
+  async function startGame(loadSaved: boolean = false): Promise<void> {
     initAudio();
     // v4: kick off the title-screen loop the moment audio can play (browser
     // autoplay policy requires a user gesture, which is the start click).
@@ -312,9 +320,7 @@ async function main(): Promise<void> {
     playMusic("title");
     screens.showLoading();
     await preloadWeapons();
-    await loadAll((done, total, label) =>
-      screens.setLoadingProgress(done, total, label),
-    );
+    await loadAll((done, total, label) => screens.setLoadingProgress(done, total, label));
 
     // build world + all systems
     world = buildWorld(scene);
@@ -335,9 +341,7 @@ async function main(): Promise<void> {
     // build HUD + minimap now that we have a player
     hud = new Hud(hudMount);
     hud.render(player);
-    const startDef = roomAt(
-      ...(START_ROOM_KEY.split(",").map(Number) as [number, number]),
-    );
+    const startDef = roomAt(...(START_ROOM_KEY.split(",").map(Number) as [number, number]));
     hud.setRoomLabel(startDef?.name ?? "Willowvale Village");
     minimap = new Minimap(hudMount);
 
@@ -345,11 +349,7 @@ async function main(): Promise<void> {
     // Each stays dormant until the player enters its room.
     for (const [, room] of world.rooms) {
       for (const s of room.bossSpawns) {
-        boss.spawnKind(
-          s.kind,
-          tileCenter(room.gx, room.gy, s.tx, s.tz),
-          room.key,
-        );
+        boss.spawnKind(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
       }
     }
     // Legacy single-boss fallback if a map somehow had no bossSpawns.
@@ -360,35 +360,47 @@ async function main(): Promise<void> {
     // pre-spawn enemies + NPCs for every room so they exist regardless of visit
     for (const [, room] of world.rooms) {
       for (const s of room.enemySpawns) {
-        enemies.spawnEnemy(
-          s.kind,
-          tileCenter(room.gx, room.gy, s.tx, s.tz),
-          room.key,
-        );
+        enemies.spawnEnemy(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
       }
       for (const s of room.npcSpawns) {
-        npcs.spawn(
-          s.kind,
-          tileCenter(room.gx, room.gy, s.tx, s.tz),
-          room.key,
-          s.tx,
-          s.tz,
-        );
+        npcs.spawn(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key, s.tx, s.tz);
+      }
+    }
+
+    // v13: apply the saved snapshot BEFORE the camera snaps and BEFORE we
+    // mark rooms visited from the room change event. Enemies that live in
+    // rooms already cleared are removed so the player doesn't refight them.
+    let startRoomKey: string = START_ROOM_KEY;
+    if (loadSaved) {
+      const save = loadGame();
+      if (save) {
+        startRoomKey = applySave(save, player, world.rooms, boss);
+        // wipe enemies from every cleared room — they were killed in the
+        // previous session and shouldn't respawn.
+        const clearedSet = new Set(save.world.clearedRooms);
+        enemies.enemies = enemies.enemies.filter((e) => {
+          if (clearedSet.has(e.roomKey)) {
+            if (e.root.parent) e.root.parent.remove(e.root);
+            return false;
+          }
+          return true;
+        });
+        const startRoom = world.rooms.get(startRoomKey);
+        if (startRoom) roomMgr.current = startRoom;
+        hud.render(player);
       }
     }
 
     cam.snap(player.pos, roomMgr.current, player.facing);
     // v4: start on the biome-appropriate track. Village hub → village loop.
-    const startDefRoom = roomAt(
-      ...(START_ROOM_KEY.split(",").map(Number) as [number, number]),
-    );
+    const startDefRoom = roomAt(...(startRoomKey.split(",").map(Number) as [number, number]));
     const startTrack =
-      startDefRoom?.biome === "village"
-        ? "village"
-        : startDefRoom?.biome === "forest"
-          ? "forest"
-          : "dungeon";
+      startDefRoom?.biome === "village" ? "village" :
+      startDefRoom?.biome === "forest" ? "forest" : "dungeon";
     playMusic(startTrack);
+    // Update the room label to match the actual start room (may not be Willowvale
+    // when loading a save).
+    hud.setRoomLabel(startDefRoom?.name ?? "Willowvale Village");
     screens.hide();
 
     // v6 fix: build the Shop AFTER screens.hide(). Screens shares the uiMount
@@ -400,22 +412,17 @@ async function main(): Promise<void> {
     running = true;
 
     // opening narrator beat, one beat later so the player can settle in
-    window.setTimeout(() => story?.onEvent("start:game"), 700);
-    story.onRoomChanged(START_ROOM_KEY);
+    // (skipped when continuing a saved run — the player has already heard it).
+    if (!loadSaved) {
+      window.setTimeout(() => story?.onEvent("start:game"), 700);
+    }
+    story.onRoomChanged(startRoomKey);
   }
 
   function restartGame(): void {
-    if (
-      !player ||
-      !world ||
-      !roomMgr ||
-      !enemies ||
-      !pickups ||
-      !projectiles ||
-      !npcs ||
-      !story
-    )
-      return;
+    if (!player || !world || !roomMgr || !enemies || !pickups || !projectiles || !npcs || !story) return;
+    // v13: an explicit restart wipes the save — the player asked for fresh.
+    clearSave();
     enemies.clearAll();
     pickups.clearAll();
     projectiles.clearAll();
@@ -423,33 +430,19 @@ async function main(): Promise<void> {
     story.reset();
     // respawn enemies + NPCs fresh
     for (const [, room] of world.rooms) {
-      room.cleared =
-        room.doors.length === 0 ||
-        (room.enemySpawns.length === 0 && !room.hasBoss);
+      room.cleared = room.doors.length === 0 || (room.enemySpawns.length === 0 && !room.hasBoss);
       for (const s of room.enemySpawns) {
-        enemies.spawnEnemy(
-          s.kind,
-          tileCenter(room.gx, room.gy, s.tx, s.tz),
-          room.key,
-        );
+        enemies.spawnEnemy(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key);
       }
       for (const s of room.npcSpawns) {
-        npcs.spawn(
-          s.kind,
-          tileCenter(room.gx, room.gy, s.tx, s.tz),
-          room.key,
-          s.tx,
-          s.tz,
-        );
+        npcs.spawn(s.kind, tileCenter(room.gx, room.gy, s.tx, s.tz), room.key, s.tx, s.tz);
       }
     }
     reviveAtStart(player, world.playerStart);
     roomMgr.current = world.rooms.get(START_ROOM_KEY)!;
     cam.snap(player.pos, roomMgr.current, player.facing);
     hud?.render(player);
-    const startDef = roomAt(
-      ...(START_ROOM_KEY.split(",").map(Number) as [number, number]),
-    );
+    const startDef = roomAt(...(START_ROOM_KEY.split(",").map(Number) as [number, number]));
     hud?.setRoomLabel(startDef?.name ?? "Willowvale Village");
     // reset room visibility
     for (const [, r] of world.rooms) {
@@ -487,20 +480,7 @@ async function main(): Promise<void> {
     last = now;
     lastRender = now;
 
-    if (
-      running &&
-      player &&
-      roomMgr &&
-      enemies &&
-      projectiles &&
-      pickups &&
-      props &&
-      boss &&
-      spells &&
-      fx &&
-      npcs &&
-      swordFx
-    ) {
+    if (running && player && roomMgr && enemies && projectiles && pickups && props && boss && spells && fx && npcs && swordFx) {
       pollKeyboard(input, touchUi.active());
 
       // v5: shop pauses gameplay — just render, don't update world state.
@@ -555,9 +535,7 @@ async function main(): Promise<void> {
       if (npcs.activeNpc) {
         hud?.updateInteractPrompt(npcs.activeNpc);
       } else {
-        hud?.setInteractPromptText(
-          props?.nearestInteractLabel(player, roomMgr) ?? null,
-        );
+        hud?.setInteractPromptText(props?.nearestInteractLabel(player, roomMgr) ?? null);
       }
       // v5: charge attack bar fills while holding attack
       hud?.setChargeBar(
@@ -571,10 +549,7 @@ async function main(): Promise<void> {
     // v12: throttled shadow rebuild — no-op on desktop (interval=1), fires
     // every Nth frame on mobile. Skipping the shadow pass is the single
     // biggest per-frame win on integrated GPUs.
-    const smap = renderer.shadowMap as unknown as {
-      autoUpdate?: boolean;
-      needsUpdate?: boolean;
-    };
+    const smap = renderer.shadowMap as unknown as { autoUpdate?: boolean; needsUpdate?: boolean };
     if (RENDER.shadows && smap.autoUpdate === false) {
       shadowFrame++;
       if (shadowFrame >= shadowInterval) {

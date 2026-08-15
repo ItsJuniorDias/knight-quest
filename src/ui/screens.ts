@@ -3,7 +3,8 @@
 // ---------------------------------------------------------------------------
 
 export interface ScreenCallbacks {
-  onStart: () => void;
+  /** loadSaved=true tells main.ts to restore the last save (if any). */
+  onStart: (loadSaved: boolean) => void;
   onRestart: () => void;
 }
 
@@ -18,7 +19,17 @@ export class Screens {
     this.cb = cb;
   }
 
-  showTitle(): void {
+  /**
+   * v13: `hasSave` toggles a "Continue" button. When a save exists the
+   * primary action is Continue (loads previous run) and a secondary "New
+   * Game" button wipes it and starts fresh; without a save we show only
+   * "Begin the Quest".
+   */
+  showTitle(hasSave: boolean = false): void {
+    const continueBtn = hasSave
+      ? `<button id="btn-continue" class="menu-btn">▶ Continue</button>
+         <button id="btn-new" class="menu-btn menu-btn-secondary">✕ New Game</button>`
+      : `<button id="btn-start" class="menu-btn">▶ Begin the Quest</button>`;
     this.mount.innerHTML = `
       <div class="screen title">
         <div class="title-crown">👑</div>
@@ -27,17 +38,21 @@ export class Screens {
         <p class="story">The peaceful village of Willowvale is under siege by an ancient evil.
           The Skeleton Warrior has risen in the depths of the old dungeon.
           Take up your sword and shield — the kingdom's fate rests with you.</p>
-        <button id="btn-start" class="menu-btn">▶ Begin the Quest</button>
+        ${continueBtn}
         <div class="controls-hint">
           <div><b>Desktop:</b> WASD/Arrows to move · J or Space to attack · K to roll · Shift to block · E to interact</div>
           <div><b>Mobile:</b> touch controls appear at the bottom of the screen</div>
         </div>
       </div>`;
-    const btn = this.mount.querySelector<HTMLButtonElement>("#btn-start")!;
-    btn.onclick = () => {
-      this.hide();
-      this.cb.onStart();
-    };
+    if (hasSave) {
+      const cont = this.mount.querySelector<HTMLButtonElement>("#btn-continue")!;
+      cont.onclick = () => { this.hide(); this.cb.onStart(true); };
+      const fresh = this.mount.querySelector<HTMLButtonElement>("#btn-new")!;
+      fresh.onclick = () => { this.hide(); this.cb.onStart(false); };
+    } else {
+      const btn = this.mount.querySelector<HTMLButtonElement>("#btn-start")!;
+      btn.onclick = () => { this.hide(); this.cb.onStart(false); };
+    }
   }
 
   showLoading(): void {

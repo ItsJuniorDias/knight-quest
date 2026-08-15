@@ -559,19 +559,21 @@ export const ROOMS: RoomDef[] = [
     // Chars: h/H frozen hut, n snowpile, y pine tree (snow), t dead tree.
     // v7: the CRYSTAL GOLEM (6) has risen from the frozen ground here.
     // Hilde still lives in the frontier — offer her some backup if you can.
+    // v13: pulled the interior pines/snowpiles back to the walls so the
+    // ground-slam + laser attack has room to be dodged.
     map: [
       "yyyyyyyyyyyyyyy",
-      "y.nn.H.,.H.nn.y",
-      "y..nn..,.....ny",
-      "y.n..n.,.nn..ny",
-      "y.nNn..,......y",
-      "y....n.,......y",
+      "y.n..H.,.H..n.y",
+      "y...n..,......y",
+      "y......,......y",
+      "y..N...,......y",
+      "y......,......y",
       "y,,,,,,6,,,,,,D",
-      "y....n.,......y",
-      "y.n....,.n.n..y",
-      "y..n..y.,.nn..y",
-      "y.n.H.y.,....Hy",
-      "y..nn..,.nn..ny",
+      "y......,......y",
+      "y......,......y",
+      "y......,......y",
+      "y...H..,....H.y",
+      "y.n....,....n.y",
       "yyyyyyyyyyyyyyy",
     ],
     doors: [{ dir: "e", kind: "open" }],
@@ -589,19 +591,22 @@ export const ROOMS: RoomDef[] = [
     startVisible: false,
     // v7: the STORM ELEMENTAL (9) circles the meadow — chain lightning
     // and tornado warnings; keep moving.
+    // v13: kept the flowers/grass tiles (walkable decor), removed the mushroom
+    // clumps and tree edges eating into the fight ring. Chain lightning needs
+    // clear sight-lines to feel fair.
     map: [
       "TTTTTTTTTTTTTTT",
-      "T.fmf.gg.fgg.fT",
-      "T.gg.f.mgg.f..T",
+      "T.f..g...g.f..T",
+      "T.gg.f...gg.f.T",
       "T.f.gg.f.fN.g.T",
-      "Tfmff.gg.mg.f.T",
-      "T.gg.f.fmgg.fmT",
-      "D.f.mg.9..gg.fT",
-      "T.mg.fY.gg.f.gT",
-      "Tfmff.gg.mg.f.T",
+      "T.fff.gg..g.f.T",
+      "T.gg.f.f.gg.f.T",
+      "D.f..g.9....f.T",
+      "T..g.fY.gg.f.gT",
+      "T.fff.gg..g.f.T",
       "T.gg.f.gg.fgg.T",
-      "T.f.mgg.f.f.gmT",
-      "T.gg.f.mg.gg.fT",
+      "T.f..gg.f.f.g.T",
+      "T.gg.f..g.gg.fT",
       "TTTTTTTTTTTTTTT",
     ],
     doors: [{ dir: "w", kind: "open" }],
@@ -617,19 +622,22 @@ export const ROOMS: RoomDef[] = [
     biome: "pine",
     startVisible: false,
     // v7: the FLAME DJINN (8) has set the pines ablaze — beware his fire ring.
+    // v13: thinned out the interior pines — the fire-ring attack needs an open
+    // arena to be readable; before, ~40 solid tree tiles turned the room into
+    // a maze the player couldn't strafe out of.
     map: [
       "yyyyyyyyyyyyyyy",
-      "y.y.g.yy.g.y.gy",
-      "y..y..R.y....yy",
-      "y.y.g.y.g.y.y.y",
-      "y..y.g.y.y..-.y",
-      "y.g.y..y.g.y.yy",
-      "D.y..gY.8.y.g.D",
-      "y.g.y.g.y.y..gy",
-      "y.y..g.y.g.y..y",
-      "y.g.y.y.g.y..gy",
-      "y..y.g.y..y...y",
-      "y.g.y..gg.y.g.y",
+      "y.g...y....g..y",
+      "y....R........y",
+      "y.....g......gy",
+      "y.g........-..y",
+      "y......g......y",
+      "D.....Y.8.....D",
+      "y......g......y",
+      "y.g.......g...y",
+      "y.....g.......y",
+      "y..g........g.y",
+      "y....g...g....y",
       "yyyyyyyyyyyyyyy",
     ],
     doors: [
@@ -649,19 +657,22 @@ export const ROOMS: RoomDef[] = [
     startVisible: false,
     // v7: the VOID SERPENT (7) coils in the swamp — spits venom and lunges
     // from behind the dead cypresses.
+    // v13: cleared the cypress thicket around the boss circle. Kept the water
+    // pools + a handful of tree silhouettes for atmosphere, but dropped the
+    // interior blocker count from ~30 to ~10 so kiting the coil attack works.
     map: [
       "ttttttttttttttt",
-      "t..~~.t.~~.t..t",
-      "t.t.~~..~~.t.tt",
-      "t..t.~~~~..t..t",
-      "t.t..t.~~t.t.tt",
-      "t.t.~~.~~..t.tt",
-      "D..~~..7..~~..t",
-      "t.t.~~..~~.t.tt",
-      "t.t..t.~~.tt.tt",
-      "t.tt.~~~~..t..t",
-      "t..t.~~..~~.t.t",
-      "t.t..t.~~.t..tt",
+      "t..~~.......~.t",
+      "t...~~.......tt",
+      "t.t..~~......~t",
+      "t........t...tt",
+      "t...~~........t",
+      "D....~.7.~....t",
+      "t........~~..tt",
+      "t..t.........tt",
+      "t.....~~.....~t",
+      "t..........t..t",
+      "t...~........tt",
       "ttttttttttttttt",
     ],
     doors: [{ dir: "w", kind: "open" }],

@@ -89,6 +89,9 @@ html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: 
 .menu-btn { pointer-events: auto; padding: 14px 34px; margin: 10px; font-size: 18px; font-weight: 700; letter-spacing: 2px; color: var(--bg); background: var(--gold); border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 16px rgba(255,209,102,0.4); transition: transform 0.15s; }
 .menu-btn:hover { transform: translateY(-2px); }
 .menu-btn:active { transform: translateY(0); }
+/* v13: secondary button style for "New Game" beside "Continue". */
+.menu-btn-secondary { background: transparent; color: var(--text); border: 2px solid var(--text-dim); box-shadow: none; }
+.menu-btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
 .stat { font-size: 18px !important; color: var(--text) !important; }
 .credits { font-size: 13px !important; opacity: 0.6; margin-top: 30px !important; }
 .victory-crystal { font-size: 80px; margin-bottom: 16px; animation: crystalSpin 2s linear infinite; }
